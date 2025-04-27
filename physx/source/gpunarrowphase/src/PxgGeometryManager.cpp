@@ -48,7 +48,7 @@
 
 #include "cudamanager/PxCudaContextManager.h"
 #include "cudamanager/PxCudaContext.h"
-#include <vector_types.h>
+#include <hip/hip_vector_types.h>
 #include <vector_functions.h>
 
 // AD: PxgGeometryManager manages the CPU/GPU data transfers and the lifetime of collision geometries: Convex Hulls, Trimeshes, SDFs, Heightfields.
@@ -63,9 +63,9 @@ static PxU64 computeTriMeshByteSize(const TriangleMesh& triMesh);
 static PxU64 computeHeightfieldByteSize(const HeightFieldData& hf);
 static void layOutBoxHull(void* mem);
 static void layOutHull(void* mem, const ConvexHullData& hull, PxU32 numPolyVertices);
-static PxgMeshTextureData layOutTriMesh(void* mem, const TriangleMesh& triMesh, CUstream stream);
+static PxgMeshTextureData layOutTriMesh(void* mem, const TriangleMesh& triMesh, hipStream_t stream);
 static void layOutHeightfield(void* mem, const HeightFieldData& hf);
-template<typename T> static void createTextureObject(CUarray_format format, CUtexObject*& texture, CUarray& cuArray, PxU32 width, PxU32 height, PxU32 depth, const T* data, CUstream stream);
+template<typename T> static void createTextureObject(hipArray_Format format, hipTextureObject_t*& texture, hipArray_t& cuArray, PxU32 width, PxU32 height, PxU32 depth, const T* data, hipStream_t stream);
 
 // PxgGeometryManager definitions
 PxgGeometryManager::PxgGeometryManager(PxgHeapMemoryAllocatorManager* heapMemoryManager): 
@@ -170,13 +170,13 @@ void PxgGeometryManager::removeGeometry(PxU32 idx)
 
 	if (pair)
 	{
-		cuArrayDestroy(pair->second.cuArray);
-		cuTexObjectDestroy(pair->second.cuTexRef);
+		hipArrayDestroy(pair->second.cuArray);
+		hipTexObjectDestroy(pair->second.cuTexRef);
 
 		if (pair->second.cuArraySubgrids)
 		{
-			cuArrayDestroy(pair->second.cuArraySubgrids);
-			cuTexObjectDestroy(pair->second.cuTexRefSubgrids);
+			hipArrayDestroy(pair->second.cuArraySubgrids);
+			hipTexObjectDestroy(pair->second.cuTexRefSubgrids);
 		}
 
 		mMeshToTextureMap.erase(geometryToRemove.mDeviceMemPointer);
@@ -186,7 +186,7 @@ void PxgGeometryManager::removeGeometry(PxU32 idx)
 	mFreeGeometryIndices.setFreeIndex(idx);
 }
 
-void PxgGeometryManager::scheduleCopyHtoD(PxgCopyManager& copyMan, PxCudaContext& cudaContext, CUstream stream)
+void PxgGeometryManager::scheduleCopyHtoD(PxgCopyManager& copyMan, PxCudaContext& cudaContext, hipStream_t stream)
 {
 	// allocate the proper amount of pinned memory
 	mPinnedMemoryBasePtr = mPinnedMemoryAllocator->allocate(mPinnedHostMemoryRequirements, PxsHeapStats::eNARROWPHASE, PX_FL);
@@ -255,19 +255,19 @@ void PxgGeometryManager::resetAfterMemcpyCompleted()
 	mFreeGeometryIndices.releaseFreeIndices();
 }
 
-CUdeviceptr PxgGeometryManager::getGeometryDevPtrByIndex(PxU32 idx) const
+hipDeviceptr_t PxgGeometryManager::getGeometryDevPtrByIndex(PxU32 idx) const
 {
 	PX_ASSERT(idx < mGeometryData.size());
 
-	return reinterpret_cast<CUdeviceptr>(mGeometryData[idx].mDeviceMemPointer);
+	return reinterpret_cast<hipDeviceptr_t>(mGeometryData[idx].mDeviceMemPointer);
 }
 
-CUdeviceptr PxgGeometryManager::getBoxHullDevPtr() const
+hipDeviceptr_t PxgGeometryManager::getBoxHullDevPtr() const
 {
 	PX_ASSERT(mBoxHullIdx != 0xFFffFFff);
 	PX_ASSERT(mBoxHullIdx < mGeometryData.size());
 
-	return reinterpret_cast<CUdeviceptr>(mGeometryData[mBoxHullIdx].mDeviceMemPointer);
+	return reinterpret_cast<hipDeviceptr_t>(mGeometryData[mBoxHullIdx].mDeviceMemPointer);
 }
 
 PxU32 PxgGeometryManager::addTriMesh(const TriangleMesh& triMesh)
@@ -354,8 +354,8 @@ static PxU64 computeTriMeshByteSize(const TriangleMesh& triMesh)
 		meshDataSize +=
 			+ sizeof(float4)				// (meshLower.x, meshLower.y, meshLower.z, spacing)
 			+ sizeof(uint4)			
-			+ sizeof(CUtexObject)			// SDF texture object reference
-			+ sizeof(CUtexObject)
+			+ sizeof(hipTextureObject_t)			// SDF texture object reference
+			+ sizeof(hipTextureObject_t)
 			+ sizeof(PxU32) * sdfData.mNumStartSlots;
 	}
 
@@ -526,7 +526,7 @@ static void layOutHull(void* mem, const ConvexHullData& hull, PxU32 numPolyVerti
 	//m += sizeof(PxU8) * numPolyVertices;
 }
 
-static PxgMeshTextureData layOutTriMesh(void* mem, const TriangleMesh& triMesh, CUstream stream)
+static PxgMeshTextureData layOutTriMesh(void* mem, const TriangleMesh& triMesh, hipStream_t stream)
 {
 	const PxU32 numTris = triMesh.getNbTrianglesFast();
 	const PxU32 numVerts = triMesh.getNbVerticesFast();
@@ -626,11 +626,11 @@ static PxgMeshTextureData layOutTriMesh(void* mem, const TriangleMesh& triMesh, 
 		*((uint4*)m) = make_uint4(sdfData.mSubgridSize, reinterpret_cast<const PxU32&>(sdfData.mSubgridsMinSdfValue), reinterpret_cast<const PxU32&>(sdfData.mSubgridsMaxSdfValue), sdfData.mNumStartSlots);
 		m += sizeof(uint4);
 
-		CUtexObject* pTexture = (CUtexObject*)m;
-		m += sizeof(CUtexObject);
+		hipTextureObject_t* pTexture = (hipTextureObject_t*)m;
+		m += sizeof(hipTextureObject_t);
 
-		CUtexObject* pTextureSubgrids = (CUtexObject*)m;
-		m += sizeof(CUtexObject);
+		hipTextureObject_t* pTextureSubgrids = (hipTextureObject_t*)m;
+		m += sizeof(hipTextureObject_t);
 
 		if (sdfData.mSubgridSize > 0)
 			PxMemCopy(m, sdfData.mSubgridStartSlots, sdfData.mNumStartSlots * sizeof(PxU32));
@@ -638,8 +638,8 @@ static PxgMeshTextureData layOutTriMesh(void* mem, const TriangleMesh& triMesh, 
 
 		if (sdfData.mSubgridSize == 0)
 		{
-			CUarray cuArray;
-			createTextureObject<PxReal>(CU_AD_FORMAT_FLOAT, pTexture, cuArray, sdfData.mDims.x, sdfData.mDims.y, sdfData.mDims.z, sdfData.mSdf, stream);
+			hipArray_t cuArray;
+			createTextureObject<PxReal>(HIP_AD_FORMAT_FLOAT, pTexture, cuArray, sdfData.mDims.x, sdfData.mDims.y, sdfData.mDims.z, sdfData.mSdf, stream);
 
 			result.cuArray = cuArray;
 			result.cuTexRef = *pTexture;
@@ -653,26 +653,26 @@ static PxgMeshTextureData layOutTriMesh(void* mem, const TriangleMesh& triMesh, 
 			PxU32 y = sdfData.mDims.y / sdfData.mSubgridSize;
 			PxU32 z = sdfData.mDims.z / sdfData.mSubgridSize;
 
-			CUarray cuArray;
-			createTextureObject<PxReal>(CU_AD_FORMAT_FLOAT, pTexture, cuArray, x + 1, y + 1, z + 1, sdfData.mSdf, stream);
+			hipArray_t cuArray;
+			createTextureObject<PxReal>(HIP_AD_FORMAT_FLOAT, pTexture, cuArray, x + 1, y + 1, z + 1, sdfData.mSdf, stream);
 
-			CUarray cuArraySubgrids = 0;
+			hipArray_t cuArraySubgrids = 0;
 			switch(sdfData.mBytesPerSparsePixel)
 			{
 			case 1:
-				createTextureObject<PxU8>(CU_AD_FORMAT_UNSIGNED_INT8, pTextureSubgrids, cuArraySubgrids,
+				createTextureObject<PxU8>(HIP_AD_FORMAT_UNSIGNED_INT8, pTextureSubgrids, cuArraySubgrids,
 					sdfData.mSdfSubgrids3DTexBlockDim.x * (sdfData.mSubgridSize + 1),
 					sdfData.mSdfSubgrids3DTexBlockDim.y * (sdfData.mSubgridSize + 1),
 					sdfData.mSdfSubgrids3DTexBlockDim.z * (sdfData.mSubgridSize + 1), sdfData.mSubgridSdf, stream);
 				break;
 			case 2:
-				createTextureObject<PxU16>(CU_AD_FORMAT_UNSIGNED_INT16, pTextureSubgrids, cuArraySubgrids,
+				createTextureObject<PxU16>(HIP_AD_FORMAT_UNSIGNED_INT16, pTextureSubgrids, cuArraySubgrids,
 					sdfData.mSdfSubgrids3DTexBlockDim.x * (sdfData.mSubgridSize + 1),
 					sdfData.mSdfSubgrids3DTexBlockDim.y * (sdfData.mSubgridSize + 1),
 					sdfData.mSdfSubgrids3DTexBlockDim.z * (sdfData.mSubgridSize + 1), reinterpret_cast<PxU16*>(sdfData.mSubgridSdf), stream);
 				break;
 			case 4:
-				createTextureObject<PxReal>(CU_AD_FORMAT_FLOAT, pTextureSubgrids, cuArraySubgrids,
+				createTextureObject<PxReal>(HIP_AD_FORMAT_FLOAT, pTextureSubgrids, cuArraySubgrids,
 					sdfData.mSdfSubgrids3DTexBlockDim.x * (sdfData.mSubgridSize + 1),
 					sdfData.mSdfSubgrids3DTexBlockDim.y * (sdfData.mSubgridSize + 1),
 					sdfData.mSdfSubgrids3DTexBlockDim.z * (sdfData.mSubgridSize + 1), reinterpret_cast<PxReal*>(sdfData.mSubgridSdf), stream);
@@ -720,7 +720,7 @@ static void layOutHeightfield(void* mem, const HeightFieldData& hf)
 }
 
 template<typename T>
-static void createTextureObject(CUarray_format format, CUtexObject*& texture, CUarray& cuArray, PxU32 width, PxU32 height, PxU32 depth, const T* data, CUstream stream)
+static void createTextureObject(hipArray_Format format, hipTextureObject_t*& texture, hipArray_t& cuArray, PxU32 width, PxU32 height, PxU32 depth, const T* data, hipStream_t stream)
 {
 	if (width == 0 || height == 0 || depth == 0)
 	{
@@ -729,22 +729,22 @@ static void createTextureObject(CUarray_format format, CUtexObject*& texture, CU
 		return;
 	}
 
-	CUDA_ARRAY3D_DESCRIPTOR_st arrDesc;
+	HIP_ARRAY3D_DESCRIPTOR arrDesc;
 	arrDesc.Format = format;
 	arrDesc.NumChannels = 1;
 	arrDesc.Width = width; 
 	arrDesc.Height = height;
 	arrDesc.Depth = depth; 
 	arrDesc.Flags = 0;
-	CUresult r = cuArray3DCreate(&cuArray, &arrDesc);
+	hipError_t r = hipArray3DCreate(&cuArray, &arrDesc);
 	PX_UNUSED(r);
-	PX_ASSERT(r == CUDA_SUCCESS);
+	PX_ASSERT(r == hipSuccess);
 
-	CUDA_MEMCPY3D copyParam;
+	HIP_MEMCPY3D copyParam;
 	PxMemZero(&copyParam, sizeof(copyParam));
-	copyParam.dstMemoryType = CU_MEMORYTYPE_ARRAY;
+	copyParam.dstMemoryType = hipMemoryTypeArray;
 	copyParam.dstArray = cuArray;
-	copyParam.srcMemoryType = CU_MEMORYTYPE_HOST;
+	copyParam.srcMemoryType = hipMemoryTypeHost;
 	copyParam.srcHost = data;
 	copyParam.srcPitch = width * sizeof(T);
 	copyParam.srcHeight = height;
@@ -752,21 +752,21 @@ static void createTextureObject(CUarray_format format, CUtexObject*& texture, CU
 	copyParam.Height = height; 
 	copyParam.Depth = depth; 
 
-	cuMemcpy3DAsync(&copyParam, stream);
+	hipDrvMemcpy3DAsync(&copyParam, stream);
 
-	CUDA_RESOURCE_DESC resDesc;
+	HIP_RESOURCE_DESC resDesc;
 	PxMemZero(&resDesc, sizeof(resDesc));
-	resDesc.resType = CU_RESOURCE_TYPE_ARRAY;
+	resDesc.resType = HIP_RESOURCE_TYPE_ARRAY;
 	resDesc.res.array.hArray = cuArray;	
 
-	CUDA_TEXTURE_DESC texDesc;
+	HIP_TEXTURE_DESC texDesc;
 	PxMemZero(&texDesc, sizeof(texDesc));
-	texDesc.addressMode[0] = CU_TR_ADDRESS_MODE_CLAMP;
-	texDesc.addressMode[1] = CU_TR_ADDRESS_MODE_CLAMP;
-	texDesc.addressMode[2] = CU_TR_ADDRESS_MODE_CLAMP;
+	texDesc.addressMode[0] = HIP_TR_ADDRESS_MODE_CLAMP;
+	texDesc.addressMode[1] = HIP_TR_ADDRESS_MODE_CLAMP;
+	texDesc.addressMode[2] = HIP_TR_ADDRESS_MODE_CLAMP;
 	
-	texDesc.filterMode = CU_TR_FILTER_MODE_LINEAR;
+	texDesc.filterMode = HIP_TR_FILTER_MODE_LINEAR;
 	
-	r = cuTexObjectCreate(texture, &resDesc, &texDesc, NULL);
-	PX_ASSERT(r == CUDA_SUCCESS);
+	r = hipTexObjectCreate(texture, &resDesc, &texDesc, NULL);
+	PX_ASSERT(r == hipSuccess);
 }

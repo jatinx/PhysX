@@ -309,10 +309,10 @@ class NpScene : public NpSceneAccessor, public PxUserAllocated
 
 	virtual         PxPvdSceneClient*				getScenePvdClient()	PX_OVERRIDE PX_FINAL;
 	
-	PX_DEPRECATED	virtual	void					copySoftBodyData(void** data, void* dataSizes, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbCopySoftBodies, const PxU32 maxSize, CUevent copyEvent)	PX_OVERRIDE	PX_FINAL;
-	PX_DEPRECATED	virtual	void					applySoftBodyData(void** data, void* dataSizes, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbUpdatedSoftBodies, const PxU32 maxSize, CUevent applyEvent, CUevent signalEvent)	PX_OVERRIDE	PX_FINAL;
+	PX_DEPRECATED	virtual	void					copySoftBodyData(void** data, void* dataSizes, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbCopySoftBodies, const PxU32 maxSize, hipEvent_t copyEvent)	PX_OVERRIDE	PX_FINAL;
+	PX_DEPRECATED	virtual	void					applySoftBodyData(void** data, void* dataSizes, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbUpdatedSoftBodies, const PxU32 maxSize, hipEvent_t applyEvent, hipEvent_t signalEvent)	PX_OVERRIDE	PX_FINAL;
 
-	PX_DEPRECATED	virtual	void					applyParticleBufferData(const PxU32* indices, const PxGpuParticleBufferIndexPair* bufferIndexPairs, const PxParticleBufferFlags* flags, PxU32 nbUpdatedBuffers, CUevent waitEvent, CUevent signalEvent)	PX_OVERRIDE	PX_FINAL;
+	PX_DEPRECATED	virtual	void					applyParticleBufferData(const PxU32* indices, const PxGpuParticleBufferIndexPair* bufferIndexPairs, const PxParticleBufferFlags* flags, PxU32 nbUpdatedBuffers, hipEvent_t waitEvent, hipEvent_t signalEvent)	PX_OVERRIDE	PX_FINAL;
 
 	virtual	void									setDeformableSurfaceGpuPostSolveCallback(PxPostSolveCallback* postSolveCallback)	PX_OVERRIDE	PX_FINAL;
 	virtual	void									setDeformableVolumeGpuPostSolveCallback(PxPostSolveCallback* postSolveCallback)	PX_OVERRIDE	PX_FINAL;

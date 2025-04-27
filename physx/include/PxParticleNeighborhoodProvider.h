@@ -64,7 +64,7 @@ namespace physx
 		\param[in] validPhaseMask An optional phase mask to define which particles should be included into the neighborhood computation
 		\param[in] deviceActiveIndices An optional device pointer containing all indices of particles that are currently active
 		*/
-		virtual void buildNeighborhood(PxVec4* deviceParticlePos, const PxU32 numParticles, CUstream stream, PxU32* devicePhases = NULL,
+		virtual void buildNeighborhood(PxVec4* deviceParticlePos, const PxU32 numParticles, hipStream_t stream, PxU32* devicePhases = NULL,
 			PxU32 validPhaseMask = PxParticlePhaseFlag::eParticlePhaseFluid, const PxU32* deviceActiveIndices = NULL) = 0;
 
 		/**

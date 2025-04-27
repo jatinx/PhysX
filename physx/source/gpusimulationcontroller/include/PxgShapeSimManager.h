@@ -81,14 +81,14 @@ namespace physx
 						void							copyToGpuShapeSim(PxgGpuNarrowphaseCore* npCore, PxBaseTask* continuation, Cm::FlushPool& flushPool);
 		// PT: copies new shapes from GPU *host* memory (mPxgShapeSimPool) to GPU device memory (mNewShapeSimBuffer)
 		// and *then* copies from device-to-device memory (mNewShapeSimBuffer => mShapeSimBuffer)
-						void							gpuMemDmaUpShapeSim(PxCudaContext* cudaContext, CUstream stream, KernelWrangler* kernelWrangler);
+						void							gpuMemDmaUpShapeSim(PxCudaContext* cudaContext, hipStream_t stream, KernelWrangler* kernelWrangler);
 
 		// PT: TODO: figure out the difference between mTotalNumShapes and mNbTotalShapeSim
 		// (they both existed in different places and got logically refactored here)
 		PX_FORCE_INLINE	PxU32							getTotalNbShapes()				const	{ return mTotalNumShapes;	}
 		PX_FORCE_INLINE	PxU32							getNbTotalShapeSims()			const	{ return mNbTotalShapeSim;	}
 
-		PX_FORCE_INLINE	CUdeviceptr						getShapeSimsDevicePtr()			const	{ return mShapeSimBuffer.getDevicePtr();	}
+		PX_FORCE_INLINE	hipDeviceptr_t						getShapeSimsDevicePtr()			const	{ return mShapeSimBuffer.getDevicePtr();	}
 		PX_FORCE_INLINE	const PxgShapeSim*				getShapeSimsDeviceTypedPtr()	const	{ return mShapeSimBuffer.getTypedPtr();		}
 		PX_FORCE_INLINE	Sc::ShapeSimBase**				getShapeSims()							{ return mShapeSimPtrs.begin();				}
 

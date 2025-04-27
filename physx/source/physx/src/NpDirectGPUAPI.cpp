@@ -60,7 +60,7 @@ NpDirectGPUAPI::NpDirectGPUAPI(NpScene& scene) :
 #endif
 }
 
-bool NpDirectGPUAPI::getRigidDynamicData(void* PX_RESTRICT data, const PxRigidDynamicGPUIndex* PX_RESTRICT gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent) const
+bool NpDirectGPUAPI::getRigidDynamicData(void* PX_RESTRICT data, const PxRigidDynamicGPUIndex* PX_RESTRICT gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent) const
 {
 	if (mNpScene.isAPIWriteForbidden())
 		return NP_API_READ_WRITE_ERROR_MSG("PxDirectGPUAPI::getRigidDynamicData(): not allowed while simulation is running. Call will be ignored.");
@@ -77,7 +77,7 @@ bool NpDirectGPUAPI::getRigidDynamicData(void* PX_RESTRICT data, const PxRigidDy
 	return mNpScene.getScScene().getSimulationController()->getRigidDynamicData(data, gpuIndices, dataType, nbElements, oneOverDt, startEvent, finishEvent);
 }
 
-bool NpDirectGPUAPI::setRigidDynamicData(const void* PX_RESTRICT data, const PxRigidDynamicGPUIndex* PX_RESTRICT gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent)
+bool NpDirectGPUAPI::setRigidDynamicData(const void* PX_RESTRICT data, const PxRigidDynamicGPUIndex* PX_RESTRICT gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent)
 {
 	if (mNpScene.isAPIWriteForbidden())
 		return NP_API_READ_WRITE_ERROR_MSG("PxDirectGPUAPI::setRigidDynamicData(): not allowed while simulation is running. Call will be ignored.");
@@ -91,7 +91,7 @@ bool NpDirectGPUAPI::setRigidDynamicData(const void* PX_RESTRICT data, const PxR
 	return mNpScene.getScScene().getSimulationController()->setRigidDynamicData(data, gpuIndices, dataType, nbElements, startEvent, finishEvent);
 }
 
-bool NpDirectGPUAPI::getArticulationData(void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent) const
+bool NpDirectGPUAPI::getArticulationData(void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent) const
 {
 	if (mNpScene.isAPIWriteForbidden())
 		return NP_API_READ_WRITE_ERROR_MSG("PxDirectGPUAPI::getArticulationData(): not allowed while simulation is running. Call will be ignored.");
@@ -105,7 +105,7 @@ bool NpDirectGPUAPI::getArticulationData(void* PX_RESTRICT data, const PxArticul
 	return mNpScene.getScScene().getSimulationController()->getArticulationData(data, gpuIndices, dataType, nbElements, startEvent, finishEvent);
 }
 
-bool NpDirectGPUAPI::setArticulationData(const void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent)
+bool NpDirectGPUAPI::setArticulationData(const void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent)
 {
 	if (mNpScene.isAPIWriteForbidden())
 		return NP_API_READ_WRITE_ERROR_MSG("PxDirectGPUAPI::setArticulationData(): not allowed while simulation is running. Call will be ignored.");
@@ -119,7 +119,7 @@ bool NpDirectGPUAPI::setArticulationData(const void* PX_RESTRICT data, const PxA
 	return mNpScene.getScScene().getSimulationController()->setArticulationData(data, gpuIndices, dataType, nbElements, startEvent, finishEvent);
 }
 
-bool NpDirectGPUAPI::computeArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements, CUevent startEvent, CUevent finishEvent)
+bool NpDirectGPUAPI::computeArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent)
 {
 	if (mNpScene.isAPIWriteForbidden())
 		return NP_API_READ_WRITE_ERROR_MSG("PxDirectGPUAPI::computeArticulationData(): not allowed while simulation is running. Call will be ignored.");
@@ -134,7 +134,7 @@ bool NpDirectGPUAPI::computeArticulationData(void* data, const PxArticulationGPU
 	return mNpScene.getScScene().getSimulationController()->computeArticulationData(data, gpuIndices, operation, nbElements, startEvent, finishEvent);
 }
 
-bool NpDirectGPUAPI::copyContactData(void* PX_RESTRICT data, PxU32* PX_RESTRICT numContactPairs, PxU32 maxPairs, CUevent startEvent, CUevent finishEvent) const
+bool NpDirectGPUAPI::copyContactData(void* PX_RESTRICT data, PxU32* PX_RESTRICT numContactPairs, PxU32 maxPairs, hipEvent_t startEvent, hipEvent_t finishEvent) const
 {
 	if (mNpScene.isAPIWriteForbidden())
 		return NP_API_READ_WRITE_ERROR_MSG("PxDirectGPUAPI::copyContactData(): not allowed while simulation is running. Call will be ignored.");
@@ -148,7 +148,7 @@ bool NpDirectGPUAPI::copyContactData(void* PX_RESTRICT data, PxU32* PX_RESTRICT 
 	return mNpScene.getScScene().getSimulationController()->copyContactData(data, numContactPairs, maxPairs, startEvent, finishEvent);
 }
 
-bool NpDirectGPUAPI::evaluateSDFDistances(PxVec4* PX_RESTRICT localGradientAndSDFConcatenated, const PxShapeGPUIndex* PX_RESTRICT gpuIndices, const PxVec4* PX_RESTRICT localSamplePointsConcatenated, const PxU32* PX_RESTRICT samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, CUevent startEvent, CUevent finishEvent) const
+bool NpDirectGPUAPI::evaluateSDFDistances(PxVec4* PX_RESTRICT localGradientAndSDFConcatenated, const PxShapeGPUIndex* PX_RESTRICT gpuIndices, const PxVec4* PX_RESTRICT localSamplePointsConcatenated, const PxU32* PX_RESTRICT samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, hipEvent_t startEvent, hipEvent_t finishEvent) const
 {
 	if (mNpScene.isAPIWriteForbidden())
 		return NP_API_READ_WRITE_ERROR_MSG("PxDirectGPUAPI::evaluateSDFDistances(): not allowed while simulation is running. Call will be ignored.");
@@ -173,7 +173,7 @@ PxArticulationGPUAPIMaxCounts NpDirectGPUAPI::getArticulationGPUAPIMaxCounts() c
 	return mNpScene.getScScene().getSimulationController()->getArticulationGPUAPIMaxCounts();
 }
 
-bool NpDirectGPUAPI::getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent) const
+bool NpDirectGPUAPI::getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent) const
 {
 	if (mNpScene.isAPIWriteForbidden())
 		return NP_API_READ_WRITE_ERROR_MSG("PxDirectGPUAPI::getD6JointData(): not allowed while simulation is running. Call will be ignored.");
@@ -208,7 +208,7 @@ NpDirectGPUAPI::NpDirectGPUAPI(NpScene& scene) :
 	// Empty implementation for CPU-only builds
 }
 
-bool NpDirectGPUAPI::getRigidDynamicData(void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent) const
+bool NpDirectGPUAPI::getRigidDynamicData(void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent) const
 {
 	PX_UNUSED(data);
 	PX_UNUSED(gpuIndices);
@@ -219,7 +219,7 @@ bool NpDirectGPUAPI::getRigidDynamicData(void* data, const PxRigidDynamicGPUInde
 	return false;
 }
 
-bool NpDirectGPUAPI::setRigidDynamicData(const void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent)
+bool NpDirectGPUAPI::setRigidDynamicData(const void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent)
 {
 	PX_UNUSED(data);
 	PX_UNUSED(gpuIndices);
@@ -230,7 +230,7 @@ bool NpDirectGPUAPI::setRigidDynamicData(const void* data, const PxRigidDynamicG
 	return false;
 }
 
-bool NpDirectGPUAPI::getArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent) const
+bool NpDirectGPUAPI::getArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent) const
 {
 	PX_UNUSED(data);
 	PX_UNUSED(gpuIndices);
@@ -241,7 +241,7 @@ bool NpDirectGPUAPI::getArticulationData(void* data, const PxArticulationGPUInde
 	return false;
 }
 
-bool NpDirectGPUAPI::setArticulationData(const void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent)
+bool NpDirectGPUAPI::setArticulationData(const void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent)
 {
 	PX_UNUSED(data);
 	PX_UNUSED(gpuIndices);
@@ -252,7 +252,7 @@ bool NpDirectGPUAPI::setArticulationData(const void* data, const PxArticulationG
 	return false;
 }
 
-bool NpDirectGPUAPI::computeArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements, CUevent startEvent, CUevent finishEvent)
+bool NpDirectGPUAPI::computeArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent)
 {
 	PX_UNUSED(data);
 	PX_UNUSED(gpuIndices);
@@ -263,7 +263,7 @@ bool NpDirectGPUAPI::computeArticulationData(void* data, const PxArticulationGPU
 	return false;
 }
 
-bool NpDirectGPUAPI::copyContactData(void* data, PxU32* numContactPairs, PxU32 maxPairs, CUevent startEvent, CUevent finishEvent) const
+bool NpDirectGPUAPI::copyContactData(void* data, PxU32* numContactPairs, PxU32 maxPairs, hipEvent_t startEvent, hipEvent_t finishEvent) const
 {
 	PX_UNUSED(data);
 	PX_UNUSED(numContactPairs);
@@ -273,7 +273,7 @@ bool NpDirectGPUAPI::copyContactData(void* data, PxU32* numContactPairs, PxU32 m
 	return false;
 }
 
-bool NpDirectGPUAPI::evaluateSDFDistances(PxVec4* localGradientAndSDFConcatenated, const PxShapeGPUIndex* shapeIndices, const PxVec4* localSamplePointsConcatenated, const PxU32* samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, CUevent startEvent, CUevent finishEvent) const
+bool NpDirectGPUAPI::evaluateSDFDistances(PxVec4* localGradientAndSDFConcatenated, const PxShapeGPUIndex* shapeIndices, const PxVec4* localSamplePointsConcatenated, const PxU32* samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, hipEvent_t startEvent, hipEvent_t finishEvent) const
 {
 	PX_UNUSED(localGradientAndSDFConcatenated);
 	PX_UNUSED(shapeIndices);
@@ -291,7 +291,7 @@ PxArticulationGPUAPIMaxCounts NpDirectGPUAPI::getArticulationGPUAPIMaxCounts() c
 	return PxArticulationGPUAPIMaxCounts();
 }
 
-bool NpDirectGPUAPI::getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent) const
+bool NpDirectGPUAPI::getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent) const
 {
 	PX_UNUSED(data);
 	PX_UNUSED(gpuIndices);

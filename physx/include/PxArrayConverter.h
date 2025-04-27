@@ -57,7 +57,7 @@ namespace physx
 		\param[out] interleavedResultBufferD The resulting interleaved buffer containing 2*length elements with the format vertex0, normal0, vertex1, normal1...
 		\param[in] stream The cuda stream on which the conversion is processed
 		*/		
-		virtual void interleaveGpuBuffers(const PxVec4* verticesD, const PxVec4* normalsD, PxU32 length, PxVec3* interleavedResultBufferD, CUstream stream) = 0;
+		virtual void interleaveGpuBuffers(const PxVec4* verticesD, const PxVec4* normalsD, PxU32 length, PxVec3* interleavedResultBufferD, hipStream_t stream) = 0;
 
 		/**
 		\brief Destructor

@@ -615,26 +615,26 @@ namespace physx
 
 		// deprecated direct-GPU API
 
-		PX_DEPRECATED	virtual	void	copySoftBodyDataDEPRECATED(void** data, void* dataEndIndices, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbCopySoftBodies, const PxU32 maxSize, CUevent copyEvent) PX_OVERRIDE PX_FINAL;
-		PX_DEPRECATED	virtual	void	applySoftBodyDataDEPRECATED(void** data, void* dataEndIndices, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbUpdatedSoftBodies, const PxU32 maxSize, CUevent applyEvent, CUevent signalEvent) PX_OVERRIDE PX_FINAL;	
+		PX_DEPRECATED	virtual	void	copySoftBodyDataDEPRECATED(void** data, void* dataEndIndices, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbCopySoftBodies, const PxU32 maxSize, hipEvent_t copyEvent) PX_OVERRIDE PX_FINAL;
+		PX_DEPRECATED	virtual	void	applySoftBodyDataDEPRECATED(void** data, void* dataEndIndices, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbUpdatedSoftBodies, const PxU32 maxSize, hipEvent_t applyEvent, hipEvent_t signalEvent) PX_OVERRIDE PX_FINAL;	
 
-		PX_DEPRECATED	virtual void	applyParticleBufferDataDEPRECATED(const PxU32* indices, const PxGpuParticleBufferIndexPair* indexPair, const PxParticleBufferFlags* flags, PxU32 nbUpdatedBuffers, CUevent waitEvent, CUevent signalEvent)	PX_OVERRIDE;
+		PX_DEPRECATED	virtual void	applyParticleBufferDataDEPRECATED(const PxU32* indices, const PxGpuParticleBufferIndexPair* indexPair, const PxParticleBufferFlags* flags, PxU32 nbUpdatedBuffers, hipEvent_t waitEvent, hipEvent_t signalEvent)	PX_OVERRIDE;
 		// end deprecated direct-GPU API
 
 		// new direct-GPU API
-		virtual bool	getRigidDynamicData(void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, float oneOverDt, CUevent startEvent, CUevent finishEvent) const PX_OVERRIDE PX_FINAL;
-		virtual bool 	setRigidDynamicData(const void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent) PX_OVERRIDE PX_FINAL;
+		virtual bool	getRigidDynamicData(void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, float oneOverDt, hipEvent_t startEvent, hipEvent_t finishEvent) const PX_OVERRIDE PX_FINAL;
+		virtual bool 	setRigidDynamicData(const void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent) PX_OVERRIDE PX_FINAL;
 		
-		virtual bool 	getArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent) const PX_OVERRIDE PX_FINAL;
-		virtual bool 	setArticulationData(const void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent) PX_OVERRIDE PX_FINAL;
-		virtual	bool	computeArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements, CUevent startEvent, CUevent finishEvent) PX_OVERRIDE PX_FINAL;
+		virtual bool 	getArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent) const PX_OVERRIDE PX_FINAL;
+		virtual bool 	setArticulationData(const void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent) PX_OVERRIDE PX_FINAL;
+		virtual	bool	computeArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent) PX_OVERRIDE PX_FINAL;
 
-		virtual bool 	evaluateSDFDistances(PxVec4* localGradientAndSDFConcatenated, const PxShapeGPUIndex* shapeIndices, const PxVec4* localSamplePointsConcatenated, const PxU32* samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, CUevent startEvent, CUevent finishEvent) PX_OVERRIDE PX_FINAL;
-		virtual	bool	copyContactData(void* data, PxU32* numContactPairs, const PxU32 maxContactPairs, CUevent startEvent, CUevent copyEvent) PX_OVERRIDE PX_FINAL;
+		virtual bool 	evaluateSDFDistances(PxVec4* localGradientAndSDFConcatenated, const PxShapeGPUIndex* shapeIndices, const PxVec4* localSamplePointsConcatenated, const PxU32* samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, hipEvent_t startEvent, hipEvent_t finishEvent) PX_OVERRIDE PX_FINAL;
+		virtual	bool	copyContactData(void* data, PxU32* numContactPairs, const PxU32 maxContactPairs, hipEvent_t startEvent, hipEvent_t copyEvent) PX_OVERRIDE PX_FINAL;
 
 		virtual PxArticulationGPUAPIMaxCounts getArticulationGPUAPIMaxCounts()	const	PX_OVERRIDE PX_FINAL;
 
-		virtual bool	getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, PxF32 oneOverDt, CUevent startEvent, CUevent finishEvent) const PX_OVERRIDE PX_FINAL;
+		virtual bool	getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, PxF32 oneOverDt, hipEvent_t startEvent, hipEvent_t finishEvent) const PX_OVERRIDE PX_FINAL;
 
 		// end new direct-GPU API
 
@@ -746,15 +746,15 @@ namespace physx
 
 		// bounds are shared by NP and BP, so we have the update in the simulation controller.
 		// cache is for np, we update it together with bounds due to similar update logic
-		void updateBoundsAndTransformCache(Bp::AABBManagerBase& aabbManager, CUstream stream, PxsTransformCache& cache, PxgCudaBuffer& mGpuTransformCache);
+		void updateBoundsAndTransformCache(Bp::AABBManagerBase& aabbManager, hipStream_t stream, PxsTransformCache& cache, PxgCudaBuffer& mGpuTransformCache);
 
 		void copyBoundsAndTransforms(Bp::BoundsArray& boundsArray, PxsTransformCache& transformCache,
 															  PxgCudaBuffer& gpuTransformCache, PxU32 boundsArraySize,
-															  PxU32 totalTransformCacheSize, CUstream npStream);
+															  PxU32 totalTransformCacheSize, hipStream_t npStream);
 		void mergeBoundsAndTransformsChanges(PxgBoundsArray& directGPUBoundsArray,
 																	  PxsTransformCache& transformCache,
 																	  PxgCudaBuffer& gpuTransformCache, PxU32 boundsArraySize, PxU32 totalTransformCacheSize,
-																		 PxU32 numChanges, CUstream npStream);
+																		 PxU32 numChanges, hipStream_t npStream);
 
 #if PXG_SC_DEBUG
 		void validateCacheAndBounds(PxBoundsArrayPinned& boundArray, PxCachedTransformArrayPinned& cachedTransform);

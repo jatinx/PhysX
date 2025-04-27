@@ -38,7 +38,7 @@
 using namespace physx;
 
 #if ENABLE_KERNEL_LAUNCH_ERROR_CHECK
-	#define checkCudaError() { cudaError_t err = cudaDeviceSynchronize(); if (err != 0) printf("Cuda error file: %s, line: %i, error: %i\n", PX_FL, err); }	
+	#define checkCudaError() { hipError_t err = hipDeviceSynchronize(); if (err != 0) printf("Cuda error file: %s, line: %i, error: %i\n", PX_FL, err); }	
 #else
 	#define checkCudaError() { }
 #endif
@@ -50,7 +50,7 @@ PxgArrayConverter::PxgArrayConverter(PxgKernelLauncher& kernelLauncher)
 	mKernelLauncher = kernelLauncher;
 }
 
-void PxgArrayConverter::interleaveGpuBuffers(const PxVec4* vertices, const PxVec4* normals, PxU32 length, PxVec3* interleavedResultBuffer, CUstream stream)
+void PxgArrayConverter::interleaveGpuBuffers(const PxVec4* vertices, const PxVec4* normals, PxU32 length, PxVec3* interleavedResultBuffer, hipStream_t stream)
 {
 	const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 	const PxU32 numBlocks = (length + numThreadsPerBlock - 1) / numThreadsPerBlock;

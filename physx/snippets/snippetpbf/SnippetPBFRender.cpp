@@ -35,7 +35,7 @@
 #include "../snippetrender/SnippetRender.h"
 #include "../snippetrender/SnippetCamera.h"
 
-#define CUDA_SUCCESS 0
+#define hipSuccess 0
 #define SHOW_SOLID_SDF_SLICE 0
 #define IDX(i, j, k, offset) ((i) + dimX * ((j) + dimY * ((k) + dimZ * (offset))))
 using namespace physx;
@@ -81,8 +81,8 @@ void renderParticles()
 		cudaContextManager->acquireContext();
 
 		PxCudaContext* cudaContext = cudaContextManager->getCudaContext();
-		cudaContext->memcpyDtoH(sPosBuffer.map(), CUdeviceptr(positions), sizeof(PxVec4) * numParticles);
-		cudaContext->memcpyDtoH(sDiffusePosLifeBuffer.map(), CUdeviceptr(diffusePositions), sizeof(PxVec4) * numDiffuseParticles);
+		cudaContext->memcpyDtoH(sPosBuffer.map(), hipDeviceptr_t(positions), sizeof(PxVec4) * numParticles);
+		cudaContext->memcpyDtoH(sDiffusePosLifeBuffer.map(), hipDeviceptr_t(diffusePositions), sizeof(PxVec4) * numDiffuseParticles);
 
 		cudaContextManager->releaseContext();
 

@@ -90,27 +90,27 @@ namespace physx
 		void updateTetraRotations();
 
 		void solve(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgConstraintPrepareDesc> prepDescd, PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd,
-			PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, const PxReal dt, CUstream solverStream,
+			PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, const PxReal dt, hipStream_t solverStream,
 			const bool isFirstIteration);
 
 		void solveTGS(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgConstraintPrepareDesc> prepDescd, PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd,
-			PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, const PxReal dt, CUstream solverStream,
+			PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, const PxReal dt, hipStream_t solverStream,
 			const bool isVelocityIteration, const PxReal biasCoefficient, const bool isFirstIteration, const PxVec3& gravity);
 
 		void calculateStress();
 
 		void plasticDeformation();
 		
-		void constraintPrep(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgConstraintPrepareDesc> prepDescd, const PxReal invDt, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, CUstream solverStream,
+		void constraintPrep(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgConstraintPrepareDesc> prepDescd, const PxReal invDt, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, hipStream_t solverStream,
 			const bool isTGS, PxU32 nbSolverBodies, PxU32 nbArticulations);
 
 		bool updateUserData(PxPinnedArray<PxgSoftBody>& softBodyPool, PxArray<PxU32>& softBodyNodeIndexPool,
 			const PxU32* activeSoftBodies, const PxU32 nbActiveSoftBodies, void** bodySimsLL);
 
-		void copySoftBodyDataDEPRECATED(void** data, void* dataSizes, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbCopySoftBodies, const PxU32 maxSize, CUevent copyEvent);
-		void applySoftBodyDataDEPRECATED(void** data, void* dataSizes, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbUpdatedSoftBodies, const PxU32 maxSize, CUevent applyEvent, CUevent signalEvent);
+		void copySoftBodyDataDEPRECATED(void** data, void* dataSizes, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbCopySoftBodies, const PxU32 maxSize, hipEvent_t copyEvent);
+		void applySoftBodyDataDEPRECATED(void** data, void* dataSizes, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbUpdatedSoftBodies, const PxU32 maxSize, hipEvent_t applyEvent, hipEvent_t signalEvent);
 
-		CUstream getStream() { return mStream; }
+		hipStream_t getStream() { return mStream; }
 
 		void syncSoftBodies();
 
@@ -136,33 +136,33 @@ namespace physx
 		void finalizeVelocities(const PxReal dt, const PxReal scale, const bool isTGS);
 
 		//apply position delta change original grid model tetra mesh
-		void applyExternalTetraDeltaGM(const PxU32 nbActiveSoftbodies, const PxReal dt, CUstream stream);
+		void applyExternalTetraDeltaGM(const PxU32 nbActiveSoftbodies, const PxReal dt, hipStream_t stream);
 
 	private:
 		PX_DEPRECATED void copyOrApplySoftBodyDataDEPRECATED(PxU32 dataIndex, PxU32* softBodyIndices, PxU8** data, PxU32* dataSizes, PxU32 maxSizeInBytes, const PxU32 nbSoftbodies, const PxU32 applyDataToSoftBodies);
 
 		//integrate verts position based on gravity
 		void preIntegrateSystem(PxgDevicePointer<PxgSoftBody> softbodiesd, PxgDevicePointer<PxU32> activeSoftBodiesd,
-			const PxU32 nbActiveSoftBodies, const PxU32 maxVerts, const PxVec3 gravity, const PxReal dt, CUstream bpStream);
+			const PxU32 nbActiveSoftBodies, const PxU32 maxVerts, const PxVec3 gravity, const PxReal dt, hipStream_t bpStream);
 
 		//These method are running at the solverStream
 		void prepRigidContactConstraint(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgConstraintPrepareDesc> prepDescd,
-			const PxReal invDt, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, CUstream solverStream, const bool isTGS, PxU32 numSolverBodies, PxU32 numArticulations);
+			const PxReal invDt, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, hipStream_t solverStream, const bool isTGS, PxU32 numSolverBodies, PxU32 numArticulations);
 
 		void prepRigidAttachmentConstraints(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgConstraintPrepareDesc> prepDescd,
-			const PxReal invDt, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, CUstream stream, bool isTGS);
+			const PxReal invDt, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, hipStream_t stream, bool isTGS);
 
-		void prepSoftBodyAttachmentConstraints(CUstream stream);
+		void prepSoftBodyAttachmentConstraints(hipStream_t stream);
 
-		void prepClothAttachmentConstraints(CUstream stream);
+		void prepClothAttachmentConstraints(hipStream_t stream);
 
-		void prepParticleAttachmentConstraints(CUstream stream);
+		void prepParticleAttachmentConstraints(hipStream_t stream);
 
 		void solveRSContactsOutputRigidDelta(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd,
-			PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, CUstream solverStream, const PxReal dt);
+			PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, hipStream_t solverStream, const PxReal dt);
 
 		void solveRSContactsOutputRigidDeltaTGS(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd,
-			PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, CUstream solverStream,
+			PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, hipStream_t solverStream,
 			const PxReal dt);
 
 		//run on soft body stream
@@ -175,18 +175,18 @@ namespace physx
 		void prepSoftbodyContactConstraint();
 
 		void updateTetModelVerts(PxgDevicePointer<PxgSoftBody> softbodiesd, PxgDevicePointer<PxU32> activeSoftbodiesd,
-			const PxU32 nbActiveSoftbodies, CUstream updateStream);
+			const PxU32 nbActiveSoftbodies, hipStream_t updateStream);
 
 		//solve in the grid model
 		void solveCorotationalFEM(PxgSoftBody* softbodies, PxgSoftBody* softbodiesd, PxgDevicePointer<PxU32> activeSoftbodiesd,
-			const PxU32 nbActiveSoftbodies, const PxReal dt, CUstream stream, const bool isTGS, const bool isFirstIteration);
+			const PxU32 nbActiveSoftbodies, const PxReal dt, hipStream_t stream, const bool isTGS, const bool isFirstIteration);
 
-		void step(PxReal dt, CUstream stream, const PxU32 nbActiveSoftBodies, const PxVec3& gravity);
+		void step(PxReal dt, hipStream_t stream, const PxU32 nbActiveSoftBodies, const PxVec3& gravity);
 
 
 		void solveRigidAttachmentRigidDelta(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd,
 			PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd,
-			CUstream solverStream, const PxReal dt);
+			hipStream_t solverStream, const PxReal dt);
 
 		void solveRigidAttachmentSoftBodyDelta(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd,
 			PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd,
@@ -200,7 +200,7 @@ namespace physx
 
 		void solveRigidAttachmentRigidDeltaTGS(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd,
 			PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd,
-			CUstream solverStream, const PxReal dt, const PxReal biasCoefficient, bool isVelocityIteration);
+			hipStream_t solverStream, const PxReal dt, const PxReal biasCoefficient, bool isVelocityIteration);
 
 		void solveRigidAttachmentSoftBodyDeltaTGS(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd,
 			PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd,
@@ -210,7 +210,7 @@ namespace physx
 		void solveSPContactsOutputSoftBodyDelta(const PxReal dt, const PxReal biasCoefficient);
 
 		//solve soft body vs particle contact and output to particle delta buffer
-		void solveSPContactsOutputParticleDelta(const PxReal dt, const PxReal biasCoefficient, CUstream particleStream);
+		void solveSPContactsOutputParticleDelta(const PxReal dt, const PxReal biasCoefficient, hipStream_t particleStream);
 
 		//solve soft body vs cloth contact and update position 
 		void solveSCContactsOutputDelta();
@@ -251,11 +251,11 @@ namespace physx
 		//To do: ideally, we want to use two separate stream to solve the rigid body and soft body collision
 		PxgTypedCudaBuffer<PxReal>		mSCLambdaNBuf; // accumulated deltaLambdaN for collision between FEMCloth and soft body
 
-		CUevent							mBoundUpdateEvent;//this event is used to synchronize the broad phase stream(updateBound is running on broad phase stream) and mStream
-		CUevent							mSolveSoftBodyEvent; //this event is used to synchronize solve softbodies
-		CUevent							mSolveSoftBodyRigidEvent;
-		CUevent							mConstraintPrepSoftBodyParticleEvent; //this event is used to synchronize constraint prep(soft body stream) and solve soft body vs particle system contacts (particle stream)
-		CUevent							mSolveSoftBodyParticleEvent; //this event is used to synchronize particle system contacts (particle stream) before we call applyExternalTetraDelta
+		hipEvent_t							mBoundUpdateEvent;//this event is used to synchronize the broad phase stream(updateBound is running on broad phase stream) and mStream
+		hipEvent_t							mSolveSoftBodyEvent; //this event is used to synchronize solve softbodies
+		hipEvent_t							mSolveSoftBodyRigidEvent;
+		hipEvent_t							mConstraintPrepSoftBodyParticleEvent; //this event is used to synchronize constraint prep(soft body stream) and solve soft body vs particle system contacts (particle stream)
+		hipEvent_t							mSolveSoftBodyParticleEvent; //this event is used to synchronize particle system contacts (particle stream) before we call applyExternalTetraDelta
 
 		public:
 		PxArray<Dy::DeformableVolume*>	mActivatingDeformableVolumes;

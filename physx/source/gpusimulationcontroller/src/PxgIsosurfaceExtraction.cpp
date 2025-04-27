@@ -41,7 +41,7 @@
 namespace physx
 {
 #if ENABLE_KERNEL_LAUNCH_ERROR_CHECK
-#define checkCudaError() { cudaError_t err = cudaDeviceSynchronize(); if (err != 0) printf("Cuda error file: %s, line: %i, error: %i\n", PX_FL, err); }	
+#define checkCudaError() { hipError_t err = hipDeviceSynchronize(); if (err != 0) printf("Cuda error file: %s, line: %i, error: %i\n", PX_FL, err); }	
 #else
 #define checkCudaError() { }
 #endif
@@ -49,7 +49,7 @@ namespace physx
 #define THREADS_PER_BLOCK 256
 
 
-	void sparseGridClearDensity(PxgKernelLauncher& launcher, const PxSparseGridParams& sparseGridParams, PxReal* density, PxReal clearValue, PxU32* numActiveSubgrids, CUstream stream)
+	void sparseGridClearDensity(PxgKernelLauncher& launcher, const PxSparseGridParams& sparseGridParams, PxReal* density, PxReal clearValue, PxU32* numActiveSubgrids, hipStream_t stream)
 	{
 		PxU32 subgridSize = sparseGridParams.subgridSizeX * sparseGridParams.subgridSizeY * sparseGridParams.subgridSizeZ;
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
@@ -59,7 +59,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void computeParticleDensityLaunchUsingSDF(PxgKernelLauncher& launcher, PxVec4* deviceParticlePos, int numParticles, PxU32* phases, PxU32 validPhaseMask, PxIsosurfaceExtractionData& data, CUstream stream, PxU32* activeIndices = NULL,
+	void computeParticleDensityLaunchUsingSDF(PxgKernelLauncher& launcher, PxVec4* deviceParticlePos, int numParticles, PxU32* phases, PxU32 validPhaseMask, PxIsosurfaceExtractionData& data, hipStream_t stream, PxU32* activeIndices = NULL,
 		PxVec4* anisotropy1 = NULL, PxVec4* anisotropy2 = NULL, PxVec4* anisotropy3 = NULL, PxReal anisotropyFactor = 1.0f)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
@@ -70,7 +70,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void computeParticleDensityLaunch(PxgKernelLauncher& launcher, PxVec4* deviceParticlePos, int numParticles, PxU32* phases, PxU32 validPhaseMask, PxIsosurfaceExtractionData& data, CUstream stream)
+	void computeParticleDensityLaunch(PxgKernelLauncher& launcher, PxVec4* deviceParticlePos, int numParticles, PxU32* phases, PxU32 validPhaseMask, PxIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (numParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -79,7 +79,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void countCellVertsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, CUstream stream)
+	void countCellVertsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (data.maxNumCells() + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -87,7 +87,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void createVertsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, CUstream stream)
+	void createVertsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (data.maxNumCells() + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -95,7 +95,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void countTriIdsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, CUstream stream)
+	void countTriIdsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (data.maxNumCells() + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -103,7 +103,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void createTriIdsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, bool flipTriangleOrientation, CUstream stream)
+	void createTriIdsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, bool flipTriangleOrientation, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (data.maxNumCells() + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -111,7 +111,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void smoothVertsLaunch(PxgKernelLauncher& launcher, const PxVec4* vertices, PxVec4* output, const PxU32* triIds, const PxU32* numTriIds, CUstream stream)
+	void smoothVertsLaunch(PxgKernelLauncher& launcher, const PxVec4* vertices, PxVec4* output, const PxU32* triIds, const PxU32* numTriIds, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = 64;
@@ -119,7 +119,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void averageVertsLaunch(PxgKernelLauncher& launcher, PxVec4* vertices, PxVec4* output, const PxU32* length, CUstream stream, PxReal blendWeight = 1.0f)
+	void averageVertsLaunch(PxgKernelLauncher& launcher, PxVec4* vertices, PxVec4* output, const PxU32* length, hipStream_t stream, PxReal blendWeight = 1.0f)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = 64;
@@ -127,7 +127,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void computeNormalsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, CUstream stream)
+	void computeNormalsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = 64;
@@ -135,7 +135,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void normalizeNormalsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, CUstream stream)
+	void normalizeNormalsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = 64;
@@ -143,7 +143,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void smoothNormalsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, CUstream stream)
+	void smoothNormalsLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = 64;
@@ -151,7 +151,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void smoothNormalsNormalizeLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, CUstream stream)
+	void smoothNormalsNormalizeLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = 64;
@@ -159,7 +159,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void gridFilterGaussLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, PxReal neighborWeight, CUstream stream)
+	void gridFilterGaussLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, PxReal neighborWeight, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (data.maxNumCells() + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -168,7 +168,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void gridFilterDilateErodeLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, PxReal sign, CUstream stream)
+	void gridFilterDilateErodeLaunch(PxgKernelLauncher& launcher, PxIsosurfaceExtractionData& data, PxReal sign, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (data.maxNumCells() + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -180,7 +180,7 @@ namespace physx
 
 
 
-	void computeParticleDensityLaunchUsingSDF(PxgKernelLauncher& launcher, PxVec4* deviceParticlePos, int numParticles, PxU32* phases, PxU32 validPhaseMask, PxSparseIsosurfaceExtractionData& data, CUstream stream, PxU32* activeIndices = NULL,
+	void computeParticleDensityLaunchUsingSDF(PxgKernelLauncher& launcher, PxVec4* deviceParticlePos, int numParticles, PxU32* phases, PxU32 validPhaseMask, PxSparseIsosurfaceExtractionData& data, hipStream_t stream, PxU32* activeIndices = NULL,
 		PxVec4* anisotropy1 = NULL, PxVec4* anisotropy2 = NULL, PxVec4* anisotropy3 = NULL, PxReal anisotropyFactor = 1.0f)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
@@ -190,7 +190,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void computeParticleDensityLaunch(PxgKernelLauncher& launcher, PxVec4* deviceParticlePos, int numParticles, PxU32* phases, PxU32 validPhaseMask, PxSparseIsosurfaceExtractionData& data, CUstream stream)
+	void computeParticleDensityLaunch(PxgKernelLauncher& launcher, PxVec4* deviceParticlePos, int numParticles, PxU32* phases, PxU32 validPhaseMask, PxSparseIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (numParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -198,7 +198,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void countCellVertsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, CUstream stream)
+	void countCellVertsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (data.maxNumCells() + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -206,7 +206,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void createVertsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, CUstream stream)
+	void createVertsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (data.maxNumCells() + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -214,7 +214,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void countTriIdsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, CUstream stream)
+	void countTriIdsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (data.maxNumCells() + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -222,7 +222,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void createTriIdsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, bool flipTriangleOrientation, CUstream stream)
+	void createTriIdsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, bool flipTriangleOrientation, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (data.maxNumCells() + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -230,7 +230,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void computeNormalsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, CUstream stream)
+	void computeNormalsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = 16;
@@ -238,7 +238,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void normalizeNormalsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, CUstream stream)
+	void normalizeNormalsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = 16;
@@ -247,7 +247,7 @@ namespace physx
 	}
 
 
-	void smoothNormalsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, CUstream stream)
+	void smoothNormalsLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = 64;
@@ -255,7 +255,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void smoothNormalsNormalizeLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, CUstream stream)
+	void smoothNormalsNormalizeLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = 64;
@@ -265,7 +265,7 @@ namespace physx
 
 
 
-	void gridFilterGaussLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, PxReal neighborWeight, CUstream stream)
+	void gridFilterGaussLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, PxReal neighborWeight, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (data.maxNumCells() + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -274,7 +274,7 @@ namespace physx
 		checkCudaError();
 	}
 
-	void gridFilterDilateErodeLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, PxReal sign, CUstream stream)
+	void gridFilterDilateErodeLaunch(PxgKernelLauncher& launcher, PxSparseIsosurfaceExtractionData& data, PxReal sign, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (data.maxNumCells() + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -445,7 +445,7 @@ namespace physx
 				
 
 
-	void PxgSparseGridIsosurfaceExtractor::clearDensity(CUstream stream)
+	void PxgSparseGridIsosurfaceExtractor::clearDensity(hipStream_t stream)
 	{
 		sparseGridClearDensity(mShared.mKernelLauncher, mData.mGrid.mGridParams, mData.density(), 0.0f, mSparseGrid.getSubgridsInUseGpuPointer(), stream);
 	}
@@ -520,7 +520,7 @@ namespace physx
 		//PX_DELETE_THIS;
 	}
 
-	void PxgSparseGridIsosurfaceExtractor::extractIsosurface(PxVec4* deviceParticlePos, const PxU32 numParticles, CUstream stream, PxU32* phases, PxU32 validPhaseMask,
+	void PxgSparseGridIsosurfaceExtractor::extractIsosurface(PxVec4* deviceParticlePos, const PxU32 numParticles, hipStream_t stream, PxU32* phases, PxU32 validPhaseMask,
 		PxU32* activeIndices, PxVec4* anisotropy1, PxVec4* anisotropy2, PxVec4* anisotropy3, PxReal anisotropyFactor)
 	{
 		if (!mShared.mEnabled)
@@ -612,12 +612,12 @@ namespace physx
 		//PX_DELETE_THIS;
 	}
 
-	void PxgDenseGridIsosurfaceExtractor::clearDensity(CUstream stream)
+	void PxgDenseGridIsosurfaceExtractor::clearDensity(hipStream_t stream)
 	{
 		PxgCudaHelpers::memsetAsync(*mShared.mKernelLauncher.getCudaContextManager(), mData.density(), PxReal(0.f), mData.maxNumCells(), stream);
 	}
 
-	void PxgDenseGridIsosurfaceExtractor::extractIsosurface(PxVec4* deviceParticlePos, const PxU32 numParticles, CUstream stream, PxU32* phases, PxU32 validPhaseMask,
+	void PxgDenseGridIsosurfaceExtractor::extractIsosurface(PxVec4* deviceParticlePos, const PxU32 numParticles, hipStream_t stream, PxU32* phases, PxU32 validPhaseMask,
 		PxU32* activeIndices, PxVec4* anisotropy1, PxVec4* anisotropy2, PxVec4* anisotropy3, PxReal anisotropyFactor)
 	{
 		if (!mShared.mEnabled)
@@ -629,7 +629,7 @@ namespace physx
 	}
 
 	template<typename DenseOrSparseGpuDataPackage>
-	void PxgSharedIsosurfaceExtractor::meshFromDensity(DenseOrSparseGpuDataPackage& mData, CUstream stream)
+	void PxgSharedIsosurfaceExtractor::meshFromDensity(DenseOrSparseGpuDataPackage& mData, hipStream_t stream)
 	{
 		if (!mData.firstCellVert)
 			return;
@@ -702,17 +702,17 @@ namespace physx
 		}			
 
 		if (mVertices)
-			cudaContext->memcpyDtoHAsync(mVertices, CUdeviceptr(mData.verts), mData.maxVerts * sizeof(PxVec4), stream);
+			cudaContext->memcpyDtoHAsync(mVertices, hipDeviceptr_t(mData.verts), mData.maxVerts * sizeof(PxVec4), stream);
 		if (mTriIndices)
-			cudaContext->memcpyDtoHAsync(mTriIndices, CUdeviceptr(mData.triIds), mData.maxTriIds * sizeof(PxU32), stream);
+			cudaContext->memcpyDtoHAsync(mTriIndices, hipDeviceptr_t(mData.triIds), mData.maxTriIds * sizeof(PxU32), stream);
 		if (mNormals)
-			cudaContext->memcpyDtoHAsync(mNormals, CUdeviceptr(mData.normals), mData.maxVerts * sizeof(PxVec4), stream);
+			cudaContext->memcpyDtoHAsync(mNormals, hipDeviceptr_t(mData.normals), mData.maxVerts * sizeof(PxVec4), stream);
 
-		cudaContext->memcpyDtoHAsync(mNumVerticesNumIndices, CUdeviceptr(mData.numVerticesNumIndices), 2 * sizeof(PxU32), stream);
+		cudaContext->memcpyDtoHAsync(mNumVerticesNumIndices, hipDeviceptr_t(mData.numVerticesNumIndices), 2 * sizeof(PxU32), stream);
 	}
 
 	template<typename DenseOrSparseGpuDataPackage>
-	void PxgSharedIsosurfaceExtractor::extractIso(DenseOrSparseGpuDataPackage& mData, PxVec4* deviceParticlePos, const PxU32 numParticles, CUstream stream, PxU32* phases, PxU32 validPhaseMask,
+	void PxgSharedIsosurfaceExtractor::extractIso(DenseOrSparseGpuDataPackage& mData, PxVec4* deviceParticlePos, const PxU32 numParticles, hipStream_t stream, PxU32* phases, PxU32 validPhaseMask,
 		PxU32* activeIndices, PxVec4* anisotropy1, PxVec4* anisotropy2, PxVec4* anisotropy3, PxReal anisotropyFactor)
 	{
 		if (!mData.firstCellVert)
@@ -724,13 +724,13 @@ namespace physx
 		meshFromDensity(mData, stream);
 	}
 
-	template void PxgSharedIsosurfaceExtractor::meshFromDensity<PxIsosurfaceExtractionData>(PxIsosurfaceExtractionData& mData, CUstream stream);
-	template void PxgSharedIsosurfaceExtractor::meshFromDensity<PxSparseIsosurfaceExtractionData>(PxSparseIsosurfaceExtractionData& mData, CUstream stream);
+	template void PxgSharedIsosurfaceExtractor::meshFromDensity<PxIsosurfaceExtractionData>(PxIsosurfaceExtractionData& mData, hipStream_t stream);
+	template void PxgSharedIsosurfaceExtractor::meshFromDensity<PxSparseIsosurfaceExtractionData>(PxSparseIsosurfaceExtractionData& mData, hipStream_t stream);
 
 
-	template void PxgSharedIsosurfaceExtractor::extractIso<PxIsosurfaceExtractionData>(PxIsosurfaceExtractionData& mData, PxVec4* deviceParticlePos, const PxU32 numParticles, CUstream stream, PxU32* phases, PxU32 validPhaseMask,
+	template void PxgSharedIsosurfaceExtractor::extractIso<PxIsosurfaceExtractionData>(PxIsosurfaceExtractionData& mData, PxVec4* deviceParticlePos, const PxU32 numParticles, hipStream_t stream, PxU32* phases, PxU32 validPhaseMask,
 		PxU32* activeIndices, PxVec4* anisotropy1, PxVec4* anisotropy2, PxVec4* anisotropy3, PxReal anisotropyFactor);
-	template void PxgSharedIsosurfaceExtractor::extractIso<PxSparseIsosurfaceExtractionData>(PxSparseIsosurfaceExtractionData& mData, PxVec4* deviceParticlePos, const PxU32 numParticles, CUstream stream, PxU32* phases, PxU32 validPhaseMask,
+	template void PxgSharedIsosurfaceExtractor::extractIso<PxSparseIsosurfaceExtractionData>(PxSparseIsosurfaceExtractionData& mData, PxVec4* deviceParticlePos, const PxU32 numParticles, hipStream_t stream, PxU32* phases, PxU32 validPhaseMask,
 		PxU32* activeIndices, PxVec4* anisotropy1, PxVec4* anisotropy2, PxVec4* anisotropy3, PxReal anisotropyFactor);
 
 	class PxIsosurfaceExtractorCallback : public PxParticleSystemCallback
@@ -743,15 +743,15 @@ namespace physx
 			mIsosurfaceExtractor = isosurfaceExtractor;
 		}
 
-		virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, CUstream stream)
+		virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, hipStream_t stream)
 		{
 			mIsosurfaceExtractor->extractIsosurface(reinterpret_cast<PxVec4*>(gpuParticleSystem.mHostPtr->mUnsortedPositions_InvMass), 
 				gpuParticleSystem.mHostPtr->mCommonData.mNumParticles, stream, gpuParticleSystem.mHostPtr->mUnsortedPhaseArray, 
 				PxParticlePhaseFlag::eParticlePhaseFluid, /*gpuParticleSystem.mHostPtr->mActiveArray*/NULL);
 		}
 
-		virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, CUstream /*stream*/) { }
+		virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, hipStream_t /*stream*/) { }
 
-		virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, CUstream /*stream*/) { }
+		virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, hipStream_t /*stream*/) { }
 	};		
 }

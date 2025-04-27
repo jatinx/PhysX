@@ -63,7 +63,7 @@ namespace physx
 			mMaxSize = PxMax(mMaxSize, command.size);
 		}
 
-		void flushCommands(CUstream stream, PxCudaContext* cudaContext, KernelWrangler* kernelWrangler);
+		void flushCommands(hipStream_t stream, PxCudaContext* cudaContext, KernelWrangler* kernelWrangler);
 	};
 
 }

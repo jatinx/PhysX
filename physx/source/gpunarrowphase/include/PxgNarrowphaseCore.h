@@ -410,9 +410,9 @@ namespace physx
 		PxgCudaBuffer							mTempGpuShapeIndiceBuf;
 		PxgCudaBuffer							mRadixCountTotalBuf;
 
-		CUdeviceptr								mContactStream;
-		CUdeviceptr								mPatchStream;
-		CUdeviceptr								mForceAndIndiceStream;
+		hipDeviceptr_t								mContactStream;
+		hipDeviceptr_t								mPatchStream;
+		hipDeviceptr_t								mForceAndIndiceStream;
 		
 		PxgTypedCudaBuffer<PxgPatchAndContactCounters> mPatchAndContactCountersOnDevice; //device memory
 		PxgPatchAndContactCounters*             mPatchAndContactCountersReadback; //host memory
@@ -427,8 +427,8 @@ namespace physx
 		//device memory
 		PxgCudaPagedLinearAllocator<PxgHeapMemoryAllocator> mIntermStackAlloc;
 
-		CUstream								mStream;
-		CUstream								mSolverStream; //this is the stream handle belong to the solver, we can't destroy the solver stream
+		hipStream_t								mStream;
+		hipStream_t								mSolverStream; //this is the stream handle belong to the solver, we can't destroy the solver stream
 		PxgCudaKernelWranglerManager*			mGpuKernelWranglerManager;
 		PxCudaContextManager*					mCudaContextManager;
 		PxCudaContext*							mCudaContext;
@@ -465,10 +465,10 @@ namespace physx
 		PxgCudaBuffer											mGpuMultiManifold;
 		PxgCudaBuffer											mGpuManifold;
 
-		CUevent													mParticleEvent;
-		CUevent													mSoftbodyEvent;
-		CUevent													mFemClothEvent;
-		CUevent													mDirectApiDmaEvent;
+		hipEvent_t													mParticleEvent;
+		hipEvent_t													mSoftbodyEvent;
+		hipEvent_t													mFemClothEvent;
+		hipEvent_t													mDirectApiDmaEvent;
 
 #if PX_ENABLE_SIM_STATS
 		PxU32													mGpuDynamicsRigidContactCountStats;
@@ -491,7 +491,7 @@ namespace physx
 		void drawLine(PxRenderOutput& out, PxVec3 a, const PxVec3 b, const PxU32 color);
 
 		template <typename ManagementData, typename Manifold>
-			void removeLostPairsGpuInternal( ManagementData& cpuBuffer, CUdeviceptr gpuBuffer,
+			void removeLostPairsGpuInternal( ManagementData& cpuBuffer, hipDeviceptr_t gpuBuffer,
 				PxgContactManagers& contactManagers, PxgGpuContactManagers& gpuContactManagers, PxInt32ArrayPinned& removedIndices, PxgGpuPairManagementBuffers& pairManagementBuffers,
 			PxU16 stage5KernelID, const bool copyManifold = true);
 
@@ -501,7 +501,7 @@ namespace physx
 	public:
 
 		PxgGpuNarrowphaseCore(PxgCudaKernelWranglerManager* gpuKernelWrangler, PxCudaContextManager* cudaContextManager, const PxGpuDynamicsMemoryConfig& gpuDynamicsConfig, void* contactStreamBase,
-			void* patchStreamBase, void* forceAndIndiceStreamBase, IG::IslandSim* islandSim, CUstream solverStream, PxgHeapMemoryAllocatorManager* heapMemoryManager,
+			void* patchStreamBase, void* forceAndIndiceStreamBase, IG::IslandSim* islandSim, hipStream_t solverStream, PxgHeapMemoryAllocatorManager* heapMemoryManager,
 			PxgNphaseImplementationContext* nphaseImplContext);
 		virtual ~PxgGpuNarrowphaseCore();		
 		
@@ -620,7 +620,7 @@ namespace physx
 		void acquireContext();
 		void releaseContext();
 
-		CUstream getStream();
+		hipStream_t getStream();
 
 		void registerContactManager(PxsContactManager* cm, const Sc::ShapeInteraction* shapeInteraction, PxsContactManagerOutput& output, const PxU32 bucketId);
 		void unregisterContactManager(PxsContactManager* manager, const PxU32 bucketId);
@@ -718,12 +718,12 @@ namespace physx
 		void unregisterParticleMaterial(const PxsPBDMaterialCore& materialCore);
 
 		//direct gpu contact access  
-		bool copyContactData(void* data, PxU32* numContactPairs, const PxU32 maxContactPairs, CUevent startEvent,
-			CUevent finishEvent, PxU8* baseContactPatches, PxU8* baseContactPoints, PxU8* baseContactForces);
+		bool copyContactData(void* data, PxU32* numContactPairs, const PxU32 maxContactPairs, hipEvent_t startEvent,
+			hipEvent_t finishEvent, PxU8* baseContactPatches, PxU8* baseContactPoints, PxU8* baseContactForces);
 
-		bool evaluateSDFDistances(PxVec4* localGradientAndSDFConcatenated, const PxShapeGPUIndex* shapeIndices, const PxVec4* localSamplePointsConcatenated, const PxU32* samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, CUevent startEvent, CUevent finishEvent);
+		bool evaluateSDFDistances(PxVec4* localGradientAndSDFConcatenated, const PxShapeGPUIndex* shapeIndices, const PxVec4* localSamplePointsConcatenated, const PxU32* samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, hipEvent_t startEvent, hipEvent_t finishEvent);
 
-		void synchronizedStreams(CUstream artiStream);
+		void synchronizedStreams(hipStream_t artiStream);
 
 		PxgShapeManager& getGpuShapeManager() { return mGpuShapesManager;  }
 
@@ -767,7 +767,7 @@ namespace physx
 
 		void prepareTempContactManagersInternal(PxgNewContactManagers& newManagers, Cm::FlushPool& flushPool, PxBaseTask* continuation);
 
-		void drawContacts(PxRenderOutput& out, CUdeviceptr contactsd, CUdeviceptr normalPensd, const PxU32 numContacts);
+		void drawContacts(PxRenderOutput& out, hipDeviceptr_t contactsd, hipDeviceptr_t normalPensd, const PxU32 numContacts);
 
 		template <typename MaterialCore, typename MaterialData>
 		PxU32 registerMaterialInternal(const MaterialCore& materialCore, RefcountedRecordsMap* materialsMap, PxgMaterialManager& materialManager);

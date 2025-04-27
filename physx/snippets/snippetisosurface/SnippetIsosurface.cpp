@@ -134,7 +134,7 @@ public:
 		mArrayConverter = pxGpu->createArrayConverter(cudaContextManager);
 	}
 
-	virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, CUstream stream)
+	virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, hipStream_t stream)
 	{
 #if RENDER_SNIPPET
 		PxGpuParticleSystem& p = *gpuParticleSystem.mHostPtr;		
@@ -160,9 +160,9 @@ public:
 #endif
 	}
 
-	virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, CUstream /*stream*/) { }
+	virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, hipStream_t /*stream*/) { }
 
-	virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, CUstream /*stream*/) { }
+	virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, hipStream_t /*stream*/) { }
 
 	virtual ~IsosurfaceCallback() { }
 

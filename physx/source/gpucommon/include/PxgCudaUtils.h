@@ -29,7 +29,7 @@
 #ifndef PXG_CUDA_UTILS_H
 #define PXG_CUDA_UTILS_H
 
-#include "cuda.h"
+#include "hip/hip_runtime.h"
 
 #include "foundation/PxErrors.h"
 #include "foundation/PxAssert.h"
@@ -45,22 +45,22 @@ namespace physx
 	/**
 	Utility function to synchronize 2 streams. This causes dependentStream to wait for parentStream to complete its current queued workload before proceeding further.
 	*/
-	PX_INLINE void synchronizeStreams(PxCudaContext* cudaContext, const CUstream& parentStream, const CUstream& dependentStream)
+	PX_INLINE void synchronizeStreams(PxCudaContext* cudaContext, const hipStream_t& parentStream, const hipStream_t& dependentStream)
 	{
-		CUevent ev = 0;
-		cudaContext->eventCreate(&ev, CU_EVENT_DISABLE_TIMING);
+		hipEvent_t ev = 0;
+		cudaContext->eventCreate(&ev, hipEventDisableTiming);
 
-		CUresult result = cudaContext->eventRecord(ev, parentStream);		
+		hipError_t result = cudaContext->eventRecord(ev, parentStream);		
 
-		if (result != CUDA_SUCCESS)
-			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams cuEventRecord failed with error %i\n", result);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		if (result != hipSuccess)
+			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams hipEventRecord failed with error %i\n", result);
+		PX_ASSERT(result == hipSuccess);
 
 		result = cudaContext->streamWaitEvent(dependentStream, ev);		
 
-		if (result != CUDA_SUCCESS)
-			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams cuStreamWaitEvent failed with error %i\n", result);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		if (result != hipSuccess)
+			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams hipStreamWaitEvent failed with error %i\n", result);
+		PX_ASSERT(result == hipSuccess);
 
 		cudaContext->eventDestroy(ev);
 	}
@@ -68,22 +68,22 @@ namespace physx
 	/**
 	Utility function to synchronize 2 streams. This causes dependentStream to wait for parentStream to complete its current queued workload before proceeding further.
 	*/
-	PX_INLINE void synchronizeStreams(PxCudaContext* cudaContext, CUstream& parentStream, CUstream& dependentStream, CUevent& ev)
+	PX_INLINE void synchronizeStreams(PxCudaContext* cudaContext, hipStream_t& parentStream, hipStream_t& dependentStream, hipEvent_t& ev)
 	{
-		//CUevent ev;
-		//mCudaContext->eventCreate(&ev, CU_EVENT_DISABLE_TIMING);
+		//hipEvent_t ev;
+		//mCudaContext->eventCreate(&ev, hipEventDisableTiming);
 
-		CUresult result = cudaContext->eventRecord(ev, parentStream);
-		if (result != CUDA_SUCCESS)
-			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams cuEventRecord failed with error %i\n", result);
+		hipError_t result = cudaContext->eventRecord(ev, parentStream);
+		if (result != hipSuccess)
+			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams hipEventRecord failed with error %i\n", result);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		result = cudaContext->streamWaitEvent(dependentStream, ev);
-		if (result != CUDA_SUCCESS)
-			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams cuStreamWaitEvent failed with error %i\n", result);
+		if (result != hipSuccess)
+			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams hipStreamWaitEvent failed with error %i\n", result);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		
 		//mCudaContext->eventDestroy(ev);
@@ -91,7 +91,7 @@ namespace physx
 
 	PX_FORCE_INLINE void* getMappedDevicePtr(PxCudaContext* cudaContext, void* cpuPtr)
 	{
-		CUdeviceptr dPtr = 0;
+		hipDeviceptr_t dPtr = 0;
 		cudaContext->memHostGetDevicePointer(&dPtr, cpuPtr, 0);
 		return reinterpret_cast<void*>(dPtr);
 	}

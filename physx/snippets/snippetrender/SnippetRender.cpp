@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -35,7 +36,7 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdocumentation"
 #endif
-#include "cuda.h"
+#include "hip/hip_runtime.h"
 #include "SnippetRender.h"
 #include "cudaGL.h"
 #if PX_LINUX && PX_CLANG
@@ -1299,19 +1300,19 @@ namespace
 
 #if USE_CUDA_INTEROP
 	//Returns the pointer to the cuda buffer
-	void* mapCudaGraphicsResource(CUgraphicsResource* vbo_resource, size_t& numBytes, CUstream stream = 0)
+	void* mapCudaGraphicsResource(hipGraphicsResource_t* vbo_resource, size_t& numBytes, hipStream_t stream = 0)
 	{
-		CUresult result0 = cuGraphicsMapResources(1, vbo_resource, stream);
+		hipError_t result0 = hipGraphicsMapResources(1, vbo_resource, stream);
 		PX_UNUSED(result0);
 		void* dptr;
-		CUresult result1 = cuGraphicsResourceGetMappedPointer((CUdeviceptr*)&dptr, &numBytes, *vbo_resource);
+		hipError_t result1 = hipGraphicsResourceGetMappedPointer((hipDeviceptr_t*)&dptr, &numBytes, *vbo_resource);
 		PX_UNUSED(result1);
 		return dptr;
 	}
 
-	void unmapCudaGraphicsResource(CUgraphicsResource* vbo_resource, CUstream stream = 0)
+	void unmapCudaGraphicsResource(hipGraphicsResource_t* vbo_resource, hipStream_t stream = 0)
 	{
-		CUresult result2 = cuGraphicsUnmapResources(1, vbo_resource, stream);
+		hipError_t result2 = hipGraphicsUnmapResources(1, vbo_resource, stream);
 		PX_UNUSED(result2);
 	}
 #endif
@@ -1334,7 +1335,7 @@ void SharedGLBuffer::allocate(PxU32 sizeInBytes)
 #if USE_CUDA_INTEROP
 	physx::PxCudaInteropRegisterFlags flags = physx::PxCudaInteropRegisterFlags();
 	cudaContextManager->acquireContext();
-	CUresult result = cuGraphicsGLRegisterBuffer(reinterpret_cast<CUgraphicsResource*>(&vbo_res), vbo, flags);
+	hipError_t result = hipGraphicsGLRegisterBuffer(reinterpret_cast<hipGraphicsResource_t*>(&vbo_res), vbo, flags);
 	PX_UNUSED(result);
 	cudaContextManager->releaseContext();
 #endif
@@ -1352,7 +1353,7 @@ void SharedGLBuffer::release()
 	if (vbo_res)
 	{
 		cudaContextManager->acquireContext();
-		CUresult result = cuGraphicsUnregisterResource(reinterpret_cast<CUgraphicsResource>(vbo_res));
+		hipError_t result = hipGraphicsUnregisterResource(reinterpret_cast<hipGraphicsResource_t>(vbo_res));
 		PX_UNUSED(result);
 		cudaContextManager->releaseContext();
 		vbo_res = NULL;
@@ -1373,7 +1374,7 @@ void* SharedGLBuffer::map()
 #if USE_CUDA_INTEROP
 	size_t numBytes;
 	cudaContextManager->acquireContext();
-	devicePointer = mapCudaGraphicsResource(reinterpret_cast<CUgraphicsResource*>(&vbo_res), numBytes, 0);
+	devicePointer = mapCudaGraphicsResource(reinterpret_cast<hipGraphicsResource_t*>(&vbo_res), numBytes, 0);
 	cudaContextManager->releaseContext();
 #else
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -1389,7 +1390,7 @@ void SharedGLBuffer::unmap()
 		return;
 #if USE_CUDA_INTEROP
 	cudaContextManager->acquireContext();
-	unmapCudaGraphicsResource(reinterpret_cast<CUgraphicsResource*>(&vbo_res), 0);
+	unmapCudaGraphicsResource(reinterpret_cast<hipGraphicsResource_t*>(&vbo_res), 0);
 	cudaContextManager->releaseContext();
 #else
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);

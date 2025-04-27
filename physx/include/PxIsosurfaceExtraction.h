@@ -242,7 +242,7 @@ namespace physx
 		\param[in] anisotropy3 Optional anisotropy information, z axis direction (xyz) and scale in w component
 		\param[in] anisotropyFactor A factor to multiply with the anisotropy scale
 		*/
-		virtual void extractIsosurface(PxVec4* deviceParticlePos, const PxU32 numParticles, CUstream stream, PxU32* phases = NULL, PxU32 validPhaseMask = PxParticlePhaseFlag::eParticlePhaseFluid,
+		virtual void extractIsosurface(PxVec4* deviceParticlePos, const PxU32 numParticles, hipStream_t stream, PxU32* phases = NULL, PxU32 validPhaseMask = PxParticlePhaseFlag::eParticlePhaseFluid,
 			PxU32* activeIndices = NULL, PxVec4* anisotropy1 = NULL, PxVec4* anisotropy2 = NULL, PxVec4* anisotropy3 = NULL, PxReal anisotropyFactor = 1.0f) = 0;
 
 		/**
@@ -324,15 +324,15 @@ namespace physx
 			mValidPhaseMask = validPhaseMask;
 		}
 
-		virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, CUstream stream)
+		virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, hipStream_t stream)
 		{
 			mIsosurfaceExtractor->extractIsosurface(reinterpret_cast<PxVec4*>(gpuParticleSystem.mHostPtr->mUnsortedPositions_InvMass),
 				gpuParticleSystem.mHostPtr->mCommonData.mMaxParticles, stream, gpuParticleSystem.mHostPtr->mUnsortedPhaseArray, mValidPhaseMask);
 		}
 
-		virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, CUstream /*stream*/) { }
+		virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, hipStream_t /*stream*/) { }
 
-		virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, CUstream /*stream*/) { }
+		virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, hipStream_t /*stream*/) { }
 		
 	private:
 		PxIsosurfaceExtractor* mIsosurfaceExtractor;

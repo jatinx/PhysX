@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -27,7 +28,7 @@
 // Copyright (c) 2001-2004 NovodeX AG. All rights reserved.  
 
 #include "common/PxPhysXCommonConfig.h"
-#include <cuda.h>
+#include <hip/hip_runtime.h>
 #include <sm_35_intrinsics.h>
 #include "PxgSolverBody.h"
 #include "PxgSolverConstraintBlock1D.h"

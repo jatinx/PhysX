@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -131,7 +132,7 @@ public:
 	
 	\see PxDeformableVolume
 	*/
-	static void copyToDevice(PxDeformableVolume& deformableVolume, PxDeformableVolumeDataFlags flags, PxVec4* simPositionsPinned, PxVec4* simVelocitiesPinned, PxVec4* collPositionsPinned, PxVec4* restPositionsPinned, CUstream stream = CUstream(0));
+	static void copyToDevice(PxDeformableVolume& deformableVolume, PxDeformableVolumeDataFlags flags, PxVec4* simPositionsPinned, PxVec4* simVelocitiesPinned, PxVec4* collPositionsPinned, PxVec4* restPositionsPinned, hipStream_t stream = hipStream_t(0));
 
 	/**
 	\brief Creates a full deformable volume mesh matching the shape given as input. Uses a voxel mesh for FEM simulation and a surface-matching mesh for collision detection. 

@@ -70,14 +70,14 @@
 using namespace physx;
 
 #if ARTI_GPU_DEBUG
-static PX_FORCE_INLINE void gpuDebugStreamSync(PxCudaContext* context, CUstream stream, const char* errorMsg)
+static PX_FORCE_INLINE void gpuDebugStreamSync(PxCudaContext* context, hipStream_t stream, const char* errorMsg)
 {
-	const CUresult result = context->streamSynchronize(stream);
-	if(result != CUDA_SUCCESS)
+	const hipError_t result = context->streamSynchronize(stream);
+	if(result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, errorMsg);
 }
 #else
-static PX_FORCE_INLINE void gpuDebugStreamSync(PxCudaContext*, CUstream, const char*)
+static PX_FORCE_INLINE void gpuDebugStreamSync(PxCudaContext*, hipStream_t, const char*)
 {
 }
 #endif
@@ -128,12 +128,12 @@ namespace physx
 		PxScopedCudaLock _lock(*mCudaContextManager);
 
 		//create stream
-		mCudaContext->streamCreate(&mStream, CU_STREAM_NON_BLOCKING);
+		mCudaContext->streamCreate(&mStream, hipStreamNonBlocking);
 
-		mCudaContext->eventCreate(&mFinishEvent, CU_EVENT_DISABLE_TIMING);
-		mCudaContext->eventCreate(&mFlushArticulationDataEvent, CU_EVENT_DISABLE_TIMING);
+		mCudaContext->eventCreate(&mFinishEvent, hipEventDisableTiming);
+		mCudaContext->eventCreate(&mFlushArticulationDataEvent, hipEventDisableTiming);
 
-		mCudaContext->eventCreate(&mComputeUnconstrainedEvent, CU_EVENT_DISABLE_TIMING);
+		mCudaContext->eventCreate(&mComputeUnconstrainedEvent, hipEventDisableTiming);
 
 		mArticulationCoreDescd.allocate(sizeof(PxgArticulationCoreDesc), PX_FL);
 		mArticulationCoreDesc = PX_PINNED_MEMORY_ALLOC(PxgArticulationCoreDesc, *mCudaContextManager, 1);
@@ -161,7 +161,7 @@ namespace physx
 #endif
 	}
 
-	void PxgArticulationCore::allocDeltaVBuffer(const PxU32 nbSlabs, const PxU32 nbPartitions, CUstream stream)
+	void PxgArticulationCore::allocDeltaVBuffer(const PxU32 nbSlabs, const PxU32 nbPartitions, hipStream_t stream)
 	{
 		PxgSimulationController* controller = mGpuContext->getSimulationController();
 		//KS - technically, this could (and probably should) be based on the number of active articulations
@@ -184,7 +184,7 @@ namespace physx
 		mCudaContext->memsetD32Async(mSlabDirtyMasks.getDevicePtr(), 0xFFFFFFFF, totalArticulations*nbSlabs*nbPartitions * 4, stream);
 	}
 
-	void PxgArticulationCore::layoutDeltaVBuffer(const PxU32 nbSlabs, const PxU32 nbPartitions, CUstream stream)
+	void PxgArticulationCore::layoutDeltaVBuffer(const PxU32 nbSlabs, const PxU32 nbPartitions, hipStream_t stream)
 	{
 		PxgSimulationController* controller = mGpuContext->getSimulationController();
 
@@ -215,19 +215,19 @@ namespace physx
 	void PxgArticulationCore::gpuMemDmaUpArticulationDesc(const PxU32 offset, const PxU32 nbArticulations, PxReal dt, const PxVec3& gravity,
 		const PxReal invLengthScale, const bool isExternalForcesEveryTgsIterationEnabled)
 	{
-		CUstream stream = mStream; //*mSolverStream
-		//CUstream stream = *mSolverStream;
+		hipStream_t stream = mStream; //*mSolverStream
+		//hipStream_t stream = *mSolverStream;
 
 		PxgSolverCore* solverCore = mGpuContext->getGpuSolverCore();
 		PxgSimulationCore* simulationCore = mGpuContext->getSimulationCore();
 
 		//articulation, link and joints
-		CUdeviceptr articulationd = simulationCore->getArticulationBuffer().getDevicePtr();
-		/*CUdeviceptr	linkd = simulationCore->getLinkBuffer().getDevicePtr();
-		CUdeviceptr	jointd = simulationCore->getJointCoreBuffer().getDevicePtr();*/
+		hipDeviceptr_t articulationd = simulationCore->getArticulationBuffer().getDevicePtr();
+		/*hipDeviceptr_t	linkd = simulationCore->getLinkBuffer().getDevicePtr();
+		hipDeviceptr_t	jointd = simulationCore->getJointCoreBuffer().getDevicePtr();*/
 
 		//active island node indices
-		CUdeviceptr islandNodeIndicesd = CUdeviceptr(solverCore->getGpuIslandNodeIndices());
+		hipDeviceptr_t islandNodeIndicesd = hipDeviceptr_t(solverCore->getGpuIslandNodeIndices());
 
 		// AD: why this hardcoded 32?
 		const PxU32 numBlocks = 32;
@@ -305,10 +305,10 @@ namespace physx
 			const PxU32 numBlocks = 32;
 
 			PxgSolverCore* solverCore = mGpuContext->getGpuSolverCore();
-			CUdeviceptr prePrepDescptr = solverCore->getPrePrepDescDeviceptr();
-			CUdeviceptr prepDescptr = solverCore->getPrepDescDeviceptr();
-			CUdeviceptr solverCoreptr = solverCore->getSolverCoreDescDeviceptr();
-			CUdeviceptr artiCoreDescptr = mArticulationCoreDescd.getDevicePtr();
+			hipDeviceptr_t prePrepDescptr = solverCore->getPrePrepDescDeviceptr();
+			hipDeviceptr_t prepDescptr = solverCore->getPrepDescDeviceptr();
+			hipDeviceptr_t solverCoreptr = solverCore->getSolverCoreDescDeviceptr();
+			hipDeviceptr_t artiCoreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 			KernelWrangler* wrangler = mGpuKernelWranglerManager->getKernelWrangler();
 
@@ -317,7 +317,7 @@ namespace physx
 
 				const PxU32 numThreadsPerBlocks = PxgArticulationCoreKernelBlockDim::COMPUTE_STATIC_CONTACT_CONSTRAINT_COUNT;
 
-				const CUfunction kernelFunction = wrangler->getCuFunction(PxgKernelIds::ARTI_STATIC_BATCH_PREP_FIRST);
+				const hipFunction_t kernelFunction = wrangler->getCuFunction(PxgKernelIds::ARTI_STATIC_BATCH_PREP_FIRST);
 
 				KERNEL_PARAM_TYPE kernelParams[] =
 				{
@@ -327,8 +327,8 @@ namespace physx
 				};
 
 				//In this set up, 32 blocks, each block has 16 warp, each warp has 32 threads  
-				const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerBlocks, 1, 1, 0, *mSolverStream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerBlocks, 1, 1, 0, *mSolverStream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				gpuDebugStreamSync(mCudaContext, *mSolverStream, "GPU artiSumInternalContactAndJointBatches1Launch kernel fail!\n");
@@ -338,8 +338,8 @@ namespace physx
 				PX_PROFILE_ZONE("GpuDynamics.artiSumInternalContactAndJointBatches2Launch", 0);
 				const PxU32 numThreadsPerBlocks = PxgArticulationCoreKernelBlockDim::COMPUTE_STATIC_CONTACT_CONSTRAINT_COUNT;
 				
-				const CUfunction kernelFunction = wrangler->getCuFunction(PxgKernelIds::ARTI_STATIC_BATCH_PREP_SECOND);
-				const CUfunction selfKernelFunction = wrangler->getCuFunction(PxgKernelIds::ARTI_SUM_SELF);
+				const hipFunction_t kernelFunction = wrangler->getCuFunction(PxgKernelIds::ARTI_STATIC_BATCH_PREP_SECOND);
+				const hipFunction_t selfKernelFunction = wrangler->getCuFunction(PxgKernelIds::ARTI_SUM_SELF);
 
 				KERNEL_PARAM_TYPE kernelParams[] =
 				{
@@ -351,15 +351,15 @@ namespace physx
 				};
 
 				//In this set up, each blocks has two warps, each warps has 32 threads. Each warp will work on one articulation.  
-				//CUresult result = cuLaunchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, mStream, kernelParams, 0);
-				CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerBlocks, 1, 1, 0, *mSolverStream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				//hipError_t result = hipModuleLaunchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, mStream, kernelParams, 0);
+				hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerBlocks, 1, 1, 0, *mSolverStream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				gpuDebugStreamSync(mCudaContext, *mSolverStream, "GPU artiSumSelfContactAndJointBatches kernel fail!\n");
 
 				result = mCudaContext->launchKernel(selfKernelFunction, numBlocks, 1, 1, numThreadsPerBlocks, 1, 1, 0, *mSolverStream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				gpuDebugStreamSync(mCudaContext, *mSolverStream, "GPU artiSumSelfContactAndJointBatches kernel fail!\n");
@@ -376,11 +376,11 @@ namespace physx
 			const PxU32 numWarpsPerBlock = PxgArticulationCoreKernelBlockDim::COMPUTE_UNCONSTRAINED_VELOCITES / numThreadsPerWarp;
 			const PxU32 num1TBlocks = (mNbActiveArticulation + PxgArticulationCoreKernelBlockDim::COMPUTE_UNCONSTRAINED_VELOCITES - 1) / PxgArticulationCoreKernelBlockDim::COMPUTE_UNCONSTRAINED_VELOCITES;
 
-			CUstream stream = *mSolverStream;
+			hipStream_t stream = *mSolverStream;
 
-			CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_COMPUTE_DEPENDENCIES);
+			hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_COMPUTE_DEPENDENCIES);
 
-			CUdeviceptr descptr = mArticulationCoreDescd.getDevicePtr();
+			hipDeviceptr_t descptr = mArticulationCoreDescd.getDevicePtr();
 
 			KERNEL_PARAM_TYPE kernelParams[] =
 			{
@@ -391,8 +391,8 @@ namespace physx
 			if (num1TBlocks)
 			{
 				//In this set up, each blocks has two warps, each warps has 32 threads. Each warp will work on one articulation.  
-				const CUresult result = mCudaContext->launchKernel(kernelFunction, num1TBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, stream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipError_t result = mCudaContext->launchKernel(kernelFunction, num1TBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, stream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				gpuDebugStreamSync(mCudaContext, stream, "GPU precomputeDependencies kernel fail!\n");
@@ -414,15 +414,15 @@ namespace physx
 
 			PxU32 num1TBlocks = (nbArticulations + 63) / 64;
 
-			CUstream stream = mStream; //*mSolverStream
-			//CUstream stream = *mSolverStream;
+			hipStream_t stream = mStream; //*mSolverStream
+			//hipStream_t stream = *mSolverStream;
 
 			//layoutDeltaVBuffer(offset, nbArticulations, nbSlabs, /**mSolverStream*/mStream);
 			gpuMemDmaUpArticulationDesc(offset, nbArticulations, dt, gravity, invLengthScale, isExternalForcesEveryTgsIterationEnabled);
 
 			KernelWrangler* wrangler = mGpuKernelWranglerManager->getKernelWrangler();
 
-			CUdeviceptr descptr = mArticulationCoreDescd.getDevicePtr();
+			hipDeviceptr_t descptr = mArticulationCoreDescd.getDevicePtr();
 
 			{
 				const bool directAPI = mGpuContext->getEnableDirectGPUAPI();
@@ -434,9 +434,9 @@ namespace physx
 				};
 
 				//In this set up, each blocks has two warps, each warps has 32 threads. Each warp will work on one articulation.  
-				const CUfunction computeVelocitiesKernelFunction1T = wrangler->getCuFunction(PxgKernelIds::ARTI_COMPUTE_UNCONSTRAINED);
-				const CUresult result = mCudaContext->launchKernel(computeVelocitiesKernelFunction1T, num1TBlocks, 1, 1, numThreadsPerWarp, 2, 1, 0, stream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipFunction_t computeVelocitiesKernelFunction1T = wrangler->getCuFunction(PxgKernelIds::ARTI_COMPUTE_UNCONSTRAINED);
+				const hipError_t result = mCudaContext->launchKernel(computeVelocitiesKernelFunction1T, num1TBlocks, 1, 1, numThreadsPerWarp, 2, 1, 0, stream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				gpuDebugStreamSync(mCudaContext, stream, "GPU computeUnconstrainedVelocities kernel fail!\n");
@@ -448,36 +448,36 @@ namespace physx
 			};
 
 			{
-				const CUfunction computeSpatialInertiaPartialKernelFunction1T = wrangler->getCuFunction(PxgKernelIds::ARTI_COMPUTE_SPATIAL_PARTIAL);
-				const CUresult result = mCudaContext->launchKernel(computeSpatialInertiaPartialKernelFunction1T, num1TBlocks, 1, 1, numThreadsPerWarp, 2, 1, 0, stream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipFunction_t computeSpatialInertiaPartialKernelFunction1T = wrangler->getCuFunction(PxgKernelIds::ARTI_COMPUTE_SPATIAL_PARTIAL);
+				const hipError_t result = mCudaContext->launchKernel(computeSpatialInertiaPartialKernelFunction1T, num1TBlocks, 1, 1, numThreadsPerWarp, 2, 1, 0, stream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				gpuDebugStreamSync(mCudaContext, stream, "GPU computeUnconstrainedSpatialInertiaKernel fail!\n");
 			}
 			
 			{
-				const CUfunction computeSpatialInertiaKernelFunction1T = wrangler->getCuFunction(PxgKernelIds::ARTI_COMPUTE_UNCONSTRAINED_SPATIAL_INERTIA);
-				const CUresult result = mCudaContext->launchKernel(computeSpatialInertiaKernelFunction1T, num1TBlocks * 2, 1, 1, numThreadsPerWarp, 1, 1, 0, stream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipFunction_t computeSpatialInertiaKernelFunction1T = wrangler->getCuFunction(PxgKernelIds::ARTI_COMPUTE_UNCONSTRAINED_SPATIAL_INERTIA);
+				const hipError_t result = mCudaContext->launchKernel(computeSpatialInertiaKernelFunction1T, num1TBlocks * 2, 1, 1, numThreadsPerWarp, 1, 1, 0, stream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				gpuDebugStreamSync(mCudaContext, stream, "GPU computeUnconstrainedSpatialInertiaKernel fail!\n");
 			}
 
 			{
-				const CUfunction computeMassMatrix1T = wrangler->getCuFunction(PxgKernelIds::ARTI_COMPUTE_MASS_MATRIX);
-				const CUresult result = mCudaContext->launchKernel(computeMassMatrix1T, num1TBlocks * 2, 1, 1, numThreadsPerWarp, 1, 1, 0, stream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipFunction_t computeMassMatrix1T = wrangler->getCuFunction(PxgKernelIds::ARTI_COMPUTE_MASS_MATRIX);
+				const hipError_t result = mCudaContext->launchKernel(computeMassMatrix1T, num1TBlocks * 2, 1, 1, numThreadsPerWarp, 1, 1, 0, stream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				gpuDebugStreamSync(mCudaContext, stream, "GPU computeUnconstrainedSpatialInertiaKernel fail!\n");
 			}
 
 			{
-				const CUfunction computeAccelerationsKernelFunction1T = wrangler->getCuFunction(PxgKernelIds::ARTI_COMPUTE_UNCONSTRAINED_ACCEL);
-				const CUresult result = mCudaContext->launchKernel(computeAccelerationsKernelFunction1T, num1TBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, stream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipFunction_t computeAccelerationsKernelFunction1T = wrangler->getCuFunction(PxgKernelIds::ARTI_COMPUTE_UNCONSTRAINED_ACCEL);
+				const hipError_t result = mCudaContext->launchKernel(computeAccelerationsKernelFunction1T, num1TBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, stream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				gpuDebugStreamSync(mCudaContext, stream, "GPU computeUnconstrainedAccelerationsKernel fail!\n");
@@ -497,11 +497,11 @@ namespace physx
 		{
 			PX_PROFILE_ZONE("GpuDynamics.setupInternalConstraints", 0);
 
-			CUstream stream = mStream; //*mSolverStream
+			hipStream_t stream = mStream; //*mSolverStream
 
-			const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SETUP_INTERNAL);
+			const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SETUP_INTERNAL);
 
-			CUdeviceptr descptr = mArticulationCoreDescd.getDevicePtr();
+			hipDeviceptr_t descptr = mArticulationCoreDescd.getDevicePtr();
 
 			KERNEL_PARAM_TYPE kernelParams[] =
 			{
@@ -513,9 +513,9 @@ namespace physx
 			};
 
 			//In this set up, each blocks has two warps, each warps has 32 threads. Each warp will work on one articulation.  
-			//CUresult result = cuLaunchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, mStream, kernelParams, 0);
-			const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, stream, EPILOG);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			//hipError_t result = hipModuleLaunchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, mStream, kernelParams, 0);
+			const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, stream, EPILOG);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 			gpuDebugStreamSync(mCudaContext, stream, "GPU setupInternalConstraints kernel fail!\n");
@@ -542,27 +542,27 @@ namespace physx
 
 	}
 
-	void PxgArticulationCore::synchronizedStreams(CUstream bpStream, CUstream npStream)
+	void PxgArticulationCore::synchronizedStreams(hipStream_t bpStream, hipStream_t npStream)
 	{
 		PX_PROFILE_ZONE("PxgArticulationCore.synchronizedStreams", 0);
 
-		CUresult result = mCudaContext->eventRecord(mFlushArticulationDataEvent, mStream);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		hipError_t result = mCudaContext->eventRecord(mFlushArticulationDataEvent, mStream);
+		PX_ASSERT(result == hipSuccess);
 
-		if (result != CUDA_SUCCESS)
-			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams cuEventRecord failed\n");
+		if (result != hipSuccess)
+			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams hipEventRecord failed\n");
 
 		result = mCudaContext->streamWaitEvent(bpStream, mFlushArticulationDataEvent);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
-		if (result != CUDA_SUCCESS)
-			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams cuStreamWaitEvent failed\n");
+		if (result != hipSuccess)
+			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams hipStreamWaitEvent failed\n");
 
 		result = mCudaContext->streamWaitEvent(npStream, mFlushArticulationDataEvent);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
-		if (result != CUDA_SUCCESS)
-			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams cuStreamWaitEvent failed\n");
+		if (result != hipSuccess)
+			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams hipStreamWaitEvent failed\n");
 	}
 
 
@@ -571,7 +571,7 @@ namespace physx
 		PX_PROFILE_ZONE("GpuArticulationCore.saveVelocities", 0);
 	
 		// PGS only
-		CUfunction artiSaveVelocitiesFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SAVE_VELOCITY_PGS);
+		hipFunction_t artiSaveVelocitiesFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SAVE_VELOCITY_PGS);
 
 		const PxU32 numThreadsPerWarp = 32;
 		PxU32 numWarpsPerBlock = PxgArticulationCoreKernelBlockDim::COMPUTE_UNCONSTRAINED_VELOCITES / numThreadsPerWarp;
@@ -582,15 +582,15 @@ namespace physx
 		{
 			//validateData();
 
-			CUdeviceptr descptr = mArticulationCoreDescd.getDevicePtr();
+			hipDeviceptr_t descptr = mArticulationCoreDescd.getDevicePtr();
 
 			KERNEL_PARAM_TYPE kernelParams[] =
 			{
 				CUDA_KERNEL_PARAM(descptr),
 			};
 
-			const CUresult result = mCudaContext->launchKernel(artiSaveVelocitiesFunction, num1TBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
-			if (result != CUDA_SUCCESS)
+			const hipError_t result = mCudaContext->launchKernel(artiSaveVelocitiesFunction, num1TBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU artiSaveVelocitiesFunction fail to launch kernel!!\n");
 
 			gpuDebugStreamSync(mCudaContext, *mSolverStream, "GPU artiSaveVelocitiesFunction kernel fail!\n");
@@ -601,15 +601,15 @@ namespace physx
 		{
 			//validateData();
 
-			CUdeviceptr descptr = mArticulationCoreDescd.getDevicePtr();
+			hipDeviceptr_t descptr = mArticulationCoreDescd.getDevicePtr();
 
 			void* artiKernelParams[] =
 			{
 				(void*)&descptr,
 			};
 
-			const CUresult result = cuLaunchKernel(artiSaveVelocitiesFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, artiKernelParams, 0);
-			if (result != CUDA_SUCCESS)
+			const hipError_t result = hipModuleLaunchKernel(artiSaveVelocitiesFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, artiKernelParams, 0);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU artiSaveVelocitiesFunction fail to launch kernel!!\n");
 
 			gpuDebugStreamSync(mCudaContext, *mSolverStream, "GPU artiSaveVelocitiesFunction kernel fail!\n");
@@ -625,7 +625,7 @@ namespace physx
 
 	void PxgArticulationCore::propagateRigidBodyImpulsesAndSolveInternalConstraints(const PxReal dt, const PxReal invDt, const bool velocityIteration,
 		const PxReal elapsedTime, const PxReal biasCoefficient, PxU32* staticContactUniqueIds, PxU32* staticJointUniqueIds, 
-		CUdeviceptr sharedDesc, bool doFriction, bool isTGS, bool residualReportingEnabled, bool isExternalForcesEveryTgsIterationEnabled)
+		hipDeviceptr_t sharedDesc, bool doFriction, bool isTGS, bool residualReportingEnabled, bool isExternalForcesEveryTgsIterationEnabled)
 	{
 #if ARTI_GPU_DEBUG
 		PX_PROFILE_ZONE("GpuArticulationCore.solveInternalConstraints", 0);
@@ -641,16 +641,16 @@ namespace physx
 			KernelWrangler* wrangler = mGpuKernelWranglerManager->getKernelWrangler();
 
 			// In the first kernel called, propagate rigid body impulses as well.
-			const CUfunction artiPropagateRigidImpulseAndSolveSelfConstraintsFunction = isTGS ? wrangler->getCuFunction(PxgKernelIds::ARTI_PROPAGATE_RIGID_IMPULSES_AND_SOLVE_SELF_TGS) :
+			const hipFunction_t artiPropagateRigidImpulseAndSolveSelfConstraintsFunction = isTGS ? wrangler->getCuFunction(PxgKernelIds::ARTI_PROPAGATE_RIGID_IMPULSES_AND_SOLVE_SELF_TGS) :
 																								wrangler->getCuFunction(PxgKernelIds::ARTI_PROPAGATE_RIGID_IMPULSES_AND_SOLVE_SELF);
 
-			const CUfunction artiSolveInternalConstraintsFunction = isTGS ? wrangler->getCuFunction(PxgKernelIds::ARTI_SOLVE_INTERNAL_CONSTRAINTS_TGS) :
+			const hipFunction_t artiSolveInternalConstraintsFunction = isTGS ? wrangler->getCuFunction(PxgKernelIds::ARTI_SOLVE_INTERNAL_CONSTRAINTS_TGS) :
 																			wrangler->getCuFunction(PxgKernelIds::ARTI_SOLVE_INTERNAL_CONSTRAINTS);
 
-			const CUfunction artiSolveInternalTendonAndMimicJointConstraintsFunction = wrangler->getCuFunction(PxgKernelIds::ARTI_SOLVE_INTERNAL_TENDON_AND_MIMIC_JOINT);
+			const hipFunction_t artiSolveInternalTendonAndMimicJointConstraintsFunction = wrangler->getCuFunction(PxgKernelIds::ARTI_SOLVE_INTERNAL_TENDON_AND_MIMIC_JOINT);
 
-			CUdeviceptr artiCoreDescptr = mArticulationCoreDescd.getDevicePtr();
-			CUdeviceptr solverCoreDescptr = mGpuContext->getGpuSolverCore()->getSolverCoreDescDeviceptr();
+			hipDeviceptr_t artiCoreDescptr = mArticulationCoreDescd.getDevicePtr();
+			hipDeviceptr_t solverCoreDescptr = mGpuContext->getGpuSolverCore()->getSolverCoreDescDeviceptr();
 
 			{
 				KERNEL_PARAM_TYPE kernelParams[] =
@@ -664,8 +664,8 @@ namespace physx
 				};
 
 				// In the first kernel called, propagate rigid body impulses as well.
-				const CUresult result = mCudaContext->launchKernel(artiPropagateRigidImpulseAndSolveSelfConstraintsFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
-				if (result != CUDA_SUCCESS)
+				const hipError_t result = mCudaContext->launchKernel(artiPropagateRigidImpulseAndSolveSelfConstraintsFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU solveSelfConstraints fail to launch kernel!!\n");
 
 				gpuDebugStreamSync(mCudaContext, *mSolverStream, "GPU solveSelfConstraints kernel fail!\n");
@@ -682,8 +682,8 @@ namespace physx
 					CUDA_KERNEL_PARAM(isTGS)
 				};
 
-				const CUresult result = mCudaContext->launchKernel(artiSolveInternalTendonAndMimicJointConstraintsFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
-				if (result != CUDA_SUCCESS)
+				const hipError_t result = mCudaContext->launchKernel(artiSolveInternalTendonAndMimicJointConstraintsFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU artiSolveInternalTendonAndMimicJointConstraints1T fail to launch kernel!!\n");
 
 				gpuDebugStreamSync(mCudaContext, *mSolverStream, "GPU artiSolveInternalTendonAndMimicJointConstraints1T kernel fail!\n");
@@ -706,8 +706,8 @@ namespace physx
 					CUDA_KERNEL_PARAM(isExternalForcesEveryTgsIterationEnabled)
 				};
 
-				const CUresult result = mCudaContext->launchKernel(artiSolveInternalConstraintsFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
-				if (result != CUDA_SUCCESS)
+				const hipError_t result = mCudaContext->launchKernel(artiSolveInternalConstraintsFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU solveInternalConstraints fail to launch kernel!!\n");
 
 				gpuDebugStreamSync(mCudaContext, *mSolverStream, "GPU solveInternalConstraints kernel fail!\n");
@@ -715,7 +715,7 @@ namespace physx
 		}
 	}
 
-	void PxgArticulationCore::outputVelocity(CUdeviceptr sharedDesc, CUstream solverStream, bool isTGS)
+	void PxgArticulationCore::outputVelocity(hipDeviceptr_t sharedDesc, hipStream_t solverStream, bool isTGS)
 	{
 #if ARTI_GPU_DEBUG
 		PX_PROFILE_ZONE("GpuArticulationCore.outputVelocity", 0);
@@ -728,9 +728,9 @@ namespace physx
 
 		if (numBlocks)
 		{
-			const CUfunction artiOutputVelocityFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_OUTPUT_VELOCITY);
+			const hipFunction_t artiOutputVelocityFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_OUTPUT_VELOCITY);
 
-			CUdeviceptr descptr = mArticulationCoreDescd.getDevicePtr();
+			hipDeviceptr_t descptr = mArticulationCoreDescd.getDevicePtr();
 
 			{
 				KERNEL_PARAM_TYPE kernelParams[] =
@@ -740,8 +740,8 @@ namespace physx
 					CUDA_KERNEL_PARAM(isTGS)
 				};
 
-				const CUresult result = mCudaContext->launchKernel(artiOutputVelocityFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, solverStream, EPILOG);
-				if (result != CUDA_SUCCESS)
+				const hipError_t result = mCudaContext->launchKernel(artiOutputVelocityFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, solverStream, EPILOG);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU artiOutputVelocity fail to launch kernel!!\n");
 
 				gpuDebugStreamSync(mCudaContext, solverStream, "GPU artiOutputVelocity kernel fail!\n");
@@ -749,7 +749,7 @@ namespace physx
 		}
 	}
 
-	void PxgArticulationCore::pushImpulse(CUstream solverStream)
+	void PxgArticulationCore::pushImpulse(hipStream_t solverStream)
 	{
 		const PxU32 numThreadsPerWarp = 32;
 		const PxU32 numWarpsPerBlock = 1;
@@ -758,9 +758,9 @@ namespace physx
 
 		if (numBlocks)
 		{
-			const CUfunction artiPushImpulseFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_PUSH_IMPULSE);
+			const hipFunction_t artiPushImpulseFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_PUSH_IMPULSE);
 
-			CUdeviceptr descptr = mArticulationCoreDescd.getDevicePtr();
+			hipDeviceptr_t descptr = mArticulationCoreDescd.getDevicePtr();
 
 			{
 				KERNEL_PARAM_TYPE kernelParams[] =
@@ -768,8 +768,8 @@ namespace physx
 					CUDA_KERNEL_PARAM(descptr)
 				};
 
-				const CUresult result = mCudaContext->launchKernel(artiPushImpulseFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, solverStream, EPILOG);
-				if (result != CUDA_SUCCESS)
+				const hipError_t result = mCudaContext->launchKernel(artiPushImpulseFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, solverStream, EPILOG);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU artiPushImpulse fail to launch kernel!!\n");
 
 				gpuDebugStreamSync(mCudaContext, solverStream, "GPU artiPushImpulse kernel fail!\n");
@@ -792,9 +792,9 @@ namespace physx
 		{
 			//validateData();
 
-			CUfunction stepKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_STEP_TGS);
+			hipFunction_t stepKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_STEP_TGS);
 
-			CUdeviceptr descptr = mArticulationCoreDescd.getDevicePtr();
+			hipDeviceptr_t descptr = mArticulationCoreDescd.getDevicePtr();
 
 			KERNEL_PARAM_TYPE kernelParams[] =
 			{
@@ -803,15 +803,15 @@ namespace physx
 			};
 
 			//In this set up, each blocks has two warps, each warps has 32 threads. Each warp will work on one articulation.  
-			const CUresult result = mCudaContext->launchKernel(stepKernel, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			const hipError_t result = mCudaContext->launchKernel(stepKernel, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 			gpuDebugStreamSync(mCudaContext, *mSolverStream, "GPU stepArticulation kernel fail!\n");
 		}
 	}
 
-	void PxgArticulationCore::applyTgsSubstepForces(PxReal stepDt, CUstream stream)
+	void PxgArticulationCore::applyTgsSubstepForces(PxReal stepDt, hipStream_t stream)
 	{
 		// one thread per articulation
 		const PxU32 numThreadsPerBlock = PxgArticulationCoreKernelBlockDim::COMPUTE_UNCONSTRAINED_VELOCITES;
@@ -819,8 +819,8 @@ namespace physx
 
 		if (numBlocks)
 		{
-			CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_APPLY_TGS_SUBSTEP_FORCES);
-			CUdeviceptr descptr = mArticulationCoreDescd.getDevicePtr();
+			hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_APPLY_TGS_SUBSTEP_FORCES);
+			hipDeviceptr_t descptr = mArticulationCoreDescd.getDevicePtr();
 
 			KERNEL_PARAM_TYPE kernelParams[] =
 			{
@@ -828,11 +828,11 @@ namespace physx
 				CUDA_KERNEL_PARAM(stepDt),
 			};
 
-			const CUresult result = mCudaContext->launchKernel(kernelFunction,
+			const hipError_t result = mCudaContext->launchKernel(kernelFunction,
 				numBlocks, 1, 1, numThreadsPerBlock, 1, 1,
 				0, stream, EPILOG);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU artiApplyTgsSubstepForces failed to launch kernel!! %i\n", result);
 
 			gpuDebugStreamSync(mCudaContext, stream, "GPU artiApplyTgsSubstepForces kernel fail!\n");
@@ -840,7 +840,7 @@ namespace physx
 	}
 
 
-	void PxgArticulationCore::averageDeltaV(const PxU32 nbSlabs, CUstream stream, float4* velocities, const PxU32 partitionId, bool isTGS, CUdeviceptr sharedDescd)
+	void PxgArticulationCore::averageDeltaV(const PxU32 nbSlabs, hipStream_t stream, float4* velocities, const PxU32 partitionId, bool isTGS, hipDeviceptr_t sharedDescd)
 	{
 		const PxU32 numThreadsPerWarp = WARP_SIZE;
 		PxU32 numWarpsPerBlock = PxgArticulationCoreKernelBlockDim::COMPUTE_UNCONSTRAINED_VELOCITES / numThreadsPerWarp;
@@ -850,13 +850,13 @@ namespace physx
 		{
 			KernelWrangler* wrangler = mGpuKernelWranglerManager->getKernelWrangler();
 
-			CUfunction propagateImpulseKernel = isTGS?	wrangler->getCuFunction(PxgKernelIds::ARTI_PROPAGATE_IMPULSE_TGS) : 
+			hipFunction_t propagateImpulseKernel = isTGS?	wrangler->getCuFunction(PxgKernelIds::ARTI_PROPAGATE_IMPULSE_TGS) : 
 														wrangler->getCuFunction(PxgKernelIds::ARTI_PROPAGATE_IMPULSE_PGS);
-			CUfunction propagateVelocityKernel = isTGS ?	wrangler->getCuFunction(PxgKernelIds::ARTI_PROPAGATE_VELOCITY_TGS) :
+			hipFunction_t propagateVelocityKernel = isTGS ?	wrangler->getCuFunction(PxgKernelIds::ARTI_PROPAGATE_VELOCITY_TGS) :
 															wrangler->getCuFunction(PxgKernelIds::ARTI_PROPAGATE_VELOCITY);
 
-			CUdeviceptr descptr = mArticulationCoreDescd.getDevicePtr();
-			CUdeviceptr solverCoreDescptr = mGpuContext->getGpuSolverCore()->getSolverCoreDescDeviceptr();
+			hipDeviceptr_t descptr = mArticulationCoreDescd.getDevicePtr();
+			hipDeviceptr_t solverCoreDescptr = mGpuContext->getGpuSolverCore()->getSolverCoreDescDeviceptr();
 
 			{
 			KERNEL_PARAM_TYPE kernelParams[] =
@@ -867,8 +867,8 @@ namespace physx
 				CUDA_KERNEL_PARAM(partitionId)
 			};
 
-			const CUresult result = mCudaContext->launchKernel(propagateImpulseKernel, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, stream, EPILOG);
-			if (result != CUDA_SUCCESS)
+			const hipError_t result = mCudaContext->launchKernel(propagateImpulseKernel, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, stream, EPILOG);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU artiPropagateImpulses2 fail to launch kernel!! %i\n", result);
 
 			gpuDebugStreamSync(mCudaContext, stream, "GPU artiPropagateImpulses2 kernel fail!\n");
@@ -881,8 +881,8 @@ namespace physx
 				CUDA_KERNEL_PARAM(velocities)
 			};
 
-			const CUresult result = mCudaContext->launchKernel(propagateVelocityKernel, numBlocks, nbSlabs, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, stream, EPILOG);
-			if (result != CUDA_SUCCESS)
+			const hipError_t result = mCudaContext->launchKernel(propagateVelocityKernel, numBlocks, nbSlabs, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, stream, EPILOG);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU artiPropagateVelocity fail to launch kernel!! %i\n", result);
 
 			gpuDebugStreamSync(mCudaContext, stream, "GPU artiPropagateVelocity kernel fail!\n");
@@ -905,9 +905,9 @@ namespace physx
 
 			PX_PROFILE_ZONE("GpuArticulationCore.updateBodies1T", 0);
 
-			const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_UPDATE_BODIES);
+			const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_UPDATE_BODIES);
 
-			CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+			hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 			KERNEL_PARAM_TYPE kernelParams[] =
 			{
@@ -917,8 +917,8 @@ namespace physx
 			};
 
 			//In this set up, each blocks has two warps, each warps has 32 threads. Each warp will work on one articulation.  
-			const CUresult result = mCudaContext->launchKernel(kernelFunction, num1TBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			const hipError_t result = mCudaContext->launchKernel(kernelFunction, num1TBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 			gpuDebugStreamSync(mCudaContext, *mSolverStream, "GPU updatebodies kernel fail!\n");
@@ -930,9 +930,9 @@ namespace physx
 			{
 				PX_PROFILE_ZONE("GpuArticulationCore.updateBodiesPart2", 0);
 
-				const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_UPDATE_BODIES2);
+				const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_UPDATE_BODIES2);
 
-				CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+				hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 				KERNEL_PARAM_TYPE kernelParams[] =
 				{
@@ -950,8 +950,8 @@ namespace physx
 				const PxU32 blockDimY = numWarpsPerBlock;
 				const PxU32 blockDimZ = nbThreadsZ;
 
-				const CUresult result = mCudaContext->launchKernel(kernelFunction, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, 0, *mSolverStream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipError_t result = mCudaContext->launchKernel(kernelFunction, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, 0, *mSolverStream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				gpuDebugStreamSync(mCudaContext, *mSolverStream, "GPU updatebodies kernel fail!\n");
@@ -961,9 +961,9 @@ namespace physx
 			{
 				PX_PROFILE_ZONE("GpuArticulationCore.updateBodiesPart3", 0);
 
-				const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_UPDATE_BODIES3);
+				const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_UPDATE_BODIES3);
 
-				CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+				hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 				KERNEL_PARAM_TYPE kernelParams[] =
 				{
@@ -979,8 +979,8 @@ namespace physx
 				const PxU32 blockDimY = numWarpsPerBlock;
 				const PxU32 blockDimZ = 1;
 
-				const CUresult result = mCudaContext->launchKernel(kernelFunction, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, 0, *mSolverStream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipError_t result = mCudaContext->launchKernel(kernelFunction, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, 0, *mSolverStream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				gpuDebugStreamSync(mCudaContext, *mSolverStream, "GPU updatebodies kernel fail!\n");
@@ -1018,10 +1018,10 @@ namespace physx
 
 			PX_PROFILE_ZONE("GpuArticulationCore.gpuMemDMAbackArticulation", 0);
 
-			const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_DMA_DATA);
+			const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_DMA_DATA);
 
-			CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
-			CUdeviceptr outputDescptr = mArticulationOutputDescd.getDevicePtr();
+			hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
+			hipDeviceptr_t outputDescptr = mArticulationOutputDescd.getDevicePtr();
 
 			KERNEL_PARAM_TYPE kernelParams[] =
 			{
@@ -1030,15 +1030,15 @@ namespace physx
 			};
 
 			//In this set up, each blocks has two warps, each warps has 32 threads. Each warp will work on one articulation.  
-			const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, *mSolverStream, EPILOG);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 			gpuDebugStreamSync(mCudaContext, *mSolverStream, "GPU gpuMemDMAbackArticulation kernel fail!\n");
 		}
 	}
 
-	bool PxgArticulationCore::getArticulationData(void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent, PxU32 maxLinks, PxU32 maxDofs) const
+	bool PxgArticulationCore::getArticulationData(void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent, PxU32 maxLinks, PxU32 maxDofs) const
 	{
 		PxScopedCudaLock _lock(*mCudaContextManager);
 		bool success = true;
@@ -1101,11 +1101,11 @@ namespace physx
 		}
 		else
 		{
-			const CUresult result = mCudaContext->streamSynchronize(mStream);
-			if(result != CUDA_SUCCESS)
+			const hipError_t result = mCudaContext->streamSynchronize(mStream);
+			if(result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "getArticulationData: CUDA error, code %u\n", result);
 
-			success = (result == CUDA_SUCCESS);
+			success = (result == hipSuccess);
 		}
 
 		return success;
@@ -1113,9 +1113,9 @@ namespace physx
 
 	bool PxgArticulationCore::getDofStates(void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxU32 nbElements, PxU32 maxDofs, PxArticulationGPUAPIReadType::Enum dataType) const
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_GET_DOF_STATES);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_GET_DOF_STATES);
 
-		CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+		hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 		// 1 thread per Dof.
 		const PxU32 numBlocks = (nbElements * maxDofs + PxgArticulationCoreKernelBlockDim::ARTI_GET_DOF_STATES - 1) / PxgArticulationCoreKernelBlockDim::ARTI_GET_DOF_STATES;
@@ -1130,18 +1130,18 @@ namespace physx
 			CUDA_KERNEL_PARAM(dataType)
 		};
 
-		const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_GET_DOF_STATES, 1, 1, 0, mStream, EPILOG);
+		const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_GET_DOF_STATES, 1, 1, 0, mStream, EPILOG);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
-		return result == CUDA_SUCCESS;
+		return result == hipSuccess;
 	}
 
 	bool PxgArticulationCore::getTransformStates(void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxU32 nbElements, PxU32 maxLinks, PxArticulationGPUAPIReadType::Enum dataType) const
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_GET_TRANSFORM_STATES);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_GET_TRANSFORM_STATES);
 
-		CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+		hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 		// 1 thread per transform.
 		const PxU32 numBlocks = (nbElements * maxLinks + PxgArticulationCoreKernelBlockDim::ARTI_GET_TRANSFORM_STATES - 1) / PxgArticulationCoreKernelBlockDim::ARTI_GET_TRANSFORM_STATES;
@@ -1156,17 +1156,17 @@ namespace physx
 			CUDA_KERNEL_PARAM(dataType)
 		};
 
-		const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_GET_TRANSFORM_STATES, 1, 1, 0, mStream, EPILOG);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_GET_TRANSFORM_STATES, 1, 1, 0, mStream, EPILOG);
+		PX_ASSERT(result == hipSuccess);
 
-		return result == CUDA_SUCCESS;
+		return result == hipSuccess;
 	}
 
 	bool PxgArticulationCore::getLinkVelocityStates(void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxU32 nbElements, PxU32 maxLinks, PxArticulationGPUAPIReadType::Enum dataType) const
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_GET_VELOCITY_STATES);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_GET_VELOCITY_STATES);
 
-		CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+		hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 		PX_COMPILE_TIME_ASSERT((PxgArticulationCoreKernelBlockDim::ARTI_GET_VELOCITY_STATES % 3) == 0);
 
@@ -1183,19 +1183,19 @@ namespace physx
 			CUDA_KERNEL_PARAM(dataType)
 		};
 
-		const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_GET_VELOCITY_STATES, 1, 1, 0, mStream, EPILOG);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_GET_VELOCITY_STATES, 1, 1, 0, mStream, EPILOG);
+		PX_ASSERT(result == hipSuccess);
 
-		return result == CUDA_SUCCESS;
+		return result == hipSuccess;
 	}
 
 	bool PxgArticulationCore::getLinkSpatialForceStates(void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxU32 nbElements, PxU32 maxLinks, PxArticulationGPUAPIReadType::Enum dataType) const
 	{
 		PX_UNUSED(dataType); // right now only link incoming joint force.
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_GET_SPATIAL_FORCE_STATES);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_GET_SPATIAL_FORCE_STATES);
 
-		CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+		hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 		// 1 thread per link
 		const PxU32 numThreadsPerElement = sizeof(Cm::UnAlignedSpatialVector) / 4;
@@ -1210,10 +1210,10 @@ namespace physx
 			CUDA_KERNEL_PARAM(maxLinks),
 		};
 
-		const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_GET_SPATIAL_FORCE_STATES, 1, 1, 0, mStream, EPILOG);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_GET_SPATIAL_FORCE_STATES, 1, 1, 0, mStream, EPILOG);
+		PX_ASSERT(result == hipSuccess);
 
-		return result == CUDA_SUCCESS;
+		return result == hipSuccess;
 	}
 
 #if PX_SUPPORT_OMNI_PVD
@@ -1241,8 +1241,8 @@ namespace physx
 				////////////////////////////////////////////////////////////////////////////////
 				// Copy the forces and gpuIndices from GPU -> CPU
 				////////////////////////////////////////////////////////////////////////////////
-				PxCUresult resultData = mCudaContext->memcpyDtoH(mOvdDataBuffer.begin(), CUdeviceptr(data), dataBufferBytes);
-				PxCUresult resultIndices = mCudaContext->memcpyDtoH(mOvdIndexBuffer.begin(), CUdeviceptr(gpuIndices), indexBufferBytes);
+				PxCUresult resultData = mCudaContext->memcpyDtoH(mOvdDataBuffer.begin(), hipDeviceptr_t(data), dataBufferBytes);
+				PxCUresult resultIndices = mCudaContext->memcpyDtoH(mOvdIndexBuffer.begin(), hipDeviceptr_t(gpuIndices), indexBufferBytes);
 				if (!resultData && !resultIndices)
 				{
 					////////////////////////////////////////////////////////////////////////////////
@@ -1268,7 +1268,7 @@ namespace physx
 
 #endif
 
-	bool PxgArticulationCore::setArticulationData(const void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent, PxU32 maxLinks, PxU32 maxDofs, PxU32 maxFixedTendons, PxU32 maxTendonJoints, PxU32 maxSpatialTendons, PxU32 maxSpatialTendonAttachments)
+	bool PxgArticulationCore::setArticulationData(const void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent, PxU32 maxLinks, PxU32 maxDofs, PxU32 maxFixedTendons, PxU32 maxTendonJoints, PxU32 maxSpatialTendons, PxU32 maxSpatialTendonAttachments)
 	{
 		PxScopedCudaLock _lock(*mCudaContextManager);
 		bool success = true;
@@ -1351,11 +1351,11 @@ namespace physx
 		}
 		else
 		{
-			const CUresult result = mCudaContext->streamSynchronize(mStream);
-			if(result != CUDA_SUCCESS)
+			const hipError_t result = mCudaContext->streamSynchronize(mStream);
+			if(result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "setArticulationData: CUDA error, code %u\n", result);
 
-			success = (result == CUDA_SUCCESS);
+			success = (result == hipSuccess);
 		}
 
 		return success;
@@ -1363,9 +1363,9 @@ namespace physx
 
 	bool PxgArticulationCore::setDofStates(const void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxU32 nbElements, PxU32 maxDofs, PxArticulationGPUAPIWriteType::Enum dataType)
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_DOF_STATES);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_DOF_STATES);
 
-		CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+		hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 		// 1 thread per Dof.
 		const PxU32 numBlocks = (nbElements * maxDofs + PxgArticulationCoreKernelBlockDim::ARTI_SET_DOF_STATES - 1) / PxgArticulationCoreKernelBlockDim::ARTI_SET_DOF_STATES;
@@ -1380,18 +1380,18 @@ namespace physx
 			CUDA_KERNEL_PARAM(dataType)
 		};
 
-		const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_DOF_STATES, 1, 1, 0, mStream, EPILOG);
+		const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_DOF_STATES, 1, 1, 0, mStream, EPILOG);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
-		return result == CUDA_SUCCESS;
+		return result == hipSuccess;
 	}
 
 	bool PxgArticulationCore::setRootGlobalPoseStates(const void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxU32 nbElements)
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_ROOT_GLOBAL_POSE_STATE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_ROOT_GLOBAL_POSE_STATE);
 
-		CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+		hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 		const PxU32 numBlocks = (nbElements + PxgArticulationCoreKernelBlockDim::ARTI_SET_ROOT_GLOBAL_POSE_STATE - 1) / PxgArticulationCoreKernelBlockDim::ARTI_SET_ROOT_GLOBAL_POSE_STATE;
 
@@ -1403,18 +1403,18 @@ namespace physx
 			CUDA_KERNEL_PARAM(nbElements)
 		};
 
-		const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::APPLY_ARTI_STATE, 1, 1, 0, mStream, EPILOG);
+		const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::APPLY_ARTI_STATE, 1, 1, 0, mStream, EPILOG);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
-		return result == CUDA_SUCCESS;
+		return result == hipSuccess;
 	}
 
 	bool PxgArticulationCore::setRootVelocityStates(const void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxU32 nbElements, PxArticulationGPUAPIWriteType::Enum dataType)
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_ROOT_VELOCITY_STATE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_ROOT_VELOCITY_STATE);
 
-		CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+		hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 		const PxU32 nbThreadsPerElement = 3u;
 		const PxU32 numBlocks = (nbThreadsPerElement * nbElements + PxgArticulationCoreKernelBlockDim::ARTI_SET_ROOT_VELOCITY_STATE - 1) / PxgArticulationCoreKernelBlockDim::ARTI_SET_ROOT_VELOCITY_STATE;
@@ -1428,18 +1428,18 @@ namespace physx
 			CUDA_KERNEL_PARAM(dataType)
 		};
 
-		const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_ROOT_VELOCITY_STATE, 1, 1, 0, mStream, EPILOG);
+		const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_ROOT_VELOCITY_STATE, 1, 1, 0, mStream, EPILOG);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
-		return result == CUDA_SUCCESS;
+		return result == hipSuccess;
 	}
 
 	bool PxgArticulationCore::setLinkForceStates(const void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxU32 nbElements, PxU32 maxLinks)
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_LINK_FORCE_STATE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_LINK_FORCE_STATE);
 
-		CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+		hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 		const PxU32 nbThreadsPerElement = 3u;
 		const PxU32 numBlocks = (nbThreadsPerElement * nbElements * maxLinks + PxgArticulationCoreKernelBlockDim::ARTI_SET_LINK_FORCE_STATE - 1) / PxgArticulationCoreKernelBlockDim::ARTI_SET_LINK_FORCE_STATE;
@@ -1453,18 +1453,18 @@ namespace physx
 			CUDA_KERNEL_PARAM(maxLinks)
 		};
 
-		const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_LINK_FORCE_STATE, 1, 1, 0, mStream, EPILOG);
+		const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_LINK_FORCE_STATE, 1, 1, 0, mStream, EPILOG);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
-		return result == CUDA_SUCCESS;
+		return result == hipSuccess;
 	}
 
 	bool PxgArticulationCore::setLinkTorqueStates(const void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxU32 nbElements, PxU32 maxLinks)
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_LINK_TORQUE_STATE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_LINK_TORQUE_STATE);
 
-		CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+		hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 		const PxU32 numBlocks = (nbElements * maxLinks + PxgArticulationCoreKernelBlockDim::ARTI_SET_LINK_TORQUE_STATE - 1) / PxgArticulationCoreKernelBlockDim::ARTI_SET_LINK_TORQUE_STATE;
 
@@ -1477,18 +1477,18 @@ namespace physx
 			CUDA_KERNEL_PARAM(maxLinks)
 		};
 
-		const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_LINK_TORQUE_STATE, 1, 1, 0, mStream, EPILOG);
+		const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_LINK_TORQUE_STATE, 1, 1, 0, mStream, EPILOG);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
-		return result == CUDA_SUCCESS;
+		return result == hipSuccess;
 	}
 
 	bool PxgArticulationCore::setTendonStates(const void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxU32 nbElements, PxU32 maxTendons, PxArticulationGPUAPIWriteType::Enum dataType)
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_TENDON_STATE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_TENDON_STATE);
 
-		CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+		hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 		const PxU32 numBlocks = (nbElements * maxTendons + PxgArticulationCoreKernelBlockDim::ARTI_SET_TENDON_STATE - 1) / PxgArticulationCoreKernelBlockDim::ARTI_SET_TENDON_STATE;
 
@@ -1502,18 +1502,18 @@ namespace physx
 			CUDA_KERNEL_PARAM(dataType)
 		};
 
-		const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_TENDON_STATE, 1, 1, 0, mStream, EPILOG);
+		const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_TENDON_STATE, 1, 1, 0, mStream, EPILOG);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
-		return result == CUDA_SUCCESS;
+		return result == hipSuccess;
 	}
 
 	bool PxgArticulationCore::setSpatialTendonAttachmentStates(const void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxU32 nbElements, PxU32 maxTendonsXmaxAttachments)
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_SPATIAL_TENDON_ATTACHMENT_STATE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_SPATIAL_TENDON_ATTACHMENT_STATE);
 
-		CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+		hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 		const PxU32 numThreadsPerElement = maxTendonsXmaxAttachments;
 		const PxU32 numBlocks = (nbElements * numThreadsPerElement + PxgArticulationCoreKernelBlockDim::ARTI_SET_SPATIAL_TENDON_ATTACHMENT_STATE - 1) / PxgArticulationCoreKernelBlockDim::ARTI_SET_SPATIAL_TENDON_ATTACHMENT_STATE;
@@ -1527,18 +1527,18 @@ namespace physx
 			CUDA_KERNEL_PARAM(maxTendonsXmaxAttachments)
 		};
 
-		const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_SPATIAL_TENDON_ATTACHMENT_STATE, 1, 1, 0, mStream, EPILOG);
+		const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_SPATIAL_TENDON_ATTACHMENT_STATE, 1, 1, 0, mStream, EPILOG);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
-		return (result == CUDA_SUCCESS);
+		return (result == hipSuccess);
 	}
 
 	bool PxgArticulationCore::setFixedTendonJointStates(const void* PX_RESTRICT data , const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxU32 nbElements, PxU32 maxFixedTendonsXmaxTendonJoints)
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_FIXED_TENDON_JOINT_STATE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SET_FIXED_TENDON_JOINT_STATE);
 
-		CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
+		hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
 
 		const PxU32 numThreadsPerElement = maxFixedTendonsXmaxTendonJoints;
 		const PxU32 numBlocks = (nbElements * numThreadsPerElement + PxgArticulationCoreKernelBlockDim::ARTI_SET_FIXED_TENDON_JOINT_STATE - 1) / PxgArticulationCoreKernelBlockDim::ARTI_SET_FIXED_TENDON_JOINT_STATE;
@@ -1551,11 +1551,11 @@ namespace physx
 			CUDA_KERNEL_PARAM(nbElements)
 		};
 
-		const CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_FIXED_TENDON_JOINT_STATE, 1, 1, 0, mStream, EPILOG);
+		const hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgArticulationCoreKernelBlockDim::ARTI_SET_FIXED_TENDON_JOINT_STATE, 1, 1, 0, mStream, EPILOG);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
-		return (result == CUDA_SUCCESS);
+		return (result == hipSuccess);
 	}
 
 	void PxgArticulationCore::updateArticulationsKinematic(bool zeroSimOutput, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxU32 nbElements)
@@ -1565,21 +1565,21 @@ namespace physx
 		{
 			mNeedsKinematicUpdate = false;
 
-			CUdeviceptr coreDescptr = mArticulationCoreDescd.getDevicePtr();
-			CUfunction updateKinematicKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_UPDATE_KINEMATIC);
+			hipDeviceptr_t coreDescptr = mArticulationCoreDescd.getDevicePtr();
+			hipFunction_t updateKinematicKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_UPDATE_KINEMATIC);
 
 			PxgGpuNarrowphaseCore* npCore = mGpuContext->getNarrowphaseCore();
 			PxgSimulationCore* simCore = mGpuContext->getSimulationCore();
 			const PxU32 numTotalShapes = simCore->getNumTotalShapes();
-			CUdeviceptr bounds = mGpuContext->mGpuBp->getBoundsBuffer().getDevicePtr();
+			hipDeviceptr_t bounds = mGpuContext->mGpuBp->getBoundsBuffer().getDevicePtr();
 
 			//device ptr
-			CUdeviceptr shapes = npCore->mGpuShapesManager.mGpuShapesBuffer.getDevicePtr();
-			CUdeviceptr shapeSims = simCore->mPxgShapeSimManager.getShapeSimsDevicePtr();
-			CUdeviceptr transformCache = npCore->getTransformCache().getDevicePtr();
+			hipDeviceptr_t shapes = npCore->mGpuShapesManager.mGpuShapesBuffer.getDevicePtr();
+			hipDeviceptr_t shapeSims = simCore->mPxgShapeSimManager.getShapeSimsDevicePtr();
+			hipDeviceptr_t transformCache = npCore->getTransformCache().getDevicePtr();
 			PxgShapeManager& shapeManager = npCore->getGpuShapeManager();
-			CUdeviceptr sortedRigidNodeIndices = shapeManager.mGpuRigidIndiceBuffer.getDevicePtr();
-			CUdeviceptr shapeIndices = shapeManager.mGpuShapeIndiceBuffer.getDevicePtr();
+			hipDeviceptr_t sortedRigidNodeIndices = shapeManager.mGpuRigidIndiceBuffer.getDevicePtr();
+			hipDeviceptr_t shapeIndices = shapeManager.mGpuShapeIndiceBuffer.getDevicePtr();
 
 			KERNEL_PARAM_TYPE kernelParams[] =
 			{
@@ -1612,8 +1612,8 @@ namespace physx
 			const PxU32 numBlockNeeded = (mArticulationCoreDesc->nbArticulations + numWarpPerBlock - 1) / numWarpPerBlock;
 			const PxU32 gridDim = PxMin<PxU32>(PxgArticulationCoreKernelGridDim::UPDATE_KINEMATIC, numBlockNeeded);
 
-			const CUresult result = mCudaContext->launchKernel(updateKinematicKernelFunction, gridDim, 1, 1, numThreadPerWarp, numWarpPerBlock, 1, 0, mStream, EPILOG);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			const hipError_t result = mCudaContext->launchKernel(updateKinematicKernelFunction, gridDim, 1, 1, numThreadPerWarp, numWarpPerBlock, 1, 0, mStream, EPILOG);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 			gpuDebugStreamSync(mCudaContext, mStream, "GPU artiUpdateDataLaunch kernel fail!\n");
@@ -1622,7 +1622,7 @@ namespace physx
 
 	bool PxgArticulationCore::computeArticulationData(
 		void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements,
-		PxU32 maxLinks, PxU32 maxDofs, CUevent startEvent, CUevent finishEvent)
+		PxU32 maxLinks, PxU32 maxDofs, hipEvent_t startEvent, hipEvent_t finishEvent)
 	{
 		PxScopedCudaLock _lock(*mCudaContextManager);
 		bool success = true;
@@ -1646,7 +1646,7 @@ namespace physx
 				// Needed in case joint positions have been changed before the call
 				updateArticulationsKinematic(true, gpuIndices, nbElements);
 
-				CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_ARTI_DENSE_JACOBIANS);
+				hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_ARTI_DENSE_JACOBIANS);
 
 				const PxU32 threadsPerWarp = 32;
 				const PxU32 warpsPerBlock = 16;
@@ -1662,8 +1662,8 @@ namespace physx
 					CUDA_KERNEL_PARAM(mArticulationCoreDesc->articulations),
 				};
 
-				const CUresult result = mCudaContext->launchKernel(kernelFunction, blocks, 1, 1, threadsPerWarp, warpsPerBlock, 1, 0, mStream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipError_t result = mCudaContext->launchKernel(kernelFunction, blocks, 1, 1, threadsPerWarp, warpsPerBlock, 1, 0, mStream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 			}
 			break;
@@ -1675,7 +1675,7 @@ namespace physx
 				// Needed in case joint positions have been changed before the call
 				updateArticulationsKinematic(true, gpuIndices, nbElements);
 
-				CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_ARTI_MASS_MATRICES);
+				hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_ARTI_MASS_MATRICES);
 
 				const PxU32 threadsPerWarp = 32;
 				const PxU32 warpsPerBlock = 8;
@@ -1692,8 +1692,8 @@ namespace physx
 					CUDA_KERNEL_PARAM(mArticulationCoreDesc->articulations),
 				};
 
-				const CUresult result = mCudaContext->launchKernel(kernelFunction, blocks, 1, 1, threadsPerWarp, warpsPerBlock, 1, 0, mStream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipError_t result = mCudaContext->launchKernel(kernelFunction, blocks, 1, 1, threadsPerWarp, warpsPerBlock, 1, 0, mStream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 			}
 			break;
@@ -1705,7 +1705,7 @@ namespace physx
 				// Needed in case joint positions have been changed before the call
 				updateArticulationsKinematic(true, gpuIndices, nbElements);
 
-				CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_ARTI_GRAVITY_FORCES);
+				hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_ARTI_GRAVITY_FORCES);
 
 				const PxU32 threadsPerWarp = 32;
 				const PxU32 warpsPerBlock = 8;
@@ -1725,8 +1725,8 @@ namespace physx
 					CUDA_KERNEL_PARAM(gravity),
 				};
 
-				const CUresult result = mCudaContext->launchKernel(kernelFunction, blocks, 1, 1, threadsPerWarp, warpsPerBlock, 1, 0, mStream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipError_t result = mCudaContext->launchKernel(kernelFunction, blocks, 1, 1, threadsPerWarp, warpsPerBlock, 1, 0, mStream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 			}
 			break;
@@ -1739,7 +1739,7 @@ namespace physx
 				// AD should we zero the state here?
 				updateArticulationsKinematic(true, gpuIndices, nbElements);
 
-				CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_ARTI_CENTRIFUGAL_FORCES);
+				hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_ARTI_CENTRIFUGAL_FORCES);
 
 				const PxU32 threadsPerWarp = 32;
 				const PxU32 warpsPerBlock = 8;
@@ -1756,8 +1756,8 @@ namespace physx
 					CUDA_KERNEL_PARAM(mArticulationCoreDesc->articulations),
 				};
 
-				const CUresult result = mCudaContext->launchKernel(kernelFunction, blocks, 1, 1, threadsPerWarp, warpsPerBlock, 1, 0, mStream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipError_t result = mCudaContext->launchKernel(kernelFunction, blocks, 1, 1, threadsPerWarp, warpsPerBlock, 1, 0, mStream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 			}
 			break;
@@ -1768,7 +1768,7 @@ namespace physx
 				// Needed in case joint positions have been changed before the call
 				updateArticulationsKinematic(true, gpuIndices, nbElements);
 
-				CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_ARTI_COM);
+				hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_ARTI_COM);
 
 				const PxU32 threadsPerWarp = 32;
 				const PxU32 warpsPerBlock = 8;
@@ -1783,8 +1783,8 @@ namespace physx
 					CUDA_KERNEL_PARAM(mArticulationCoreDesc->articulations),
 				};
 
-				const CUresult result = mCudaContext->launchKernel(kernelFunction, blocks, 1, 1, threadsPerWarp, warpsPerBlock, 1, 0, mStream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipError_t result = mCudaContext->launchKernel(kernelFunction, blocks, 1, 1, threadsPerWarp, warpsPerBlock, 1, 0, mStream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 			}
 			break;
@@ -1794,7 +1794,7 @@ namespace physx
 				// Needed in case joint positions have been changed before the call
 				updateArticulationsKinematic(true, gpuIndices, nbElements);
 
-				CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_ARTI_CENTROIDAL_MATRICES);
+				hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_ARTI_CENTROIDAL_MATRICES);
 
 				const PxU32 threadsPerWarp = 32;
 				const PxU32 warpsPerBlock = 8;
@@ -1809,8 +1809,8 @@ namespace physx
 					CUDA_KERNEL_PARAM(mArticulationCoreDesc->articulations),
 				};
 
-				const CUresult result = mCudaContext->launchKernel(kernelFunction, blocks, 1, 1, threadsPerWarp, warpsPerBlock, 1, 0, mStream, EPILOG);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				const hipError_t result = mCudaContext->launchKernel(kernelFunction, blocks, 1, 1, threadsPerWarp, warpsPerBlock, 1, 0, mStream, EPILOG);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 			}
 			break;
@@ -1825,11 +1825,11 @@ namespace physx
 		}
 		else
 		{
-			const CUresult result = mCudaContext->streamSynchronize(mStream);
-			if(result != CUDA_SUCCESS)
+			const hipError_t result = mCudaContext->streamSynchronize(mStream);
+			if(result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "computeArticulationData: CUDA error, code %u\n", result);
 
-			success = (result == CUDA_SUCCESS);
+			success = (result == hipSuccess);
 		}
 
 		return success;

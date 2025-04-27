@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /*************************************************************************
  * GLFW 3.2 - www.glfw.org
  * A library for OpenGL, window and input

@@ -53,7 +53,7 @@ namespace physx
 
 		virtual ~PxgArrayConverter() { }
 
-		virtual void interleaveGpuBuffers(const PxVec4* vertices, const PxVec4* normals, PxU32 length, PxVec3* interleavedResultBuffer, CUstream stream) PX_OVERRIDE;
+		virtual void interleaveGpuBuffers(const PxVec4* vertices, const PxVec4* normals, PxU32 length, PxVec3* interleavedResultBuffer, hipStream_t stream) PX_OVERRIDE;
 	};
 
 #endif	

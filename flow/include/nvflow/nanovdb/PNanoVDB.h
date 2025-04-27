@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /*!
     \file   nanovdb/PNanoVDB.h
 
@@ -73,7 +74,7 @@
 #ifndef __CUDACC_RTC__
 #include <stdint.h>
 #endif
-#if defined(__CUDACC__)
+#if defined(__HIPCC__)
 #define PNANOVDB_BUF_FORCE_INLINE static __host__ __device__ __forceinline__
 #elif defined(_WIN32)
 #define PNANOVDB_BUF_FORCE_INLINE static inline __forceinline
@@ -271,7 +272,7 @@ void pnanovdb_buf_write_uint64(pnanovdb_buf_t buf, uint byte_offset, uvec2 value
 
 // force inline
 #if defined(PNANOVDB_C)
-#if defined(__CUDACC__)
+#if defined(__HIPCC__)
 #define PNANOVDB_FORCE_INLINE static __host__ __device__ __forceinline__
 #elif defined(_WIN32)
 #define PNANOVDB_FORCE_INLINE static inline __forceinline

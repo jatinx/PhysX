@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -119,7 +120,7 @@ NV_CUDA_CALLABLE NV_FORCE_INLINE float selectMax(float a, float b)
 //! \brief platform-specific finiteness check (not INF or NAN)
 NV_CUDA_CALLABLE NV_FORCE_INLINE bool isFinite(float a)
 {
-#ifdef __CUDACC__
+#ifdef __HIPCC__
     return !!isfinite(a);
 #else
     return (0 == ((_FPCLASS_SNAN | _FPCLASS_QNAN | _FPCLASS_NINF | _FPCLASS_PINF) & _fpclass(a)));
@@ -129,7 +130,7 @@ NV_CUDA_CALLABLE NV_FORCE_INLINE bool isFinite(float a)
 //! \brief platform-specific finiteness check (not INF or NAN)
 NV_CUDA_CALLABLE NV_FORCE_INLINE bool isFinite(double a)
 {
-#ifdef __CUDACC__
+#ifdef __HIPCC__
     return !!isfinite(a);
 #else
     return (0 == ((_FPCLASS_SNAN | _FPCLASS_QNAN | _FPCLASS_NINF | _FPCLASS_PINF) & _fpclass(a)));

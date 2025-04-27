@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -29,7 +30,7 @@
 #ifndef __CU_ATOMIC_CUH__
 #define __CU_ATOMIC_CUH__
 
-#include "cuda.h"
+#include "hip/hip_runtime.h"
 #include "foundation/PxVec3.h"
 #include "foundation/PxSimpleTypes.h"
 #include "PxgIntrinsics.h"

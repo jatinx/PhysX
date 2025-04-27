@@ -35,7 +35,7 @@
 #include "foundation/PxMat33.h"
 #include "foundation/PxTransform.h"
 #if !PX_CUDA_COMPILER
-#include <vector_types.h>
+#include <hip/hip_vector_types.h>
 #endif
 #include "AlignedMat33.h"
 #include "AlignedTransform.h"

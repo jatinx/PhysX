@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 #ifndef RAYCAST_MESH_H
 
 #define RAYCAST_MESH_H

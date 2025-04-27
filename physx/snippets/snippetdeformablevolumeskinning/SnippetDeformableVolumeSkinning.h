@@ -74,12 +74,12 @@ public:
 		PX_EXT_PINNED_MEMORY_FREE(*mCudaContextManager, mPositionsInvMass);
 	}
 
-	void copyDeformedVerticesFromGPUAsync(CUstream stream)
+	void copyDeformedVerticesFromGPUAsync(hipStream_t stream)
 	{
 		physx::PxTetrahedronMesh* tetMesh = mDeformableVolume->getCollisionMesh();
 
 		physx::PxScopedCudaLock _lock(*mCudaContextManager);
-		mCudaContextManager->getCudaContext()->memcpyDtoHAsync(mPositionsInvMass, reinterpret_cast<CUdeviceptr>(mDeformableVolume->getPositionInvMassBufferD()), tetMesh->getNbVertices() * sizeof(physx::PxVec4), stream);
+		mCudaContextManager->getCudaContext()->memcpyDtoHAsync(mPositionsInvMass, reinterpret_cast<hipDeviceptr_t>(mDeformableVolume->getPositionInvMassBufferD()), tetMesh->getNbVertices() * sizeof(physx::PxVec4), stream);
 	}
 
 	void copyDeformedVerticesFromGPU()
@@ -87,7 +87,7 @@ public:
 		physx::PxTetrahedronMesh* tetMesh = mDeformableVolume->getCollisionMesh();
 
 		physx::PxScopedCudaLock _lock(*mCudaContextManager);
-		mCudaContextManager->getCudaContext()->memcpyDtoH(mPositionsInvMass, reinterpret_cast<CUdeviceptr>(mDeformableVolume->getPositionInvMassBufferD()), tetMesh->getNbVertices() * sizeof(physx::PxVec4));
+		mCudaContextManager->getCudaContext()->memcpyDtoH(mPositionsInvMass, reinterpret_cast<hipDeviceptr_t>(mDeformableVolume->getPositionInvMassBufferD()), tetMesh->getNbVertices() * sizeof(physx::PxVec4));
 	}
 
 

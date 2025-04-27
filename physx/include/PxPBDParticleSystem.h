@@ -81,7 +81,7 @@ public:
 	\param[in] stream The stream on which all cuda kernel calls get scheduled for execution. A call to fetchResultsParticleSystem() on the
 	PxScene will synchronize the work such that the caller knows that the task completed.
 	*/
-	virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, CUstream stream) = 0;
+	virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, hipStream_t stream) = 0;
 
 	/**
 	\brief Method gets called when the simulation step of the particle system is performed
@@ -90,7 +90,7 @@ public:
 	\param[in] stream The stream on which all cuda kernel calls get scheduled for execution. A call to fetchResultsParticleSystem() on the
 	PxScene will synchronize the work such that the caller knows that the task completed.
 	*/
-	virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, CUstream stream) = 0;
+	virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, hipStream_t stream) = 0;
 
 	/**
 	\brief Method gets called after the particle system simulation step completed
@@ -99,7 +99,7 @@ public:
 	\param[in] stream The stream on which all cuda kernel calls get scheduled for execution. A call to fetchResultsParticleSystem() on the
 	PxScene will synchronize the work such that the caller knows that the task completed.
 	*/
-	virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, CUstream stream) = 0;
+	virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, hipStream_t stream) = 0;
 
 	/**
 	\brief Destructor
@@ -118,19 +118,19 @@ private:
 public:
 	PxMultiCallback() : mCallbacks(0) {}
 
-	virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, CUstream stream) PX_OVERRIDE
+	virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, hipStream_t stream) PX_OVERRIDE
 	{
 		for (PxU32 i = 0; i < mCallbacks.size(); ++i)
 			mCallbacks[i]->onPostSolve(gpuParticleSystem, stream);
 	}
 
-	virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, CUstream stream) PX_OVERRIDE
+	virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, hipStream_t stream) PX_OVERRIDE
 	{
 		for (PxU32 i = 0; i < mCallbacks.size(); ++i)
 			mCallbacks[i]->onBegin(gpuParticleSystem, stream);
 	}
 
-	virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, CUstream stream) PX_OVERRIDE
+	virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, hipStream_t stream) PX_OVERRIDE
 	{
 		for (PxU32 i = 0; i < mCallbacks.size(); ++i)
 			mCallbacks[i]->onAdvance(gpuParticleSystem, stream);

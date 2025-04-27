@@ -113,7 +113,7 @@ public:
 		PxCudaHelpersExt::copyHToD<T>(*mContextManager, mDeviceData, mHostData, PxMin(numElementsToCopy, mNumElements));
 	}
 
-	void copyDeviceToHostAsync(CUstream stream, PxU32 numElementsToCopy = 0xFFFFFFFF)
+	void copyDeviceToHostAsync(hipStream_t stream, PxU32 numElementsToCopy = 0xFFFFFFFF)
 	{
 		PxCudaHelpersExt::copyDToHAsync(*mContextManager, mHostData, mDeviceData, PxMin(numElementsToCopy, mNumElements), stream);
 	}
@@ -194,7 +194,7 @@ struct VolumeSkinningHelper
 
 struct PostSolveCallback : BasePostSolveCallback, PxUserAllocated
 {
-	CUstream mSkinningStream;
+	hipStream_t mSkinningStream;
 	PxCudaContextManager* mContextManager;
 	PxDeformableSkinning* skinning;
 	PxArray<VolumeSkinningHelper> skinningHelpers;
@@ -204,8 +204,8 @@ struct PostSolveCallback : BasePostSolveCallback, PxUserAllocated
 	PostSolveCallback(PxCudaContextManager* contextManager, PxU32 maxNumDeformableVolumes) :
 		mContextManager(contextManager)
 	{
-		const PxU32 CU_STREAM_NON_BLOCKING = 0x1;
-		mContextManager->getCudaContext()->streamCreate(&mSkinningStream, CU_STREAM_NON_BLOCKING);
+		const PxU32 hipStreamNonBlocking = 0x1;
+		mContextManager->getCudaContext()->streamCreate(&mSkinningStream, hipStreamNonBlocking);
 
 		skinning = PxGetPhysicsGpu()->createDeformableSkinning(contextManager);
 
@@ -218,7 +218,7 @@ struct PostSolveCallback : BasePostSolveCallback, PxUserAllocated
 		skinningHelpers[index] = VolumeSkinningHelper(mContextManager, deformableVolume, skinnedPointsRestPosition, nbSkinnedPoints);
 	}
 
-	virtual void onPostSolve(CUevent startEvent)
+	virtual void onPostSolve(hipEvent_t startEvent)
 	{
 		mContextManager->getCudaContext()->streamWaitEvent(mSkinningStream, startEvent);
 

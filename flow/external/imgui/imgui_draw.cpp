@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // dear imgui, v1.72b
 // (drawing and font code)
 

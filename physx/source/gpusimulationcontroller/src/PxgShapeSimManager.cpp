@@ -170,7 +170,7 @@ void PxgShapeSimManager::copyToGpuShapeSim(PxgGpuNarrowphaseCore* npCore, PxBase
 	}
 }
 
-void PxgShapeSimManager::gpuMemDmaUpShapeSim(PxCudaContext* cudaContext, CUstream stream, KernelWrangler* kernelWrangler)
+void PxgShapeSimManager::gpuMemDmaUpShapeSim(PxCudaContext* cudaContext, hipStream_t stream, KernelWrangler* kernelWrangler)
 {
 	const PxU32 nbTotalShapes = mTotalNumShapes;
 		
@@ -204,13 +204,13 @@ void PxgShapeSimManager::gpuMemDmaUpShapeSim(PxCudaContext* cudaContext, CUstrea
 			PX_CUDA_KERNEL_PARAM2(nbNewShapes)
 		};
 
-		const CUfunction kernelFunction = kernelWrangler->getCuFunction(PxgKernelIds::UPDATE_SHAPES);
-		CUresult result = cudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::UPDATE_BODIES_AND_SHAPES, 1, 1, PxgSimulationCoreKernelBlockDim::UPDATE_BODIES_AND_SHAPES, 1, 1, 0, stream, kernelParams, 0, PX_FL);
+		const hipFunction_t kernelFunction = kernelWrangler->getCuFunction(PxgKernelIds::UPDATE_SHAPES);
+		hipError_t result = cudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::UPDATE_BODIES_AND_SHAPES, 1, 1, PxgSimulationCoreKernelBlockDim::UPDATE_BODIES_AND_SHAPES, 1, 1, 0, stream, kernelParams, 0, PX_FL);
 		PX_UNUSED(result);
 
 #if SSM_GPU_DEBUG
 		result = cudaContext->streamSynchronize(stream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "updateShapesLaunch kernel fail!\n");
 #endif
 	}

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -171,7 +172,7 @@ public:
 	\brief Callback function called after a solve event.
 	\param startEvent CUDA event that should be waited for on the user stream. Once the event happened, the user can safely read the solver's results.
 	*/
-	virtual void onPostSolve(CUevent startEvent) = 0;
+	virtual void onPostSolve(hipEvent_t startEvent) = 0;
 
 	virtual ~PxPostSolveCallback() {}
 };
@@ -1758,7 +1759,7 @@ class PxScene : public PxSceneSQSystem
 	
 	\deprecated There is no direct replacement. Most of the data is exposed in the PxDeformableVolume interface.
 	*/
-	PX_DEPRECATED	virtual	void	copySoftBodyData(void** data, void* dataSizes, void* deformableVolumeIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbCopyDeformableVolumes, const PxU32 maxSize, CUevent copyEvent = NULL) = 0;
+	PX_DEPRECATED	virtual	void	copySoftBodyData(void** data, void* dataSizes, void* deformableVolumeIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbCopyDeformableVolumes, const PxU32 maxSize, hipEvent_t copyEvent = NULL) = 0;
 
 	/**
 	\brief Apply user-provided data to the internal deformable volume system.
@@ -1773,7 +1774,7 @@ class PxScene : public PxSceneSQSystem
 	
 	\deprecated There is no direct replacement. Most of the data is exposed in the PxDeformableVolume interface.
 	*/
-	PX_DEPRECATED	virtual	void	applySoftBodyData(void** data, void* dataSizes, void* deformableVolumeIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbUpdatedDeformableVolumes, const PxU32 maxSize, CUevent applyEvent = NULL, CUevent signalEvent = NULL) = 0;
+	PX_DEPRECATED	virtual	void	applySoftBodyData(void** data, void* dataSizes, void* deformableVolumeIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbUpdatedDeformableVolumes, const PxU32 maxSize, hipEvent_t applyEvent = NULL, hipEvent_t signalEvent = NULL) = 0;
 
     /**
 	\brief Apply user-provided data to particle buffers.
@@ -1792,7 +1793,7 @@ class PxScene : public PxSceneSQSystem
 	
 	\deprecated There is no direct replacement. The data is exposed in the PxParticleBuffer/PxParticleSystem interface.
 	*/
-	PX_DEPRECATED	virtual		void				applyParticleBufferData(const PxU32* indices, const PxGpuParticleBufferIndexPair* bufferIndexPair, const PxParticleBufferFlags* flags, PxU32 nbUpdatedBuffers, CUevent waitEvent = NULL, CUevent signalEvent = NULL) = 0;
+	PX_DEPRECATED	virtual		void				applyParticleBufferData(const PxU32* indices, const PxGpuParticleBufferIndexPair* bufferIndexPair, const PxParticleBufferFlags* flags, PxU32 nbUpdatedBuffers, hipEvent_t waitEvent = NULL, hipEvent_t signalEvent = NULL) = 0;
 };
 
 #if !PX_DOXYGEN

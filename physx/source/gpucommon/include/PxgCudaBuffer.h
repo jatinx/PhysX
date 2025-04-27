@@ -35,7 +35,7 @@
 #pragma clang diagnostic ignored "-Wdocumentation"
 #pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
 #endif
-#include "cuda.h"
+#include "hip/hip_runtime.h"
 #if PX_LINUX && PX_CLANG
 #pragma clang diagnostic pop
 #endif
@@ -62,20 +62,20 @@ namespace physx
 		~PxgCudaBuffer();
 
 		void allocate(const PxU64 size, const char* filename, PxI32 line);
-		void allocateCopyOldDataAsync(const PxU64 size, PxCudaContext* cudaContext, CUstream stream, const char* filename, PxI32 line);
+		void allocateCopyOldDataAsync(const PxU64 size, PxCudaContext* cudaContext, hipStream_t stream, const char* filename, PxI32 line);
 
 		void deallocate();
 
 		/* defer deallocation until the beginning of the next simulation step */
 		void deallocateDeferred();
 
-		PX_FORCE_INLINE	CUdeviceptr getDevicePtr()				const	{ return (mPtr + 127) & (~127);	}
+		PX_FORCE_INLINE	hipDeviceptr_t getDevicePtr()				const	{ return (mPtr + 127) & (~127);	}
 		PX_FORCE_INLINE	PxU64		getSize()					const	{ return mSize;					}
-		PX_FORCE_INLINE	void		set(CUdeviceptr ptr, PxU64 size)	{ mPtr = ptr;	mSize = size;	}
+		PX_FORCE_INLINE	void		set(hipDeviceptr_t ptr, PxU64 size)	{ mPtr = ptr;	mSize = size;	}
 
 		static void swapBuffer(PxgCudaBuffer& buf0, PxgCudaBuffer& buf1)
 		{
-			const CUdeviceptr tempPtr = buf0.getDevicePtr();
+			const hipDeviceptr_t tempPtr = buf0.getDevicePtr();
 			const PxU64 tempSize = buf0.getSize();
 
 			buf0.set(buf1.getDevicePtr(), buf1.getSize());
@@ -97,7 +97,7 @@ namespace physx
 		}
 
 	protected:
-		CUdeviceptr					mPtr;
+		hipDeviceptr_t					mPtr;
 		PxgHeapMemoryAllocator*		mHeapMemoryAllocator;
 		PxU64						mSize;
 		const PxsHeapStats::Enum	mStatGroup;

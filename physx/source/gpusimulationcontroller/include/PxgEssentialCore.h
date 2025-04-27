@@ -63,7 +63,7 @@ namespace physx
 		PxgSimulationController*		mSimController;
 		PxgGpuContext*					mGpuContext;
 
-		CUstream						mStream;
+		hipStream_t						mStream;
 	};
 }
 

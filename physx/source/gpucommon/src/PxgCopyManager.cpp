@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -53,7 +54,7 @@ PxgCopyManager::PxgCopyManager(PxgHeapMemoryAllocatorManager* heapMemoryManager)
 
 void PxgCopyManager::createFinishedEvent(PxCudaContext* cudaContext)
 {
-	cudaContext->eventCreate(&mFinishedEvent, CU_EVENT_DEFAULT);
+	cudaContext->eventCreate(&mFinishedEvent, hipEventDefault);
 }
 
 void PxgCopyManager::destroyFinishedEvent(PxCudaContext* cudaContext)
@@ -79,25 +80,25 @@ void PxgCopyManager::pushDeferredHtoD(const CopyDesc& desc)
 
 bool PxgCopyManager::hasFinishedCopying(PxCudaContext* cudaContext) const
 {
-	CUresult result = cudaContext->eventQuery(mFinishedEvent);
-	PX_ASSERT(result == CUDA_SUCCESS || result == CUDA_ERROR_NOT_READY);
+	hipError_t result = cudaContext->eventQuery(mFinishedEvent);
+	PX_ASSERT(result == hipSuccess || result == hipErrorNotReady);
 
-	return result != CUDA_ERROR_NOT_READY;
+	return result != hipErrorNotReady;
 }
 
 void PxgCopyManager::waitAndReset(PxCudaContext* cudaContext)
 {
 	if(mEventRecorded)
 	{
-		CUresult result = cudaContext->eventSynchronize(mFinishedEvent);
+		hipError_t result = cudaContext->eventSynchronize(mFinishedEvent);
 		PX_UNUSED(result);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 	}
 	resetUnsafe();
 }
 				
 	
-void PxgCopyManager::dispatchCopy(CUstream stream, PxCudaContextManager* cudaContextManager, KernelWrangler* kernelWrangler)
+void PxgCopyManager::dispatchCopy(hipStream_t stream, PxCudaContextManager* cudaContextManager, KernelWrangler* kernelWrangler)
 {
 	PxCudaContext* cudaContext = cudaContextManager->getCudaContext();
 
@@ -113,7 +114,7 @@ void PxgCopyManager::dispatchCopy(CUstream stream, PxCudaContextManager* cudaCon
 	PxU32 numBlocks = numDescs;
 	PxU32 numExtraShared = cudaContextManager->supportsArchSM30() ? 0 : numWarpsPerBlock * WARP_SIZE * sizeof(PxU32);
 
-	CUfunction kernelFunction = kernelWrangler->getCuFunction(PxgKernelIds::MEM_COPY_BALANCED_KERNEL);
+	hipFunction_t kernelFunction = kernelWrangler->getCuFunction(PxgKernelIds::MEM_COPY_BALANCED_KERNEL);
 
 	{						
 		CopyDesc* descsGPU = reinterpret_cast<CopyDesc*>(getMappedDevicePtr(cudaContext, mDescriptorsQueue.begin()));
@@ -124,20 +125,20 @@ void PxgCopyManager::dispatchCopy(CUstream stream, PxCudaContextManager* cudaCon
 			PX_CUDA_KERNEL_PARAM(numDescs)
 		};
 
-		CUresult result = cudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, numExtraShared, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		hipError_t result = cudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, numExtraShared, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if(result != CUDA_SUCCESS)
+		if(result != hipSuccess)
 			printf("GPU MemCopyBalanced fail to launch kernel!!\n");
 
 #if DEBUG_COPY_MANAGER
 		result = cudaContext->streamSynchronize(stream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			printf("GPU MemCopyBalanced died!!\n");
 #endif
 	}
 
-	CUresult result = cudaContext->eventRecord(mFinishedEvent, stream);
+	hipError_t result = cudaContext->eventRecord(mFinishedEvent, stream);
 	mEventRecorded = true;
 	PX_UNUSED(result);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 }

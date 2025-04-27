@@ -579,13 +579,13 @@ PxgSimulationCore::~PxgSimulationCore()
 void PxgSimulationCore::createGpuStreamsAndEvents()
 {
 	//create stream
-	mCudaContext->streamCreate(&mStream, CU_STREAM_NON_BLOCKING);
+	mCudaContext->streamCreate(&mStream, hipStreamNonBlocking);
 
 	//create event
-	mCudaContext->eventCreate(&mEvent, CU_EVENT_DISABLE_TIMING);
+	mCudaContext->eventCreate(&mEvent, hipEventDisableTiming);
 
 	//create event
-	mCudaContext->eventCreate(&mDmaEvent, CU_EVENT_DISABLE_TIMING);
+	mCudaContext->eventCreate(&mDmaEvent, hipEventDisableTiming);
 
 	mPinnedEvent = PX_PINNED_MEMORY_ALLOC(PxU32, *mCudaContextManager, 1);
 }
@@ -607,7 +607,7 @@ void PxgSimulationCore::releaseGpuStreamsAndEvents()
 	PX_PINNED_MEMORY_FREE(*mCudaContextManager, mPinnedEvent);
 }
 
-void PxgSimulationCore::constructDescriptor(CUdeviceptr boundsd, CUdeviceptr changedAABBMgrHandlesd, const PxU32 nbTotalShapes, const PxU32 bitMapWordCounts)
+void PxgSimulationCore::constructDescriptor(hipDeviceptr_t boundsd, hipDeviceptr_t changedAABBMgrHandlesd, const PxU32 nbTotalShapes, const PxU32 bitMapWordCounts)
 {
 	mUpdatedCacheAndBoundsDesc->mChangedAABBMgrHandles = reinterpret_cast<PxU32*>(changedAABBMgrHandlesd);
 	mUpdatedCacheAndBoundsDesc->mFrozen = mFrozenBuffer.getTypedPtr();
@@ -1136,7 +1136,7 @@ void PxgSimulationCore::gpuMemDmaUpSoftBodies(PxPinnedArray<PxgSoftBody>& newSof
 	const PxU32 nbTotalSoftBodies = bodySimManager.mTotalNumSoftBodies;
 
 	const PxU32 nbNewSoftBodies = newSoftBodyPool.size(); 
-	CUstream bpStream = 0;
+	hipStream_t bpStream = 0;
 	if(mGpuContext->mGpuBp)
 		bpStream = mGpuContext->mGpuBp->getBpStream();
 	//This will allocate/dma soft body data 
@@ -1664,7 +1664,7 @@ void PxgSimulationCore::gpuMemDmaUpFEMCloths(PxPinnedArray<PxgFEMCloth>& newFEMC
 	const PxU32 nbTotalFEMCloths = bodySimManager.mTotalNumFEMCloths;
 
 	const PxU32 nbNewFEMCloths = newFEMClothPool.size();
-	CUstream bpStream = mGpuContext->mGpuBp->getBpStream();
+	hipStream_t bpStream = mGpuContext->mGpuBp->getBpStream();
 
 	// This will allocate/dma FEM-cloth data 
 	if (nbTotalFEMCloths > mNbTotalFEMCloths)
@@ -2090,7 +2090,7 @@ void PxgSimulationCore::gpuMemDmaUpParticleSystem(PxgBodySimManager& bodySimMana
 {
 	PX_PROFILE_ZONE("GpuSimulationController.gpuMemDmaUpParticleSystem", 0);
 
-	CUstream bpStream = 0;
+	hipStream_t bpStream = 0;
 	if (mGpuContext->mGpuBp)
 		bpStream = mGpuContext->mGpuBp->getBpStream();
 	
@@ -2108,20 +2108,20 @@ void PxgSimulationCore::mergeChangedAABBMgHandle()
 {
 	// AD: the scary thing here is that we initialized this during the previous sim step, so the pointers could all be wrong?
 	
-	CUstream stream = mGpuContext->getGpuBroadPhase()->getBpStream();
+	hipStream_t stream = mGpuContext->getGpuBroadPhase()->getBpStream();
 
-	CUdeviceptr updatedActorDescd = mUpdatedActorDescBuffer.getDevicePtr();
-	CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::MERGE_AABBMGR_HANDLES);
+	hipDeviceptr_t updatedActorDescd = mUpdatedActorDescBuffer.getDevicePtr();
+	hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::MERGE_AABBMGR_HANDLES);
 
 	PxCudaKernelParam kernelParams[] =
 	{
 		PX_CUDA_KERNEL_PARAM(updatedActorDescd)
 	};
 
-	CUresult result = mCudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::UPDATE_AABBMGR_HANDLES, 1, 1, PxgSimulationCoreKernelBlockDim::UPDATE_AABBMGR_HANDLES, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+	hipError_t result = mCudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::UPDATE_AABBMGR_HANDLES, 1, 1, PxgSimulationCoreKernelBlockDim::UPDATE_AABBMGR_HANDLES, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
 	PX_UNUSED(result);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 }
 
 //This is called after solver
@@ -2239,7 +2239,7 @@ void PxgSimulationCore::gpuMemDmaBack(PxInt32ArrayPinned& frozenArray,
 
 	if(!mGpuContext->getEnableDirectGPUAPI())
 	{	
-		CUdeviceptr boundsd = mUseGpuBp ? mGpuContext->mGpuBp->getBoundsBuffer().getDevicePtr() : mBoundsBuffer.getDevicePtr();
+		hipDeviceptr_t boundsd = mUseGpuBp ? mGpuContext->mGpuBp->getBoundsBuffer().getDevicePtr() : mBoundsBuffer.getDevicePtr();
 		mCudaContext->memcpyDtoHAsync(bounds.begin(), boundsd, sizeof(PxBounds3)*boundCapacity, mStream);
 		mCudaContext->memcpyDtoHAsync(cachedTransform->begin(), mGpuContext->mGpuNpCore->getTransformCache().getDevicePtr(), sizeof(PxsCachedTransform)*cachedCapacity, mStream);
 	}
@@ -2252,13 +2252,13 @@ void PxgSimulationCore::gpuMemDmaBack(PxInt32ArrayPinned& frozenArray,
 
 	// AD: I'm not sure about that one. It will bring back the list of changed AABB manager handles to CPU, which will then be appended
 	// with changes done using the public API. Then we copy back to GPU. Should be fine to skip if we're not allowing CPU-side updates?
-	CUdeviceptr changeAABBHandlesd = mUseGpuBp ? mGpuContext->getGpuBroadPhase()->getAABBManager()->getChangedAABBMgrHandles() : mChangedAABBMgrHandlesBuffer.getDevicePtr();
+	hipDeviceptr_t changeAABBHandlesd = mUseGpuBp ? mGpuContext->getGpuBroadPhase()->getAABBManager()->getChangedAABBMgrHandles() : mChangedAABBMgrHandlesBuffer.getDevicePtr();
 	mCudaContext->memcpyDtoHAsync(changedAABBMgrHandles.getWords(), changeAABBHandlesd, sizeof(PxU32)*changedAABBMgrHandles.getWordCount(), mStream);
 
 	
 	*mPinnedEvent = 0;
 
-	CUfunction signalFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::BP_SIGNAL_COMPLETE);
+	hipFunction_t signalFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::BP_SIGNAL_COMPLETE);
 
 	void* devicePtr = getMappedDevicePtr(mCudaContext, mPinnedEvent);
 	PxCudaKernelParam signalParams[] =
@@ -2266,9 +2266,9 @@ void PxgSimulationCore::gpuMemDmaBack(PxInt32ArrayPinned& frozenArray,
 		PX_CUDA_KERNEL_PARAM(devicePtr)
 	};
 
-	CUresult resultR = mCudaContext->launchKernel(signalFunction, 1, 1, 1, 1, 1, 1, 0, mStream, signalParams, sizeof(signalParams), 0, PX_FL);
+	hipError_t resultR = mCudaContext->launchKernel(signalFunction, 1, 1, 1, 1, 1, 1, 0, mStream, signalParams, sizeof(signalParams), 0, PX_FL);
 	PX_UNUSED(resultR);
-	PX_ASSERT(resultR == CUDA_SUCCESS);
+	PX_ASSERT(resultR == hipSuccess);
 
 #if SC_GPU_DEBUG
 	mCudaContext->streamSynchronize(mStream);
@@ -2302,21 +2302,21 @@ void PxgSimulationCore::updateBodies(const PxU32 nbUpdatedBodies, const PxU32 nb
 	{
 		if (nbUpdatedBodies > 0 && !mGpuContext->getEnableDirectGPUAPI())
 		{
-			CUdeviceptr descptr = mUpdatedBodiesDescBuffer.getDevicePtr();
+			hipDeviceptr_t descptr = mUpdatedBodiesDescBuffer.getDevicePtr();
 			PxCudaKernelParam kernelParams[] =
 			{
 				PX_CUDA_KERNEL_PARAM(descptr)
 			};
 
-			CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::UPDATE_BODY_EXTERNAL_VELOCITIES);
+			hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::UPDATE_BODY_EXTERNAL_VELOCITIES);
 			//update bodies and shapes
-			CUresult result = mCudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::UPDATE_BODY_EXTERNAL_VELOCITIES, 1, 1, PxgSimulationCoreKernelBlockDim::UPDATE_BODY_EXTERNAL_VELOCITIES, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			hipError_t result = mCudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::UPDATE_BODY_EXTERNAL_VELOCITIES, 1, 1, PxgSimulationCoreKernelBlockDim::UPDATE_BODY_EXTERNAL_VELOCITIES, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
 			PX_UNUSED(result);
 
 #if SC_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU update bodies velocities kernel fail!\n");
 #endif
 		}
@@ -2325,13 +2325,13 @@ void PxgSimulationCore::updateBodies(const PxU32 nbUpdatedBodies, const PxU32 nb
 	{
 		if (nbNewBodies > 0)
 		{
-			CUdeviceptr descptr = mBodiesDescBuffer.getDevicePtr();
+			hipDeviceptr_t descptr = mBodiesDescBuffer.getDevicePtr();
 			PxCudaKernelParam kernelParams[] =
 			{
 				PX_CUDA_KERNEL_PARAM(descptr)
 			};
 
-			CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::UPDATE_BODIES);
+			hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::UPDATE_BODIES);
 			// if direct GPU API is enabled, we must not write stale transform data to the GPU which the DIRECT_API kernel version implements
 			// this kernel will still write the full data in the first step - we check that inside the kernel. Otherwise this would not work with the immutability of the direct-GPU flag.
 			if(mGpuContext->getEnableDirectGPUAPI()) // AD: switch to initialization check as soon as possible, for now let's stay on the safe side.
@@ -2340,13 +2340,13 @@ void PxgSimulationCore::updateBodies(const PxU32 nbUpdatedBodies, const PxU32 nb
 			}
 
 			//update bodies and shapes
-			CUresult result = mCudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::UPDATE_BODIES_AND_SHAPES, 1, 1, PxgSimulationCoreKernelBlockDim::UPDATE_BODIES_AND_SHAPES, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			hipError_t result = mCudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::UPDATE_BODIES_AND_SHAPES, 1, 1, PxgSimulationCoreKernelBlockDim::UPDATE_BODIES_AND_SHAPES, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
 			PX_UNUSED(result);
 
 #if SC_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "updateBodiesLaunch kernel fail!\n");
 #endif
 		}
@@ -2359,26 +2359,26 @@ void PxgSimulationCore::updateArticulations(const PxU32 nbNewArticulations, PxgA
 	if (nbNewArticulations > 0)
 	{
 		void* mappedDofs = getMappedDevicePtr(mCudaContext, dofData);
-		CUdeviceptr descptr = mArticulationDescBuffer.getDevicePtr();
+		hipDeviceptr_t descptr = mArticulationDescBuffer.getDevicePtr();
 		PxCudaKernelParam kernelParams[] =
 		{
 			PX_CUDA_KERNEL_PARAM(descptr),
 			PX_CUDA_KERNEL_PARAM(mappedDofs)
 		};
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::NEW_ARTICULATIONS);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::NEW_ARTICULATIONS);
 
 		PxU32 warpSize = WARP_SIZE;
 		PxU32 numWarpsPerBlock = PxgSimulationCoreKernelBlockDim::NEW_ARTICULATION / warpSize;
 		PxU32 numBlocks = (nbNewArticulations + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
 		//update links and joints for the articulation
-		CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, 32, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, 32, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 		PX_UNUSED(result);
 
 #if SC_GPU_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU update articulation links and joints kernel fail!\n");
 #endif
 		/*const PxU32 numLinks = 10;
@@ -2390,10 +2390,10 @@ void PxgSimulationCore::updateArticulations(const PxU32 nbNewArticulations, PxgA
 		Dy::ArticulationJointCoreData jointData[numLinks];
 
 		mCudaContext->memcpyDtoH(&articulation, mArticulationBuffer.getDevicePtr(), sizeof(PxgArticulation));
-		mCudaContext->memcpyDtoH(links, (CUdeviceptr)articulation.links, sizeof(PxgArticulationLink) * numLinks);
-		mCudaContext->memcpyDtoH(body2Worlds, (CUdeviceptr)articulation.linkBody2Worlds, sizeof(PxTransform) * numLinks);
-		mCudaContext->memcpyDtoH(jointCores, (CUdeviceptr)articulation.joints, sizeof(Dy::ArticulationJointCoreBase) * numLinks);
-		mCudaContext->memcpyDtoH(jointData, (CUdeviceptr)articulation.jointData, sizeof(Dy::ArticulationJointCoreData) * numLinks);
+		mCudaContext->memcpyDtoH(links, (hipDeviceptr_t)articulation.links, sizeof(PxgArticulationLink) * numLinks);
+		mCudaContext->memcpyDtoH(body2Worlds, (hipDeviceptr_t)articulation.linkBody2Worlds, sizeof(PxTransform) * numLinks);
+		mCudaContext->memcpyDtoH(jointCores, (hipDeviceptr_t)articulation.joints, sizeof(Dy::ArticulationJointCoreBase) * numLinks);
+		mCudaContext->memcpyDtoH(jointData, (hipDeviceptr_t)articulation.jointData, sizeof(Dy::ArticulationJointCoreData) * numLinks);
 	
 			
 		PxReal jointPosition[numDofs];
@@ -2405,10 +2405,10 @@ void PxgSimulationCore::updateArticulations(const PxU32 nbNewArticulations, PxgA
 		mCudaContext->memcpyDtoH(&articulation, mArticulationBuffer.getDevicePtr(), sizeof(PxgArticulation));
 
 		PxgArticulationSpatialTendon tendon;
-		mCudaContext->memcpyDtoH(&tendon, (CUdeviceptr)articulation.tendons, sizeof(PxgArticulationSpatialTendon));
+		mCudaContext->memcpyDtoH(&tendon, (hipDeviceptr_t)articulation.tendons, sizeof(PxgArticulationSpatialTendon));
 
 		PxgArticulationAttachment attachments[5];
-		mCudaContext->memcpyDtoH(attachments, (CUdeviceptr)tendon.mAttachments, sizeof(PxgArticulationAttachment) * 5);
+		mCudaContext->memcpyDtoH(attachments, (hipDeviceptr_t)tendon.mAttachments, sizeof(PxgArticulationAttachment) * 5);
 
 		int bob = 0;
 		PX_UNUSED(bob);*/	
@@ -2416,7 +2416,7 @@ void PxgSimulationCore::updateArticulations(const PxU32 nbNewArticulations, PxgA
 
 	if (nbUpdatedArticulations > 0)
 	{
-		CUdeviceptr descptr = mArticulationDescBuffer.getDevicePtr();
+		hipDeviceptr_t descptr = mArticulationDescBuffer.getDevicePtr();
 
 		void* mappedUpdates = getMappedDevicePtr(mCudaContext, updates);
 		void* mappedDofs = getMappedDevicePtr(mCudaContext, dofData);
@@ -2431,19 +2431,19 @@ void PxgSimulationCore::updateArticulations(const PxU32 nbNewArticulations, PxgA
 			PX_CUDA_KERNEL_PARAM(directAPI)
 		};
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::UPDATE_ARTICULATIONS);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::UPDATE_ARTICULATIONS);
 
 		PxU32 warpSize = 32;
 		PxU32 numWarpsPerBlock = PxgSimulationCoreKernelBlockDim::NEW_ARTICULATION / warpSize;
 		PxU32 numBlocks = (nbUpdatedArticulations + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
 		//update links and joints for the articulation
-		CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, 32, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, 32, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 		PX_UNUSED(result);
 
 #if SC_GPU_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU update articulation links and joints kernel fail!\n");
 #endif
 	}
@@ -2452,7 +2452,7 @@ void PxgSimulationCore::updateArticulations(const PxU32 nbNewArticulations, PxgA
 template<typename T>
 static PX_FORCE_INLINE void resizeAndCopyToDeviceBuffer(const PxArray<T, PxVirtualAllocator>& hostBuffer, 
 	PxgTypedCudaBuffer<T>& deviceBuffer,
-	PxCudaContext& cudaContext, CUstream& stream)
+	PxCudaContext& cudaContext, hipStream_t& stream)
 {
 	const size_t bufferByteSize = hostBuffer.size() * sizeof(T);
 
@@ -2556,22 +2556,22 @@ void PxgSimulationCore::updateJointsAndSyncData(
 		const PxU32 numWarpPerBlocks = 8;
 		const PxU32 numBlocks = (maxUpdatedJoints + numWarpPerBlocks - 1) / numWarpPerBlocks;
 
-		CUdeviceptr descptr = mUpdatedJointDescBuffer.getDevicePtr();
+		hipDeviceptr_t descptr = mUpdatedJointDescBuffer.getDevicePtr();
 		PxCudaKernelParam kernelParams[] =
 		{
 			PX_CUDA_KERNEL_PARAM(descptr),
 		};
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::UPDATE_JOINTS);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::UPDATE_JOINTS);
 		//update bodies and shapes
-		CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 2, 1, 32, numWarpPerBlocks, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 2, 1, 32, numWarpPerBlocks, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
 		PX_UNUSED(result);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 #if SC_GPU_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU updateJointsLaunch fail!\n");
 
 #endif
@@ -2634,7 +2634,7 @@ void PxgSimulationCore::updateJointsAndSyncData(
 //this will be called after updateJoint
 void PxgSimulationCore::syncData()
 {
-	CUstream stream = mGpuContext->mGpuSolverCore->getStream();
+	hipStream_t stream = mGpuContext->mGpuSolverCore->getStream();
 
 	synchronizeStreams(mCudaContext, mStream, stream, mDmaEvent);
 }
@@ -2643,28 +2643,28 @@ void PxgSimulationCore::update(bool enableDirectGPUAPI)
 {
 	PX_PROFILE_ZONE("GpuSimulationController.updateTransformCacheAndBoundArray", 0);
 
-	CUdeviceptr descptr = mUpdatedCacheAndBoundsDescBuffer.getDevicePtr();
+	hipDeviceptr_t descptr = mUpdatedCacheAndBoundsDescBuffer.getDevicePtr();
 	PxCudaKernelParam kernelParams[] =
 	{
 		PX_CUDA_KERNEL_PARAM(descptr)
 	};
 
 	//we need to wait for the solver integration kernel finish before we can run any of these kernels
-	CUstream stream = mGpuContext->mGpuSolverCore->getStream();
+	hipStream_t stream = mGpuContext->mGpuSolverCore->getStream();
 
 	synchronizeStreams(mCudaContext, stream, mStream, mEvent);
 		
-	CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::UPDATE_TRANSFORMCACHE_AND_BOUNDARRAY);
+	hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::UPDATE_TRANSFORMCACHE_AND_BOUNDARRAY);
 
 	//update transform cache and bounds
-	CUresult result = mCudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::UPDATE_TRANSFORMCACHE_AND_BOUNDARRAY, 1, 1, PxgSimulationCoreKernelBlockDim::UPDATE_TRANSFORMCACHE_AND_BOUNDARRAY, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+	hipError_t result = mCudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::UPDATE_TRANSFORMCACHE_AND_BOUNDARRAY, 1, 1, PxgSimulationCoreKernelBlockDim::UPDATE_TRANSFORMCACHE_AND_BOUNDARRAY, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
 	PX_UNUSED(result);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 	
 #if SC_GPU_DEBUG
 	result = mCudaContext->streamSynchronize(mStream);
-	if(result != CUDA_SUCCESS)
+	if(result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU updateTransformCacheAndBoundArray kernel fail!\n");
 #endif
 
@@ -2672,10 +2672,10 @@ void PxgSimulationCore::update(bool enableDirectGPUAPI)
 	kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::UPDATE_AABBMGR_HANDLES);
 	result = mCudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::UPDATE_AABBMGR_HANDLES, 1, 1, PxgSimulationCoreKernelBlockDim::UPDATE_AABBMGR_HANDLES, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 #if SC_GPU_DEBUG
 	result = mCudaContext->streamSynchronize(mStream);
-	if(result != CUDA_SUCCESS)
+	if(result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU updateTransformCacheAndBoundArray kernel fail!\n");
 #endif
 
@@ -2685,12 +2685,12 @@ void PxgSimulationCore::update(bool enableDirectGPUAPI)
 		kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_FROZEN_UNFROZEN_HISTOGRAM);
 		result = mCudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::COMPUTE_FROZEN_UNFROZEN_HISTOGRAM, 1, 1, PxgSimulationCoreKernelBlockDim::COMPUTE_FROZEN_UNFROZEN_HISTOGRAM, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::OUTPUT_FROZEN_UNFROZEN_HISTOGRAM);
 		result = mCudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::OUTPUT_FROZEN_UNFROZEN_HISTOGRAM, 1, 1, PxgSimulationCoreKernelBlockDim::OUTPUT_FROZEN_UNFROZEN_HISTOGRAM, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CREATE_FROZEN_UNFROZEN_ARRAY);
 		result = mCudaContext->launchKernel(kernelFunction, PxgSimulationCoreKernelGridDim::CREATE_FROZEN_UNFROZEN_ARRAY, 1, 1, PxgSimulationCoreKernelBlockDim::CREATE_FROZEN_UNFROZEN_ARRAY, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
@@ -2698,10 +2698,10 @@ void PxgSimulationCore::update(bool enableDirectGPUAPI)
 
 	//mCudaContext->streamFlush(mStream);
 
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 #if SC_GPU_DEBUG
 	result = mCudaContext->streamSynchronize(mStream);
-	if(result != CUDA_SUCCESS)
+	if(result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU create frozen/unfrozen array kernel fail!\n");
 #endif
 }
@@ -2725,18 +2725,18 @@ PxgTypedCudaBuffer<PxBounds3>*	PxgSimulationCore::getBoundArrayBuffer()
 
 bool PxgSimulationCore::getRigidDynamicData(void* data, const PxRigidDynamicGPUIndex* gpuIndices,
 											PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, float oneOverDt,
-											CUevent startEvent, CUevent finishEvent) const
+											hipEvent_t startEvent, hipEvent_t finishEvent) const
 {
 	PxScopedCudaLock _lock(*mCudaContextManager);
 	bool success = true;
-	CUresult result = CUDA_SUCCESS;
+	hipError_t result = hipSuccess;
 
 	if(startEvent)
 	{
 		mCudaContext->streamWaitEvent(mStream, startEvent);
 	}
 
-	const CUdeviceptr bodySimBufferDevicePtr = getBodySimBufferDevicePtr();
+	const hipDeviceptr_t bodySimBufferDevicePtr = getBodySimBufferDevicePtr();
 
 	switch(dataType)
 	{
@@ -2750,7 +2750,7 @@ bool PxgSimulationCore::getRigidDynamicData(void* data, const PxRigidDynamicGPUI
 			PX_CUDA_KERNEL_PARAM(nbElements),
 		};
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_GET_GLOBAL_POSE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_GET_GLOBAL_POSE);
 		const PxU32 numBlocks = (nbElements + PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_GLOBAL_POSE - 1) / PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_GLOBAL_POSE;
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_GLOBAL_POSE, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
@@ -2766,7 +2766,7 @@ bool PxgSimulationCore::getRigidDynamicData(void* data, const PxRigidDynamicGPUI
 			PX_CUDA_KERNEL_PARAM(nbElements),
 		};
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_GET_LINVEL);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_GET_LINVEL);
 		const PxU32 numBlocks = (nbElements + PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_LINVEL - 1) / PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_LINVEL;
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_LINVEL, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
@@ -2782,7 +2782,7 @@ bool PxgSimulationCore::getRigidDynamicData(void* data, const PxRigidDynamicGPUI
 			PX_CUDA_KERNEL_PARAM(nbElements),
 		};
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_GET_ANGVEL);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_GET_ANGVEL);
 		const PxU32 numBlocks = (nbElements + PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_ANGVEL - 1) / PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_ANGVEL;
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_ANGVEL, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
@@ -2790,7 +2790,7 @@ bool PxgSimulationCore::getRigidDynamicData(void* data, const PxRigidDynamicGPUI
 	}
 	case PxRigidDynamicGPUAPIReadType::eLINEAR_ACCELERATION:
 	{
-		const CUdeviceptr bodySimPrevVelocitiesBufferDevicePtr = getBodySimPrevVelocitiesBufferDevicePtr();
+		const hipDeviceptr_t bodySimPrevVelocitiesBufferDevicePtr = getBodySimPrevVelocitiesBufferDevicePtr();
 		PX_ASSERT(bodySimPrevVelocitiesBufferDevicePtr);
 
 		PxCudaKernelParam accelKernelParams[] =
@@ -2803,7 +2803,7 @@ bool PxgSimulationCore::getRigidDynamicData(void* data, const PxRigidDynamicGPUI
 			PX_CUDA_KERNEL_PARAM(oneOverDt),
 		};
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_GET_LINACCEL);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_GET_LINACCEL);
 		const PxU32 numBlocks = (nbElements + PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_LINACCEL - 1) / PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_LINACCEL;
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_LINACCEL, 1, 1, 0, mStream, accelKernelParams, sizeof(accelKernelParams), 0, PX_FL);
@@ -2811,7 +2811,7 @@ bool PxgSimulationCore::getRigidDynamicData(void* data, const PxRigidDynamicGPUI
 	}
 	case PxRigidDynamicGPUAPIReadType::eANGULAR_ACCELERATION:
 	{
-		const CUdeviceptr bodySimPrevVelocitiesBufferDevicePtr = getBodySimPrevVelocitiesBufferDevicePtr();
+		const hipDeviceptr_t bodySimPrevVelocitiesBufferDevicePtr = getBodySimPrevVelocitiesBufferDevicePtr();
 		PX_ASSERT(bodySimPrevVelocitiesBufferDevicePtr);
 
 		PxCudaKernelParam accelKernelParams[] =
@@ -2824,7 +2824,7 @@ bool PxgSimulationCore::getRigidDynamicData(void* data, const PxRigidDynamicGPUI
 			PX_CUDA_KERNEL_PARAM(oneOverDt),
 		};
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_GET_ANGACCEL);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_GET_ANGACCEL);
 		const PxU32 numBlocks = (nbElements + PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_ANGACCEL - 1) / PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_ANGACCEL;
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_GET_ANGACCEL, 1, 1, 0, mStream, accelKernelParams, sizeof(accelKernelParams), 0, PX_FL);
@@ -2841,10 +2841,10 @@ bool PxgSimulationCore::getRigidDynamicData(void* data, const PxRigidDynamicGPUI
 	else
 	{
 		result = mCudaContext->streamSynchronize(mStream);
-		if(result != CUDA_SUCCESS)
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "getRigidDynamicData: CUDA error, code %u\n", result);
 
-		success = (result == CUDA_SUCCESS);
+		success = (result == hipSuccess);
 	}
 
 	return success;
@@ -2906,8 +2906,8 @@ void PxgSimulationCore::ovdRigidBodyCallback(const void* PX_RESTRICT data, const
 			////////////////////////////////////////////////////////////////////////////////
 			// Copy the forces and gpuIndices from GPU -> CPU
 			////////////////////////////////////////////////////////////////////////////////
-			PxCUresult resultData = mCudaContext->memcpyDtoH(mOvdDataBuffer.begin(), CUdeviceptr(data), dataBufferBytes);
-			PxCUresult resultIndices = mCudaContext->memcpyDtoH(mOvdIndexBuffer.begin(), CUdeviceptr(gpuIndices), indexBufferBytes);
+			PxCUresult resultData = mCudaContext->memcpyDtoH(mOvdDataBuffer.begin(), hipDeviceptr_t(data), dataBufferBytes);
+			PxCUresult resultIndices = mCudaContext->memcpyDtoH(mOvdIndexBuffer.begin(), hipDeviceptr_t(gpuIndices), indexBufferBytes);
 			if (!resultData && !resultIndices)
 			{
 				////////////////////////////////////////////////////////////////////////////////
@@ -2924,18 +2924,18 @@ void PxgSimulationCore::ovdRigidBodyCallback(const void* PX_RESTRICT data, const
 
 bool PxgSimulationCore::setRigidDynamicData(const void* PX_RESTRICT data, const PxRigidDynamicGPUIndex* PX_RESTRICT gpuIndices,
                                                 PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements,
-                                                CUevent startEvent, CUevent finishEvent)
+                                                hipEvent_t startEvent, hipEvent_t finishEvent)
 {
 	PxScopedCudaLock _lock(*mCudaContextManager);
 	bool success = true;
-	CUresult result = CUDA_SUCCESS;
+	hipError_t result = hipSuccess;
 
 	if(startEvent)
 	{
 		mCudaContext->streamWaitEvent(mStream, startEvent);
 	}
 
-	CUdeviceptr updatedActorDescd = mUpdatedActorDescBuffer.getDevicePtr();
+	hipDeviceptr_t updatedActorDescd = mUpdatedActorDescBuffer.getDevicePtr();
 
 #if PX_SUPPORT_OMNI_PVD
 	ovdRigidBodyCallback(data, gpuIndices, dataType, nbElements);
@@ -2945,7 +2945,7 @@ bool PxgSimulationCore::setRigidDynamicData(const void* PX_RESTRICT data, const 
 	{
 	case PxRigidDynamicGPUAPIWriteType::eGLOBAL_POSE:
 	{
-		CUfunction kernelFunction =
+		hipFunction_t kernelFunction =
 		    mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_SET_GLOBAL_POSE);
 		const PxU32 numBlocks = (nbElements + PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_SET_GLOBAL_POSE - 1) /
 		                        PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_SET_GLOBAL_POSE;
@@ -2965,12 +2965,12 @@ bool PxgSimulationCore::setRigidDynamicData(const void* PX_RESTRICT data, const 
 	}
 	case PxRigidDynamicGPUAPIWriteType::eLINEAR_VELOCITY:
 	{
-		CUfunction kernelFunction =
+		hipFunction_t kernelFunction =
 		    mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_SET_LINVEL);
 		const PxU32 numBlocks = (nbElements + PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_SET_LINVEL - 1) /
 		                        PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_SET_LINVEL;
 
-		const CUdeviceptr bodySimPrevVelocitiesBufferDevicePtr = getBodySimPrevVelocitiesBufferDevicePtr();
+		const hipDeviceptr_t bodySimPrevVelocitiesBufferDevicePtr = getBodySimPrevVelocitiesBufferDevicePtr();
 
 		PxCudaKernelParam kernelParams[] = {
 			PX_CUDA_KERNEL_PARAM(data),
@@ -2987,12 +2987,12 @@ bool PxgSimulationCore::setRigidDynamicData(const void* PX_RESTRICT data, const 
 	}
 	case PxRigidDynamicGPUAPIWriteType::eANGULAR_VELOCITY:
 	{
-		CUfunction kernelFunction =
+		hipFunction_t kernelFunction =
 		    mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_SET_ANGVEL);
 		const PxU32 numBlocks = (nbElements + PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_SET_ANGVEL - 1) /
 		                        PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_SET_ANGVEL;
 
-		const CUdeviceptr bodySimPrevVelocitiesBufferDevicePtr = getBodySimPrevVelocitiesBufferDevicePtr();
+		const hipDeviceptr_t bodySimPrevVelocitiesBufferDevicePtr = getBodySimPrevVelocitiesBufferDevicePtr();
 
 		PxCudaKernelParam kernelParams[] = {
 			PX_CUDA_KERNEL_PARAM(data),
@@ -3009,7 +3009,7 @@ bool PxgSimulationCore::setRigidDynamicData(const void* PX_RESTRICT data, const 
 	}
 	case PxRigidDynamicGPUAPIWriteType::eFORCE:
 	{
-		CUfunction kernelFunction =
+		hipFunction_t kernelFunction =
 		    mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_SET_FORCE);
 		const PxU32 numBlocks = (nbElements + PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_SET_FORCE - 1) /
 		                        PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_SET_FORCE;
@@ -3024,7 +3024,7 @@ bool PxgSimulationCore::setRigidDynamicData(const void* PX_RESTRICT data, const 
 	}
 	case PxRigidDynamicGPUAPIWriteType::eTORQUE:
 	{
-		CUfunction kernelFunction =
+		hipFunction_t kernelFunction =
 		    mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_DYNAMIC_SET_TORQUE);
 		const PxU32 numBlocks = (nbElements + PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_SET_TORQUE - 1) /
 		                        PxgSimulationCoreKernelBlockDim::RIGID_DYNAMIC_SET_TORQUE;
@@ -3048,34 +3048,34 @@ bool PxgSimulationCore::setRigidDynamicData(const void* PX_RESTRICT data, const 
 	else
 	{
 		result = mCudaContext->streamSynchronize(mStream);
-		if(result != CUDA_SUCCESS)
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "setRigidDynamicData: CUDA error, code %u\n", result);
 
-		success = (result == CUDA_SUCCESS);
+		success = (result == hipSuccess);
 	}
 
 	return success;
 }
 
 bool PxgSimulationCore::getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, PxF32 oneOverDt, 
-	PxU32 constraintIdMapHostSize, CUevent startEvent, CUevent finishEvent) const
+	PxU32 constraintIdMapHostSize, hipEvent_t startEvent, hipEvent_t finishEvent) const
 {
 	PxScopedCudaLock _lock(*mCudaContextManager);
 	bool success = true;
-	CUresult result = CUDA_SUCCESS;
+	hipError_t result = hipSuccess;
 
 	if (startEvent)
 	{
 		mCudaContext->streamWaitEvent(mStream, startEvent);
 	}
 
-	const CUdeviceptr constraintIdMap = mGpuConstraintIdMapDevice.getDevicePtr();
+	const hipDeviceptr_t constraintIdMap = mGpuConstraintIdMapDevice.getDevicePtr();
 	// note that the size (number of entries) is not taken from the device side map because
 	// it might be larger than the host side one. Thus, the size of the host side map gets
 	// passed into the method via constraintIdMapHostSize
 
 	PxgSolverCore* solverCore = mGpuContext->getGpuSolverCore();
-	const CUdeviceptr constraintWriteBackBufferDevicePtr = solverCore->getConstraintWriteBackBufferDevicePtr();
+	const hipDeviceptr_t constraintWriteBackBufferDevicePtr = solverCore->getConstraintWriteBackBufferDevicePtr();
 
 	static const PxU16 kernelIDList[] = { PxgKernelIds::D6_JOINT_GET_FORCE, PxgKernelIds::D6_JOINT_GET_TORQUE };
 	static const PxU32 blockDimList[] = { PxgSimulationCoreKernelBlockDim::D6_JOINT_GET_FORCE, PxgSimulationCoreKernelBlockDim::D6_JOINT_GET_TORQUE };
@@ -3098,7 +3098,7 @@ bool PxgSimulationCore::getD6JointData(void* data, const PxD6JointGPUIndex* gpuI
 		PX_CUDA_KERNEL_PARAM(constraintIdMapHostSize)
 	};
 
-	CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(kernelID);
+	hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(kernelID);
 	const PxU32 numBlocks = (nbElements + blockDim - 1) / blockDim;
 
 	result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, blockDim, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
@@ -3110,10 +3110,10 @@ bool PxgSimulationCore::getD6JointData(void* data, const PxD6JointGPUIndex* gpuI
 	else
 	{
 		result = mCudaContext->streamSynchronize(mStream);
-		if(result != CUDA_SUCCESS)
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "getD6JointData: CUDA error, code %u\n", result);
 
-		success = (result == CUDA_SUCCESS);
+		success = (result == hipSuccess);
 	}
 
 	return success;

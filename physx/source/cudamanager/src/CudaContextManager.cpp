@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -49,7 +50,7 @@
 #pragma clang diagnostic ignored "-Wdocumentation"
 #pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
 #endif
-#include <cuda.h>
+#include <hip/hip_runtime.h>
 #if PX_LINUX && PX_CLANG
 #pragma clang diagnostic pop
 #endif
@@ -121,7 +122,7 @@ namespace physx
 static MemTracker mMemTracker;
 #endif
 
-PxCudaContext* createCudaContext(CUdevice device, PxDeviceAllocatorCallback* callback, bool launchSynchronous);
+PxCudaContext* createCudaContext(hipDevice_t device, PxDeviceAllocatorCallback* callback, bool launchSynchronous);
 
 class CudaCtxMgr : public PxCudaContextManager, public PxUserAllocated
 {
@@ -158,7 +159,7 @@ public:
 	virtual unsigned int	getClockRate() const PX_OVERRIDE;
 
 	virtual const char*     getDeviceName() const PX_OVERRIDE;
-	virtual CUdevice		getDevice() const PX_OVERRIDE;
+	virtual hipDevice_t		getDevice() const PX_OVERRIDE;
 
 	virtual void			setUsingConcurrentStreams(bool) PX_OVERRIDE;
 	virtual bool			getUsingConcurrentStreams() const PX_OVERRIDE;
@@ -167,13 +168,13 @@ public:
 
 	virtual void            release() PX_OVERRIDE;
 
-	virtual CUcontext		getContext() PX_OVERRIDE { return mCtx; }
+	virtual hipCtx_t		getContext() PX_OVERRIDE { return mCtx; }
 
 	virtual PxCudaContext*  getCudaContext() PX_OVERRIDE { return mCudaCtx; }
 
-	CUmodule* getCuModules() PX_OVERRIDE { return mCuModules.begin(); }
+	hipModule_t* getCuModules() PX_OVERRIDE { return mCuModules.begin(); }
 
-	virtual CUdeviceptr     getMappedDevicePtr(void* pinnedHostBuffer) PX_OVERRIDE;
+	virtual hipDeviceptr_t     getMappedDevicePtr(void* pinnedHostBuffer) PX_OVERRIDE;
 
 protected:
 	virtual void* allocDeviceBufferInternal(PxU64 numBytes, const char* filename, PxI32 line) PX_OVERRIDE;
@@ -182,26 +183,26 @@ protected:
 	virtual void freeDeviceBufferInternal(void* deviceBuffer) PX_OVERRIDE;
 	virtual void freePinnedHostBufferInternal(void* pinnedHostBuffer) PX_OVERRIDE;
 
-	virtual void clearDeviceBufferAsyncInternal(void* deviceBuffer, PxU32 numBytes, CUstream stream, PxI32 value) PX_OVERRIDE;
+	virtual void clearDeviceBufferAsyncInternal(void* deviceBuffer, PxU32 numBytes, hipStream_t stream, PxI32 value) PX_OVERRIDE;
 
-	virtual void copyDToHAsyncInternal(void* hostBuffer, const void* deviceBuffer, PxU32 numBytes, CUstream stream) PX_OVERRIDE;
-	virtual void copyHToDAsyncInternal(void* deviceBuffer, const void* hostBuffer, PxU32 numBytes, CUstream stream) PX_OVERRIDE;
-	virtual void copyDToDAsyncInternal(void* dstDeviceBuffer, const void* srcDeviceBuffer, PxU32 numBytes, CUstream stream) PX_OVERRIDE;
+	virtual void copyDToHAsyncInternal(void* hostBuffer, const void* deviceBuffer, PxU32 numBytes, hipStream_t stream) PX_OVERRIDE;
+	virtual void copyHToDAsyncInternal(void* deviceBuffer, const void* hostBuffer, PxU32 numBytes, hipStream_t stream) PX_OVERRIDE;
+	virtual void copyDToDAsyncInternal(void* dstDeviceBuffer, const void* srcDeviceBuffer, PxU32 numBytes, hipStream_t stream) PX_OVERRIDE;
 
 	virtual void copyDToHInternal(void* hostBuffer, const void* deviceBuffer, PxU32 numBytes) PX_OVERRIDE;
 	virtual void copyHToDInternal(void* deviceBuffer, const void* hostBuffer, PxU32 numBytes) PX_OVERRIDE;
 
-	virtual void memsetD8AsyncInternal(void* dstDeviceBuffer, const PxU8& value, PxU32 numBytes, CUstream stream) PX_OVERRIDE;
-	virtual void memsetD32AsyncInternal(void* dstDeviceBuffer, const PxU32& value, PxU32 numIntegers, CUstream stream) PX_OVERRIDE;
+	virtual void memsetD8AsyncInternal(void* dstDeviceBuffer, const PxU8& value, PxU32 numBytes, hipStream_t stream) PX_OVERRIDE;
+	virtual void memsetD32AsyncInternal(void* dstDeviceBuffer, const PxU32& value, PxU32 numIntegers, hipStream_t stream) PX_OVERRIDE;
 
 private:
 
-	PxArray<CUmodule>	mCuModules;
+	PxArray<hipModule_t>	mCuModules;
 
 	bool            mIsValid;
 	bool			mOwnContext;
-	CUdevice        mDevHandle;
-	CUcontext       mCtx;
+	hipDevice_t        mDevHandle;
+	hipCtx_t       mCtx;
 	PxCudaContext*	mCudaCtx;
 
 	/* Cached device attributes, so threads can query w/o context */
@@ -224,11 +225,11 @@ private:
 #endif
 };
 
-CUdeviceptr CudaCtxMgr::getMappedDevicePtr(void* pinnedHostBuffer)
+hipDeviceptr_t CudaCtxMgr::getMappedDevicePtr(void* pinnedHostBuffer)
 {
-	CUdeviceptr dPtr = 0;
+	hipDeviceptr_t dPtr = 0;
 	PxCUresult result = getCudaContext()->memHostGetDevicePointer(&dPtr, pinnedHostBuffer, 0);
-	if (result != CUDA_SUCCESS)
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "Getting mapped device pointer failed with error code %i!\n", PxI32(result));
 	return dPtr;
 }
@@ -238,9 +239,9 @@ void* CudaCtxMgr::allocDeviceBufferInternal(PxU64 numBytes, const char* filename
 {
 	numBytes = PxMax(PxU64(1u), numBytes);
 	PxScopedCudaLock lock(*this);
-	CUdeviceptr ptr;
+	hipDeviceptr_t ptr;
 	PxCUresult result = getCudaContext()->memAlloc(&ptr, numBytes);
-	if (result != CUDA_SUCCESS)
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "Mem allocation failed with error code %i!\n", PxI32(result));
 	void* deviceBuffer = reinterpret_cast<void*>(ptr);
 #if PX_DEBUG
@@ -260,7 +261,7 @@ void* CudaCtxMgr::allocPinnedHostBufferInternal(PxU64 numBytes, const char* file
 	const unsigned int cuMemhostallocDevicemap = 0x02;
 	const unsigned int cuMemhostallocPortable = 0x01;
 	PxCUresult result = getCudaContext()->memHostAlloc(&pinnedHostBuffer, numBytes, cuMemhostallocDevicemap | cuMemhostallocPortable);
-	if (result != CUDA_SUCCESS)
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "Mem allocation failed with error code %i!\n", PxI32(result));
 
 #if PX_DEBUG
@@ -277,8 +278,8 @@ void CudaCtxMgr::freeDeviceBufferInternal(void* deviceBuffer)
 	if (!deviceBuffer)
 		return;
 	PxScopedCudaLock lock(*this);
-	PxCUresult result = getCudaContext()->memFree(CUdeviceptr(deviceBuffer));
-	if (result != CUDA_SUCCESS)
+	PxCUresult result = getCudaContext()->memFree(hipDeviceptr_t(deviceBuffer));
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "Mem free failed with error code %i!\n", PxI32(result));
 #if PX_DEBUG
 	mMemTracker.unregisterMemory(deviceBuffer, true);
@@ -290,49 +291,49 @@ void CudaCtxMgr::freePinnedHostBufferInternal(void* pinnedHostBuffer)
 		return;
 	PxScopedCudaLock lock(*this);
 	PxCUresult result = getCudaContext()->memFreeHost(pinnedHostBuffer);
-	if (result != CUDA_SUCCESS)
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "Mem free failed with error code %i!\n", PxI32(result));
 #if PX_DEBUG
 	mMemTracker.unregisterMemory(pinnedHostBuffer, false);
 #endif
 }
 
-void CudaCtxMgr::clearDeviceBufferAsyncInternal(void* deviceBuffer, PxU32 numBytes, CUstream stream, PxI32 value)
+void CudaCtxMgr::clearDeviceBufferAsyncInternal(void* deviceBuffer, PxU32 numBytes, hipStream_t stream, PxI32 value)
 {
 	if (!deviceBuffer)
 		return;
 	PxScopedCudaLock lock(*this);
 	PX_ASSERT(numBytes % 4 == 0);
-	PxCUresult result = getCudaContext()->memsetD32Async(CUdeviceptr(deviceBuffer), value, numBytes >> 2, stream);
-	if (result != CUDA_SUCCESS)
+	PxCUresult result = getCudaContext()->memsetD32Async(hipDeviceptr_t(deviceBuffer), value, numBytes >> 2, stream);
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "Mem set failed with error code %i!\n", PxI32(result));
 }
 
-void CudaCtxMgr::copyDToHAsyncInternal(void* hostBuffer, const void* deviceBuffer, PxU32 numBytes, CUstream stream)
+void CudaCtxMgr::copyDToHAsyncInternal(void* hostBuffer, const void* deviceBuffer, PxU32 numBytes, hipStream_t stream)
 {
 	if (!deviceBuffer || !hostBuffer)
 		return;
 	PxScopedCudaLock lock(*this);
-	PxCUresult result = getCudaContext()->memcpyDtoHAsync(hostBuffer, CUdeviceptr(deviceBuffer), numBytes, stream);
-	if (result != CUDA_SUCCESS)
+	PxCUresult result = getCudaContext()->memcpyDtoHAsync(hostBuffer, hipDeviceptr_t(deviceBuffer), numBytes, stream);
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyDtoHAsync set failed with error code %i!\n", PxI32(result));
 }
-void CudaCtxMgr::copyHToDAsyncInternal(void* deviceBuffer, const void* hostBuffer, PxU32 numBytes, CUstream stream)
+void CudaCtxMgr::copyHToDAsyncInternal(void* deviceBuffer, const void* hostBuffer, PxU32 numBytes, hipStream_t stream)
 {
 	if (!deviceBuffer || !hostBuffer)
 		return;
 	PxScopedCudaLock lock(*this);
-	PxCUresult result = getCudaContext()->memcpyHtoDAsync(CUdeviceptr(deviceBuffer), hostBuffer, numBytes, stream);
-	if (result != CUDA_SUCCESS)
+	PxCUresult result = getCudaContext()->memcpyHtoDAsync(hipDeviceptr_t(deviceBuffer), hostBuffer, numBytes, stream);
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyHtoDAsync set failed with error code %i!\n", PxI32(result));
 }
-void CudaCtxMgr::copyDToDAsyncInternal(void* dstDeviceBuffer, const void* srcDeviceBuffer, PxU32 numBytes, CUstream stream)
+void CudaCtxMgr::copyDToDAsyncInternal(void* dstDeviceBuffer, const void* srcDeviceBuffer, PxU32 numBytes, hipStream_t stream)
 {
 	if (!srcDeviceBuffer || !dstDeviceBuffer)
 		return;
 	PxScopedCudaLock lock(*this);
-	PxCUresult result = getCudaContext()->memcpyDtoDAsync(CUdeviceptr(dstDeviceBuffer), CUdeviceptr(srcDeviceBuffer), numBytes, stream);
-	if (result != CUDA_SUCCESS)
+	PxCUresult result = getCudaContext()->memcpyDtoDAsync(hipDeviceptr_t(dstDeviceBuffer), hipDeviceptr_t(srcDeviceBuffer), numBytes, stream);
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyDtoDAsync set failed with error code %i!\n", PxI32(result));
 }
 
@@ -341,8 +342,8 @@ void CudaCtxMgr::copyDToHInternal(void* hostBuffer, const void* deviceBuffer, Px
 	if (!deviceBuffer || !hostBuffer)
 		return;
 	PxScopedCudaLock lock(*this);
-	PxCUresult result = getCudaContext()->memcpyDtoH(hostBuffer, CUdeviceptr(deviceBuffer), numBytes);
-	if (result != CUDA_SUCCESS)
+	PxCUresult result = getCudaContext()->memcpyDtoH(hostBuffer, hipDeviceptr_t(deviceBuffer), numBytes);
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyDtoH set failed with error code %i!\n", PxI32(result));
 }
 void CudaCtxMgr::copyHToDInternal(void* deviceBuffer, const void* hostBuffer, PxU32 numBytes)
@@ -350,29 +351,29 @@ void CudaCtxMgr::copyHToDInternal(void* deviceBuffer, const void* hostBuffer, Px
 	if (!deviceBuffer || !hostBuffer)
 		return;
 	PxScopedCudaLock lock(*this);
-	PxCUresult result = getCudaContext()->memcpyHtoD(CUdeviceptr(deviceBuffer), hostBuffer, numBytes);
-	if (result != CUDA_SUCCESS)
+	PxCUresult result = getCudaContext()->memcpyHtoD(hipDeviceptr_t(deviceBuffer), hostBuffer, numBytes);
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyHtoD set failed with error code %i!\n", PxI32(result));
 }
 
-void CudaCtxMgr::memsetD8AsyncInternal(void* dstDeviceBuffer, const PxU8& value, PxU32 numBytes, CUstream stream)
+void CudaCtxMgr::memsetD8AsyncInternal(void* dstDeviceBuffer, const PxU8& value, PxU32 numBytes, hipStream_t stream)
 {
 	if (!dstDeviceBuffer)
 		return;
 	PxScopedCudaLock lock(*this);
-	PxCUresult result = getCudaContext()->memsetD8Async(CUdeviceptr(dstDeviceBuffer), value, numBytes, stream);
-	if (result != CUDA_SUCCESS)
+	PxCUresult result = getCudaContext()->memsetD8Async(hipDeviceptr_t(dstDeviceBuffer), value, numBytes, stream);
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "Memset failed with error code %i!\n", PxI32(result));
 
 }
 
-void CudaCtxMgr::memsetD32AsyncInternal(void* dstDeviceBuffer, const PxU32& value, PxU32 numIntegers, CUstream stream)
+void CudaCtxMgr::memsetD32AsyncInternal(void* dstDeviceBuffer, const PxU32& value, PxU32 numIntegers, hipStream_t stream)
 {
 	if (!dstDeviceBuffer)
 		return;
 	PxScopedCudaLock lock(*this);
-	PxCUresult result = getCudaContext()->memsetD32Async(CUdeviceptr(dstDeviceBuffer), value, numIntegers, stream);
-	if (result != CUDA_SUCCESS)
+	PxCUresult result = getCudaContext()->memsetD32Async(hipDeviceptr_t(dstDeviceBuffer), value, numIntegers, stream);
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "Memset failed with error code %i!\n", PxI32(result));
 }
 
@@ -471,7 +472,7 @@ const char* CudaCtxMgr::getDeviceName() const
 	}
 }
 
-CUdevice CudaCtxMgr::getDevice() const
+hipDevice_t CudaCtxMgr::getDevice() const
 {
 	if (mIsValid)
 	{
@@ -495,11 +496,11 @@ bool CudaCtxMgr::getUsingConcurrentStreams() const
 
 void CudaCtxMgr::getDeviceMemoryInfo(size_t& free, size_t& total) const
 {
-	cuMemGetInfo(&free, &total);
+	hipMemGetInfo(&free, &total);
 }
 
-#define CUT_SAFE_CALL(call)  { CUresult ret = call;	\
-		if( CUDA_SUCCESS != ret ) { PX_ASSERT(0); } }
+#define CUT_SAFE_CALL(call)  { hipError_t ret = call;	\
+		if( hipSuccess != ret ) { PX_ASSERT(0); } }
 
 /* If a context is not provided, an ordinal must be given */
 CudaCtxMgr::CudaCtxMgr(const PxCudaContextManagerDesc& desc, PxErrorCallback& errorCallback, bool launchSynchronous)
@@ -510,7 +511,7 @@ CudaCtxMgr::CudaCtxMgr(const PxCudaContextManagerDesc& desc, PxErrorCallback& er
 	, mPushPopCount(0)
 #endif
 {
-	CUresult status;
+	hipError_t status;
 	mIsValid = false;
 	mDeviceName[0] = 0;
 
@@ -524,7 +525,7 @@ CudaCtxMgr::CudaCtxMgr(const PxCudaContextManagerDesc& desc, PxErrorCallback& er
 
 	if (desc.ctx == 0)
 	{
-		int flags = CU_CTX_LMEM_RESIZE_TO_MAX | CU_CTX_SCHED_BLOCKING_SYNC | CU_CTX_MAP_HOST;
+		int flags = hipDeviceLmemResizeToMax | hipDeviceScheduleBlockingSync | hipDeviceMapHost;
 		class FoundationErrorReporter : public PxErrorCallback
 		{
 		public:
@@ -554,29 +555,29 @@ CudaCtxMgr::CudaCtxMgr(const PxCudaContextManagerDesc& desc, PxErrorCallback& er
 			return;
 		}
 
-		status = cuInit(0);
-		if (CUDA_SUCCESS != status)
+		status = hipInit(0);
+		if (hipSuccess != status)
 		{
 			char buffer[128];
-			physx::Pxsnprintf(buffer, 128, "cuInit failed with error code %i", status);
+			physx::Pxsnprintf(buffer, 128, "hipInit failed with error code %i", status);
 			errorCallback.reportError(PxErrorCode::eDEBUG_WARNING, buffer, PX_FL);
 			return;
 		}
 
 		{
-			status = cuDeviceGet(&mDevHandle, devOrdinal);
-			if (CUDA_SUCCESS != status)
+			status = hipDeviceGet(&mDevHandle, devOrdinal);
+			if (hipSuccess != status)
 			{
-				errorCallback.reportError(PxErrorCode::eDEBUG_WARNING, "cuDeviceGet failed",__FILE__,__LINE__);
+				errorCallback.reportError(PxErrorCode::eDEBUG_WARNING, "hipDeviceGet failed",__FILE__,__LINE__);
 				return;
 			}
 			
-			status = cuCtxCreate(&mCtx, (unsigned int)flags, mDevHandle);
-			if (CUDA_SUCCESS != status)
+			status = hipCtxCreate(&mCtx, (unsigned int)flags, mDevHandle);
+			if (hipSuccess != status)
 			{
 				const size_t bufferSize = 128;
 				char errorMsg[bufferSize];
-				physx::Pxsnprintf(errorMsg, bufferSize, "cuCtxCreate failed with error %i.", status);
+				physx::Pxsnprintf(errorMsg, bufferSize, "hipCtxCreate failed with error %i.", status);
 				errorCallback.reportError(PxErrorCode::eDEBUG_WARNING, errorMsg, PX_FL);
 				return;
 			}
@@ -586,10 +587,10 @@ CudaCtxMgr::CudaCtxMgr(const PxCudaContextManagerDesc& desc, PxErrorCallback& er
 	else
 	{
 		mCtx = *desc.ctx;
-		status = cuCtxGetDevice(&mDevHandle);
-		if (CUDA_SUCCESS != status)
+		status = hipCtxGetDevice(&mDevHandle);
+		if (hipSuccess != status)
 		{
-			errorCallback.reportError(PxErrorCode::eDEBUG_WARNING, "cuCtxGetDevice failed",__FILE__,__LINE__);
+			errorCallback.reportError(PxErrorCode::eDEBUG_WARNING, "hipCtxGetDevice failed",__FILE__,__LINE__);
 			return;
 		}
 	}
@@ -598,8 +599,8 @@ CudaCtxMgr::CudaCtxMgr(const PxCudaContextManagerDesc& desc, PxErrorCallback& er
 	mCudaCtx = createCudaContext(mDevHandle, desc.deviceAllocator, launchSynchronous);
 	
 	// Verify we can at least allocate a CUDA event from this context
-	CUevent testEvent;
-	if (CUDA_SUCCESS == mCudaCtx->eventCreate(&testEvent, 0))
+	hipEvent_t testEvent;
+	if (hipSuccess == mCudaCtx->eventCreate(&testEvent, 0))
 	{
 		mCudaCtx->eventDestroy(testEvent);
 	}
@@ -609,27 +610,27 @@ CudaCtxMgr::CudaCtxMgr(const PxCudaContextManagerDesc& desc, PxErrorCallback& er
 		return;
 	}
 
-	status = cuDeviceGetName(mDeviceName, sizeof(mDeviceName), mDevHandle);
-	if (CUDA_SUCCESS != status)
+	status = hipDeviceGetName(mDeviceName, sizeof(mDeviceName), mDevHandle);
+	if (hipSuccess != status)
 	{
-		errorCallback.reportError(PxErrorCode::eDEBUG_WARNING, "cuDeviceGetName failed",__FILE__,__LINE__);
+		errorCallback.reportError(PxErrorCode::eDEBUG_WARNING, "hipDeviceGetName failed",__FILE__,__LINE__);
 		return;
 	}
 
-	cuDeviceGetAttribute(&mSharedMemPerBlock, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK, mDevHandle);
-	cuDeviceGetAttribute(&mSharedMemPerMultiprocessor, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_MULTIPROCESSOR, mDevHandle);
-	cuDeviceGetAttribute(&mClockRate, CU_DEVICE_ATTRIBUTE_CLOCK_RATE, mDevHandle);
-	cuDeviceGetAttribute(&mComputeCapMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, mDevHandle);
-	cuDeviceGetAttribute(&mComputeCapMinor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, mDevHandle);
-	cuDeviceGetAttribute(&mIsIntegrated, CU_DEVICE_ATTRIBUTE_INTEGRATED, mDevHandle);
-	cuDeviceGetAttribute(&mCanMapHost, CU_DEVICE_ATTRIBUTE_CAN_MAP_HOST_MEMORY, mDevHandle);
-	cuDeviceGetAttribute(&mMultiprocessorCount, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, mDevHandle);
-	cuDeviceGetAttribute(&mMaxThreadsPerBlock, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, mDevHandle);
+	hipDeviceGetAttribute(&mSharedMemPerBlock, hipDeviceAttributeMaxSharedMemoryPerBlock, mDevHandle);
+	hipDeviceGetAttribute(&mSharedMemPerMultiprocessor, hipDeviceAttributeMaxSharedMemoryPerMultiprocessor, mDevHandle);
+	hipDeviceGetAttribute(&mClockRate, hipDeviceAttributeClockRate, mDevHandle);
+	hipDeviceGetAttribute(&mComputeCapMajor, hipDeviceAttributeComputeCapabilityMajor, mDevHandle);
+	hipDeviceGetAttribute(&mComputeCapMinor, hipDeviceAttributeComputeCapabilityMinor, mDevHandle);
+	hipDeviceGetAttribute(&mIsIntegrated, hipDeviceAttributeIntegrated, mDevHandle);
+	hipDeviceGetAttribute(&mCanMapHost, hipDeviceAttributeCanMapHostMemory, mDevHandle);
+	hipDeviceGetAttribute(&mMultiprocessorCount, hipDeviceAttributeMultiprocessorCount, mDevHandle);
+	hipDeviceGetAttribute(&mMaxThreadsPerBlock, hipDeviceAttributeMaxThreadsPerBlock, mDevHandle);
 
-	status = cuDeviceTotalMem((size_t*)&mTotalMemBytes, mDevHandle);
-	if (CUDA_SUCCESS != status)
+	status = hipDeviceTotalMem((size_t*)&mTotalMemBytes, mDevHandle);
+	if (hipSuccess != status)
 	{
-		errorCallback.reportError(PxErrorCode::eDEBUG_WARNING, "cuDeviceTotalMem failed",__FILE__,__LINE__);
+		errorCallback.reportError(PxErrorCode::eDEBUG_WARNING, "hipDeviceTotalMem failed",__FILE__,__LINE__);
 		return;
 	}
 
@@ -646,7 +647,7 @@ CudaCtxMgr::CudaCtxMgr(const PxCudaContextManagerDesc& desc, PxErrorCallback& er
 	mContextRefCountTls = PxTlsAlloc();
 	mIsValid = true;
 
-	// Formally load the CUDA modules, get CUmodule handles
+	// Formally load the CUDA modules, get hipModule_t handles
 	{
 		PxScopedCudaLock lock(*this);
 		const PxU32 moduleTableSize = PxGpuGetCudaModuleTableSize();
@@ -654,7 +655,7 @@ CudaCtxMgr::CudaCtxMgr(const PxCudaContextManagerDesc& desc, PxErrorCallback& er
 		mCuModules.resize(moduleTableSize, NULL);
 		for (PxU32 i = 0 ; i < moduleTableSize ; ++i)
 		{
-			CUresult ret = CUDA_ERROR_UNKNOWN;
+			hipError_t ret = hipErrorUnknown;
 
 			// Make sure that moduleTable[i] is not null
 			if (moduleTable[i])
@@ -662,7 +663,7 @@ CudaCtxMgr::CudaCtxMgr(const PxCudaContextManagerDesc& desc, PxErrorCallback& er
 				ret = mCudaCtx->moduleLoadDataEx(&mCuModules[i], moduleTable[i], 0, NULL, NULL);
 			}
 
-			if (ret != CUDA_SUCCESS && ret != CUDA_ERROR_NO_BINARY_FOR_GPU)
+			if (ret != hipSuccess && ret != hipErrorNoBinaryForGpu)
 			{
 				const size_t bufferSize = 256;
 				char errorMsg[bufferSize];
@@ -692,21 +693,21 @@ bool CudaCtxMgr::safeDelayImport(PxErrorCallback& errorCallback)
 		return false;
 	}
 
-	typedef CUresult(CUDAAPI * pfnCuDriverGetVersion_t)(int*);
-	pfnCuDriverGetVersion_t pfnCuDriverGetVersion = (pfnCuDriverGetVersion_t) GetProcAddress(hCudaDriver, "cuDriverGetVersion");
+	typedef hipError_t(CUDAAPI * pfnCuDriverGetVersion_t)(int*);
+	pfnCuDriverGetVersion_t pfnCuDriverGetVersion = (pfnCuDriverGetVersion_t) GetProcAddress(hCudaDriver, "hipDriverGetVersion");
 	if (!pfnCuDriverGetVersion)
 	{
-		errorCallback.reportError(PxErrorCode::eINTERNAL_ERROR, "cuDriverGetVersion missing in nvcuda.dll.", PX_FL);
+		errorCallback.reportError(PxErrorCode::eINTERNAL_ERROR, "hipDriverGetVersion missing in nvcuda.dll.", PX_FL);
 		return false;
 	}
 
 	#if PX_A64
-		CUresult status = cuDriverGetVersion(&mDriverVersion);
+		hipError_t status = hipDriverGetVersion(&mDriverVersion);
 	#else
-		CUresult status = pfnCuDriverGetVersion(&mDriverVersion);
+		hipError_t status = pfnCuDriverGetVersion(&mDriverVersion);
 	#endif
 
-	if (status != CUDA_SUCCESS)
+	if (status != hipSuccess)
 	{
 		errorCallback.reportError(PxErrorCode::eINTERNAL_ERROR, "Retrieving CUDA driver version failed.", PX_FL);
 		return false;
@@ -727,8 +728,8 @@ bool CudaCtxMgr::safeDelayImport(PxErrorCallback& errorCallback)
 	}
 
 	/* Now trigger delay import and API binding */
-	status = cuDriverGetVersion(&mDriverVersion);
-	if (status != CUDA_SUCCESS)
+	status = hipDriverGetVersion(&mDriverVersion);
+	if (status != hipSuccess)
 	{
 		errorCallback.reportError(PxErrorCode::eINTERNAL_ERROR, "Failed to bind CUDA API.", PX_FL);
 		return false;
@@ -758,8 +759,8 @@ CudaCtxMgr::~CudaCtxMgr()
 			PxScopedCudaLock lock(*this);
 			for(PxU32 i = 0; i < mCuModules.size(); i++)
 			{
-				CUresult ret = mCudaCtx->moduleUnload(mCuModules[i]);
-				if(ret != CUDA_SUCCESS)
+				hipError_t ret = mCudaCtx->moduleUnload(mCuModules[i]);
+				if(ret != hipSuccess)
 				{
 					char msg[128];
 					physx::Pxsnprintf(msg, 128, "Failed to unload CUDA module data, returned %i.", ret);
@@ -774,7 +775,7 @@ CudaCtxMgr::~CudaCtxMgr()
 
 	if (mOwnContext)
 	{
-		CUT_SAFE_CALL(cuCtxDestroy(mCtx));
+		CUT_SAFE_CALL(hipCtxDestroy(mCtx));
 	}
 
 	PxTlsFree(mContextRefCountTls);
@@ -800,20 +801,20 @@ bool CudaCtxMgr::tryAcquireContext()
 	// below in the set call.
 	size_t refCount = PxTlsGetValue(mContextRefCountTls);
 
-	CUresult result = CUDA_SUCCESS;
+	hipError_t result = hipSuccess;
 
 #if PX_DEBUG
-	result = cuCtxPushCurrent(mCtx);
+	result = hipCtxPushCurrent(mCtx);
 	PxAtomicIncrement(&mPushPopCount);
 #else
 	if (refCount == 0)
 	{
-		result = cuCtxPushCurrent(mCtx);
+		result = hipCtxPushCurrent(mCtx);
 	}
 #endif
 	PxTlsSetValue(mContextRefCountTls, ++refCount);
 
-	return result == CUDA_SUCCESS;
+	return result == hipSuccess;
 }
 
 void CudaCtxMgr::releaseContext()
@@ -821,14 +822,14 @@ void CudaCtxMgr::releaseContext()
 	size_t refCount = PxTlsGetValue(mContextRefCountTls);
 
 #if PX_DEBUG
-	CUcontext ctx = 0;
-	CUT_SAFE_CALL(cuCtxPopCurrent(&ctx));
+	hipCtx_t ctx = 0;
+	CUT_SAFE_CALL(hipCtxPopCurrent(&ctx));
 	PxAtomicDecrement(&mPushPopCount);
 #else
 	if (--refCount == 0)
 	{
-		CUcontext ctx = 0;
-		CUT_SAFE_CALL(cuCtxPopCurrent(&ctx));
+		hipCtx_t ctx = 0;
+		CUT_SAFE_CALL(hipCtxPopCurrent(&ctx));
 	}
 #endif
 	PxTlsSetValue(mContextRefCountTls, refCount);
@@ -837,7 +838,7 @@ void CudaCtxMgr::releaseContext()
 class CudaCtx : public PxCudaContext, public PxUserAllocated
 {
 private:
-	CUresult mLastResult;
+	hipError_t mLastResult;
 	bool mLaunchSynchronous;
 	bool mIsInAbortMode;
 
@@ -847,33 +848,33 @@ public:
 
 	// PxCudaContext
 	void		release()	PX_OVERRIDE PX_FINAL;
-	PxCUresult	memAlloc(CUdeviceptr* dptr, size_t bytesize)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	memFree(CUdeviceptr dptr)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	memAlloc(hipDeviceptr_t* dptr, size_t bytesize)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	memFree(hipDeviceptr_t dptr)	PX_OVERRIDE PX_FINAL;
 	PxCUresult	memHostAlloc(void** pp, size_t bytesize, unsigned int Flags)	PX_OVERRIDE PX_FINAL;
 	PxCUresult	memFreeHost(void* p)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	memHostGetDevicePointer(CUdeviceptr* pdptr, void* p, unsigned int Flags)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	moduleLoadDataEx(CUmodule* module, const void* image, unsigned int numOptions, PxCUjit_option* options, void** optionValues)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	moduleGetFunction(CUfunction* hfunc, CUmodule hmod, const char* name)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	moduleUnload(CUmodule hmod)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	streamCreate(CUstream* phStream, unsigned int Flags)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	streamCreateWithPriority(CUstream* phStream, unsigned int flags, int priority)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	streamFlush(CUstream hStream)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	streamWaitEvent(CUstream hStream, CUevent hEvent, unsigned int Flags)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	streamWaitEvent(CUstream hStream, CUevent hEvent)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	streamDestroy(CUstream hStream)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	streamSynchronize(CUstream hStream)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	eventCreate(CUevent* phEvent, unsigned int Flags)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	eventRecord(CUevent hEvent, CUstream hStream)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	eventQuery(CUevent hEvent)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	eventSynchronize(CUevent hEvent)	PX_OVERRIDE PX_FINAL;
-	PxCUresult	eventDestroy(CUevent hEvent)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	memHostGetDevicePointer(hipDeviceptr_t* pdptr, void* p, unsigned int Flags)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	moduleLoadDataEx(hipModule_t* module, const void* image, unsigned int numOptions, PxCUjit_option* options, void** optionValues)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	moduleGetFunction(hipFunction_t* hfunc, hipModule_t hmod, const char* name)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	moduleUnload(hipModule_t hmod)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	streamCreate(hipStream_t* phStream, unsigned int Flags)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	streamCreateWithPriority(hipStream_t* phStream, unsigned int flags, int priority)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	streamFlush(hipStream_t hStream)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	streamWaitEvent(hipStream_t hStream, hipEvent_t hEvent, unsigned int Flags)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	streamWaitEvent(hipStream_t hStream, hipEvent_t hEvent)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	streamDestroy(hipStream_t hStream)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	streamSynchronize(hipStream_t hStream)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	eventCreate(hipEvent_t* phEvent, unsigned int Flags)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	eventRecord(hipEvent_t hEvent, hipStream_t hStream)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	eventQuery(hipEvent_t hEvent)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	eventSynchronize(hipEvent_t hEvent)	PX_OVERRIDE PX_FINAL;
+	PxCUresult	eventDestroy(hipEvent_t hEvent)	PX_OVERRIDE PX_FINAL;
 
 	PxCUresult launchKernel(
-		CUfunction f,
+		hipFunction_t f,
 		PxU32 gridDimX, PxU32 gridDimY, PxU32 gridDimZ,
 		PxU32 blockDimX, PxU32 blockDimY, PxU32 blockDimZ,
 		PxU32 sharedMemBytes,
-		CUstream hStream,
+		hipStream_t hStream,
 		PxCudaKernelParam* kernelParams,
 		size_t kernelParamsSizeInBytes,
 		void** extra,
@@ -882,30 +883,30 @@ public:
 	)	PX_OVERRIDE PX_FINAL;
 
 	PxCUresult launchKernel(
-		CUfunction f,
+		hipFunction_t f,
 		PxU32 gridDimX, PxU32 gridDimY, PxU32 gridDimZ,
 		PxU32 blockDimX, PxU32 blockDimY, PxU32 blockDimZ,
 		PxU32 sharedMemBytes,
-		CUstream hStream,
+		hipStream_t hStream,
 		void** kernelParams,
 		void** extra,
 		const char* file,
 		int line
 	)	PX_OVERRIDE PX_FINAL;
 	
-	PxCUresult memcpyDtoH(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount)	PX_OVERRIDE PX_FINAL;
-	PxCUresult memcpyDtoHAsync(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount, CUstream hStream)	PX_OVERRIDE PX_FINAL;
-	PxCUresult memcpyHtoD(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCount)	PX_OVERRIDE PX_FINAL;
-	PxCUresult memcpyHtoDAsync(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCount, CUstream hStream)	PX_OVERRIDE PX_FINAL;
-	PxCUresult memcpyDtoD(CUdeviceptr dstDevice, CUdeviceptr srcDevice, size_t ByteCount)	PX_OVERRIDE PX_FINAL;
-	PxCUresult memcpyDtoDAsync(CUdeviceptr dstDevice, CUdeviceptr srcDevice, size_t ByteCount, CUstream hStream)	PX_OVERRIDE PX_FINAL;
-	PxCUresult memcpyPeerAsync(CUdeviceptr dstDevice, CUcontext dstContext, CUdeviceptr srcDevice, CUcontext srcContext, size_t ByteCount, CUstream hStream)	PX_OVERRIDE PX_FINAL;
-	PxCUresult memsetD32Async(CUdeviceptr dstDevice, unsigned int ui, size_t N, CUstream hStream)	PX_OVERRIDE PX_FINAL;
-	PxCUresult memsetD8Async(CUdeviceptr dstDevice, unsigned char uc, size_t N, CUstream hStream)	PX_OVERRIDE PX_FINAL;
-	PxCUresult memsetD32(CUdeviceptr dstDevice, unsigned int ui, size_t N)	PX_OVERRIDE PX_FINAL;
-	PxCUresult memsetD16(CUdeviceptr dstDevice, unsigned short uh, size_t N)	PX_OVERRIDE PX_FINAL;
-	PxCUresult memsetD8(CUdeviceptr dstDevice, unsigned char uc, size_t N)	PX_OVERRIDE PX_FINAL;
-	PxCUresult getLastError()	PX_OVERRIDE PX_FINAL	{ return isInAbortMode() ? CUDA_ERROR_OUT_OF_MEMORY : mLastResult; }
+	PxCUresult memcpyDtoH(void* dstHost, hipDeviceptr_t srcDevice, size_t ByteCount)	PX_OVERRIDE PX_FINAL;
+	PxCUresult memcpyDtoHAsync(void* dstHost, hipDeviceptr_t srcDevice, size_t ByteCount, hipStream_t hStream)	PX_OVERRIDE PX_FINAL;
+	PxCUresult memcpyHtoD(hipDeviceptr_t dstDevice, const void* srcHost, size_t ByteCount)	PX_OVERRIDE PX_FINAL;
+	PxCUresult memcpyHtoDAsync(hipDeviceptr_t dstDevice, const void* srcHost, size_t ByteCount, hipStream_t hStream)	PX_OVERRIDE PX_FINAL;
+	PxCUresult memcpyDtoD(hipDeviceptr_t dstDevice, hipDeviceptr_t srcDevice, size_t ByteCount)	PX_OVERRIDE PX_FINAL;
+	PxCUresult memcpyDtoDAsync(hipDeviceptr_t dstDevice, hipDeviceptr_t srcDevice, size_t ByteCount, hipStream_t hStream)	PX_OVERRIDE PX_FINAL;
+	PxCUresult memcpyPeerAsync(hipDeviceptr_t dstDevice, hipCtx_t dstContext, hipDeviceptr_t srcDevice, hipCtx_t srcContext, size_t ByteCount, hipStream_t hStream)	PX_OVERRIDE PX_FINAL;
+	PxCUresult memsetD32Async(hipDeviceptr_t dstDevice, unsigned int ui, size_t N, hipStream_t hStream)	PX_OVERRIDE PX_FINAL;
+	PxCUresult memsetD8Async(hipDeviceptr_t dstDevice, unsigned char uc, size_t N, hipStream_t hStream)	PX_OVERRIDE PX_FINAL;
+	PxCUresult memsetD32(hipDeviceptr_t dstDevice, unsigned int ui, size_t N)	PX_OVERRIDE PX_FINAL;
+	PxCUresult memsetD16(hipDeviceptr_t dstDevice, unsigned short uh, size_t N)	PX_OVERRIDE PX_FINAL;
+	PxCUresult memsetD8(hipDeviceptr_t dstDevice, unsigned char uc, size_t N)	PX_OVERRIDE PX_FINAL;
+	PxCUresult getLastError()	PX_OVERRIDE PX_FINAL	{ return isInAbortMode() ? hipErrorOutOfMemory : mLastResult; }
 
 	void setAbortMode(bool abort) PX_OVERRIDE PX_FINAL;
 	bool isInAbortMode() PX_OVERRIDE PX_FINAL { return mIsInAbortMode; }
@@ -915,7 +916,7 @@ public:
 
 CudaCtx::CudaCtx(PxDeviceAllocatorCallback* callback, bool launchSynchronous)
 {
-	mLastResult = CUDA_SUCCESS;
+	mLastResult = hipSuccess;
 	mAllocatorCallback = callback;
 	mIsInAbortMode = false;
 #if FORCE_LAUNCH_SYNCHRONOUS
@@ -936,7 +937,7 @@ void CudaCtx::release()
 	PX_DELETE_THIS;
 }
 
-PxCUresult CudaCtx::memAlloc(CUdeviceptr *dptr, size_t bytesize)
+PxCUresult CudaCtx::memAlloc(hipDeviceptr_t *dptr, size_t bytesize)
 {
 	if (mIsInAbortMode)
 	{
@@ -944,31 +945,31 @@ PxCUresult CudaCtx::memAlloc(CUdeviceptr *dptr, size_t bytesize)
 		return mLastResult;
 	}
 
-	mLastResult = cuMemAlloc(dptr, bytesize);
+	mLastResult = hipMalloc(dptr, bytesize);
 #if PX_STOMP_ALLOCATED_MEMORY
 	if(*dptr && bytesize > 0)
 	{
-		cuCtxSynchronize();
+		hipCtxSynchronize();
 		PxCUresult result = memsetD8(*dptr, PxU8(0xcd), bytesize);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 		PX_UNUSED(result);
-		cuCtxSynchronize();
+		hipCtxSynchronize();
 	}
 #endif
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::memFree(CUdeviceptr dptr)
+PxCUresult CudaCtx::memFree(hipDeviceptr_t dptr)
 {
 	if ((void*)dptr == NULL)
 		return mLastResult;
 
- 	return cuMemFree(dptr);
+ 	return hipFree(dptr);
 }
 
 PxCUresult CudaCtx::memHostAlloc(void** pp, size_t bytesize, unsigned int Flags)
 {
-	CUresult result = cuMemHostAlloc(pp, bytesize, Flags);
+	hipError_t result = hipHostAlloc(pp, bytesize, Flags);
 #if PX_STOMP_ALLOCATED_MEMORY
 	if(*pp != NULL && bytesize > 0)
 	{
@@ -980,35 +981,35 @@ PxCUresult CudaCtx::memHostAlloc(void** pp, size_t bytesize, unsigned int Flags)
 
 PxCUresult CudaCtx::memFreeHost(void* p)
 {
-	return cuMemFreeHost(p);
+	return hipHostFree(p);
 }
 
-PxCUresult CudaCtx::memHostGetDevicePointer(CUdeviceptr* pdptr, void* p, unsigned int Flags)
+PxCUresult CudaCtx::memHostGetDevicePointer(hipDeviceptr_t* pdptr, void* p, unsigned int Flags)
 {
 	if (!p)
 	{
-		*pdptr = reinterpret_cast<CUdeviceptr>(p);
-		return CUDA_SUCCESS;
+		*pdptr = reinterpret_cast<hipDeviceptr_t>(p);
+		return hipSuccess;
 	}
-	return cuMemHostGetDevicePointer(pdptr, p, Flags);
+	return hipHostGetDevicePointer(pdptr, p, Flags);
 }
 
-PxCUresult CudaCtx::moduleLoadDataEx(CUmodule* module, const void* image, unsigned int numOptions, PxCUjit_option* options, void** optionValues)
+PxCUresult CudaCtx::moduleLoadDataEx(hipModule_t* module, const void* image, unsigned int numOptions, PxCUjit_option* options, void** optionValues)
 {
-	return cuModuleLoadDataEx(module, image, numOptions, (CUjit_option*)options, optionValues);
+	return hipModuleLoadDataEx(module, image, numOptions, (hipJitOption*)options, optionValues);
 }
 
-PxCUresult CudaCtx::moduleGetFunction(CUfunction* hfunc, CUmodule hmod, const char* name)
+PxCUresult CudaCtx::moduleGetFunction(hipFunction_t* hfunc, hipModule_t hmod, const char* name)
 {
-	return cuModuleGetFunction(hfunc, hmod, name);
+	return hipModuleGetFunction(hfunc, hmod, name);
 }
 
-PxCUresult CudaCtx::moduleUnload(CUmodule hmod)
+PxCUresult CudaCtx::moduleUnload(hipModule_t hmod)
 {
-	return cuModuleUnload(hmod);
+	return hipModuleUnload(hmod);
 }
 
-PxCUresult CudaCtx::streamCreate(CUstream* phStream, unsigned int Flags)
+PxCUresult CudaCtx::streamCreate(hipStream_t* phStream, unsigned int Flags)
 {
 	if (mIsInAbortMode)
 	{
@@ -1017,17 +1018,17 @@ PxCUresult CudaCtx::streamCreate(CUstream* phStream, unsigned int Flags)
 	}
 
 #if !USE_DEFAULT_CUDA_STREAM
-	mLastResult = cuStreamCreate(phStream, Flags);
+	mLastResult = hipStreamCreateWithFlags(phStream, Flags);
 #else
 	PX_UNUSED(Flags);
-	*phStream = CUstream(CU_STREAM_DEFAULT);
-	mLastResult = CUDA_SUCCESS;
+	*phStream = hipStream_t(hipStreamDefault);
+	mLastResult = hipSuccess;
 #endif
 
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::streamCreateWithPriority(CUstream* phStream, unsigned int flags, int priority)
+PxCUresult CudaCtx::streamCreateWithPriority(hipStream_t* phStream, unsigned int flags, int priority)
 {
 	if (mIsInAbortMode)
 	{
@@ -1036,63 +1037,63 @@ PxCUresult CudaCtx::streamCreateWithPriority(CUstream* phStream, unsigned int fl
 	}
 
 #if !USE_DEFAULT_CUDA_STREAM
-	mLastResult = cuStreamCreateWithPriority(phStream, flags, priority);
+	mLastResult = hipStreamCreateWithPriority(phStream, flags, priority);
 #else
 	PX_UNUSED(flags);
 	PX_UNUSED(priority);
-	*phStream = CUstream(CU_STREAM_DEFAULT);
-	mLastResult = CUDA_SUCCESS;
+	*phStream = hipStream_t(hipStreamDefault);
+	mLastResult = hipSuccess;
 #endif
 
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::streamFlush(CUstream hStream)
+PxCUresult CudaCtx::streamFlush(hipStream_t hStream)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
-	// AD: don't remember the error, because this can return CUDA_ERROR_NOT_READY which is not really an error.
+	// AD: don't remember the error, because this can return hipErrorNotReady which is not really an error.
 	// We just misuse streamquery to push the buffer anyway.
-	return cuStreamQuery(hStream);
+	return hipStreamQuery(hStream);
 }
 
-PxCUresult CudaCtx::streamWaitEvent(CUstream hStream, CUevent hEvent, unsigned int Flags)
+PxCUresult CudaCtx::streamWaitEvent(hipStream_t hStream, hipEvent_t hEvent, unsigned int Flags)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
-	mLastResult = cuStreamWaitEvent(hStream, hEvent, Flags);
+	mLastResult = hipStreamWaitEvent(hStream, hEvent, Flags);
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::streamWaitEvent(CUstream hStream, CUevent hEvent)
+PxCUresult CudaCtx::streamWaitEvent(hipStream_t hStream, hipEvent_t hEvent)
 {
 	return streamWaitEvent(hStream, hEvent, 0);
 }
 
-PxCUresult CudaCtx::streamDestroy(CUstream hStream)
+PxCUresult CudaCtx::streamDestroy(hipStream_t hStream)
 {
 	PX_UNUSED(hStream);
 #if !USE_DEFAULT_CUDA_STREAM
 	if (hStream == NULL)
 		return mLastResult;
-	return cuStreamDestroy(hStream);
+	return hipStreamDestroy(hStream);
 #else
-	return CUDA_SUCCESS;
+	return hipSuccess;
 #endif
 }
 
-PxCUresult CudaCtx::streamSynchronize(CUstream hStream)
+PxCUresult CudaCtx::streamSynchronize(hipStream_t hStream)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
-	mLastResult = cuStreamSynchronize(hStream);
+	mLastResult = hipStreamSynchronize(hStream);
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::eventCreate(CUevent* phEvent, unsigned int Flags)
+PxCUresult CudaCtx::eventCreate(hipEvent_t* phEvent, unsigned int Flags)
 {
 	if (mIsInAbortMode)
 	{
@@ -1100,51 +1101,51 @@ PxCUresult CudaCtx::eventCreate(CUevent* phEvent, unsigned int Flags)
 		return mLastResult;
 	}
 
-	mLastResult = cuEventCreate(phEvent, Flags);
+	mLastResult = hipEventCreateWithFlags(phEvent, Flags);
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::eventRecord(CUevent hEvent, CUstream hStream)
+PxCUresult CudaCtx::eventRecord(hipEvent_t hEvent, hipStream_t hStream)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
-	mLastResult = cuEventRecord(hEvent, hStream);
+	mLastResult = hipEventRecord(hEvent, hStream);
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::eventQuery(CUevent hEvent)
+PxCUresult CudaCtx::eventQuery(hipEvent_t hEvent)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
-	mLastResult = cuEventQuery(hEvent);
+	mLastResult = hipEventQuery(hEvent);
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::eventSynchronize(CUevent hEvent)
+PxCUresult CudaCtx::eventSynchronize(hipEvent_t hEvent)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
-	mLastResult = cuEventSynchronize(hEvent);
+	mLastResult = hipEventSynchronize(hEvent);
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::eventDestroy(CUevent hEvent)
+PxCUresult CudaCtx::eventDestroy(hipEvent_t hEvent)
 {
 	if (hEvent == NULL)
 		return mLastResult;
 
-	return cuEventDestroy(hEvent);
+	return hipEventDestroy(hEvent);
 }
 
 PxCUresult CudaCtx::launchKernel(
-	CUfunction f,
+	hipFunction_t f,
 	PxU32 gridDimX, PxU32 gridDimY, PxU32 gridDimZ,
 	PxU32 blockDimX, PxU32 blockDimY, PxU32 blockDimZ,
 	PxU32 sharedMemBytes,
-	CUstream hStream,
+	hipStream_t hStream,
 	PxCudaKernelParam* kernelParams,
 	size_t kernelParamsSizeInBytes,
 	void** extra,
@@ -1155,9 +1156,9 @@ PxCUresult CudaCtx::launchKernel(
 	if (mIsInAbortMode)
 		return mLastResult;
 
-	//We allow CUDA_ERROR_INVALID_VALUE to be non-terminal error as this is sometimes  hit
+	//We allow hipErrorInvalidValue to be non-terminal error as this is sometimes  hit
 	//when we launch an empty block
-	if (mLastResult == CUDA_SUCCESS || mLastResult == CUDA_ERROR_INVALID_VALUE)
+	if (mLastResult == hipSuccess || mLastResult == hipErrorInvalidValue)
 	{
 		const uint32_t kernelParamCount = (uint32_t)(kernelParamsSizeInBytes / sizeof(PxCudaKernelParam));
 		PX_ALLOCA(kernelParamsLocal, void*, kernelParamCount);
@@ -1165,7 +1166,7 @@ PxCUresult CudaCtx::launchKernel(
 		{
 			kernelParamsLocal[paramIdx] = kernelParams[paramIdx].data;
 		}
-		mLastResult = cuLaunchKernel(
+		mLastResult = hipModuleLaunchKernel(
 			f,
 			gridDimX, gridDimY, gridDimZ,
 			blockDimX, blockDimY, blockDimZ,
@@ -1177,23 +1178,23 @@ PxCUresult CudaCtx::launchKernel(
 
 		if (mLaunchSynchronous)
 		{
-			mLastResult = cuStreamSynchronize(hStream);
-			if (mLastResult != CUDA_SUCCESS)
+			mLastResult = hipStreamSynchronize(hStream);
+			if (mLastResult != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, file, line, "Launch failed!! Error: %i\n", mLastResult);
 		}
 
-		PX_ASSERT(mLastResult == CUDA_SUCCESS || mLastResult == CUDA_ERROR_INVALID_VALUE);
+		PX_ASSERT(mLastResult == hipSuccess || mLastResult == hipErrorInvalidValue);
 	}
 
 	return mLastResult;
 }
 
 PxCUresult CudaCtx::launchKernel(
-	CUfunction f,
+	hipFunction_t f,
 	PxU32 gridDimX, PxU32 gridDimY, PxU32 gridDimZ,
 	PxU32 blockDimX, PxU32 blockDimY, PxU32 blockDimZ,
 	PxU32 sharedMemBytes,
-	CUstream hStream,
+	hipStream_t hStream,
 	void** kernelParams,
 	void** extra,
 	const char* file,
@@ -1203,11 +1204,11 @@ PxCUresult CudaCtx::launchKernel(
 	if (mIsInAbortMode)
 		return mLastResult;
 
-	//We allow CUDA_ERROR_INVALID_VALUE to be non-terminal error as this is sometimes  hit
+	//We allow hipErrorInvalidValue to be non-terminal error as this is sometimes  hit
 	//when we launch an empty block
-	if (mLastResult == CUDA_SUCCESS || mLastResult == CUDA_ERROR_INVALID_VALUE)
+	if (mLastResult == hipSuccess || mLastResult == hipErrorInvalidValue)
 	{
-		mLastResult = cuLaunchKernel(
+		mLastResult = hipModuleLaunchKernel(
 			f,
 			gridDimX, gridDimY, gridDimZ,
 			blockDimX, blockDimY, blockDimZ,
@@ -1219,26 +1220,26 @@ PxCUresult CudaCtx::launchKernel(
 
 		if (mLaunchSynchronous)
 		{
-			mLastResult = cuStreamSynchronize(hStream);
-			if (mLastResult != CUDA_SUCCESS)
+			mLastResult = hipStreamSynchronize(hStream);
+			if (mLastResult != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, file, line, "Launch failed!! Error: %i\n", mLastResult);
 		}
 
-		PX_ASSERT(mLastResult == CUDA_SUCCESS || mLastResult == CUDA_ERROR_INVALID_VALUE);
+		PX_ASSERT(mLastResult == hipSuccess || mLastResult == hipErrorInvalidValue);
 	}
 
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::memcpyDtoH(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount)
+PxCUresult CudaCtx::memcpyDtoH(void* dstHost, hipDeviceptr_t srcDevice, size_t ByteCount)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
 	if (ByteCount > 0)
-		mLastResult = cuMemcpyDtoH(dstHost, srcDevice, ByteCount);
+		mLastResult = hipMemcpyDtoH(dstHost, srcDevice, ByteCount);
 	
-	if (mLastResult != CUDA_SUCCESS)
+	if (mLastResult != hipSuccess)
 	{
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyDToH failed with error code %i!\n", PxI32(mLastResult));
 	}
@@ -1247,22 +1248,22 @@ PxCUresult CudaCtx::memcpyDtoH(void* dstHost, CUdeviceptr srcDevice, size_t Byte
 	
 }
 
-PxCUresult CudaCtx::memcpyDtoHAsync(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount, CUstream hStream)
+PxCUresult CudaCtx::memcpyDtoHAsync(void* dstHost, hipDeviceptr_t srcDevice, size_t ByteCount, hipStream_t hStream)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
 	if (ByteCount > 0)
 	{
-		mLastResult = cuMemcpyDtoHAsync(dstHost, srcDevice, ByteCount, hStream);
+		mLastResult = hipMemcpyDtoHAsync(dstHost, srcDevice, ByteCount, hStream);
 		if (mLaunchSynchronous)
 		{
-			if (mLastResult != CUDA_SUCCESS)
+			if (mLastResult != hipSuccess)
 			{
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memcpyDtoHAsync invalid parameters!! Error: %i\n", mLastResult);
 			}
-			mLastResult = cuStreamSynchronize(hStream);
-			if (mLastResult != CUDA_SUCCESS)
+			mLastResult = hipStreamSynchronize(hStream);
+			if (mLastResult != hipSuccess)
 			{
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memcpyDtoHAsync failed!! Error: %i\n", mLastResult);
 			}
@@ -1271,15 +1272,15 @@ PxCUresult CudaCtx::memcpyDtoHAsync(void* dstHost, CUdeviceptr srcDevice, size_t
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::memcpyHtoD(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCount)
+PxCUresult CudaCtx::memcpyHtoD(hipDeviceptr_t dstDevice, const void* srcHost, size_t ByteCount)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
 	if (ByteCount > 0)
 	{
-		mLastResult = cuMemcpyHtoD(dstDevice, srcHost, ByteCount);
-		if (mLastResult != CUDA_SUCCESS)
+		mLastResult = hipMemcpyHtoD(dstDevice, srcHost, ByteCount);
+		if (mLastResult != hipSuccess)
 		{
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memcpyHtoD invalid parameters!! %i\n", mLastResult);
 		}
@@ -1287,22 +1288,22 @@ PxCUresult CudaCtx::memcpyHtoD(CUdeviceptr dstDevice, const void* srcHost, size_
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::memcpyHtoDAsync(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCount, CUstream hStream)
+PxCUresult CudaCtx::memcpyHtoDAsync(hipDeviceptr_t dstDevice, const void* srcHost, size_t ByteCount, hipStream_t hStream)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
 	if (ByteCount > 0)
 	{
-		mLastResult = cuMemcpyHtoDAsync(dstDevice, srcHost, ByteCount, hStream);
+		mLastResult = hipMemcpyHtoDAsync(dstDevice, srcHost, ByteCount, hStream);
 		if (mLaunchSynchronous)
 		{
-			if (mLastResult != CUDA_SUCCESS)
+			if (mLastResult != hipSuccess)
 			{
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memcpyHtoDAsync invalid parameters!! Error: %i\n", mLastResult);
 			}
-			mLastResult = cuStreamSynchronize(hStream);
-			if (mLastResult != CUDA_SUCCESS)
+			mLastResult = hipStreamSynchronize(hStream);
+			if (mLastResult != hipSuccess)
 			{
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memcpyHtoDAsync failed!! Error: %i\n", mLastResult);
 			}
@@ -1311,22 +1312,22 @@ PxCUresult CudaCtx::memcpyHtoDAsync(CUdeviceptr dstDevice, const void* srcHost, 
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::memcpyDtoDAsync(CUdeviceptr dstDevice, CUdeviceptr srcDevice, size_t ByteCount, CUstream hStream)
+PxCUresult CudaCtx::memcpyDtoDAsync(hipDeviceptr_t dstDevice, hipDeviceptr_t srcDevice, size_t ByteCount, hipStream_t hStream)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
 	if (ByteCount > 0)
 	{
-		mLastResult = cuMemcpyDtoDAsync(dstDevice, srcDevice, ByteCount, hStream);
+		mLastResult = hipMemcpyDtoDAsync(dstDevice, srcDevice, ByteCount, hStream);
 		if (mLaunchSynchronous)
 		{
-			if (mLastResult != CUDA_SUCCESS)
+			if (mLastResult != hipSuccess)
 			{
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memcpyDtoDAsync invalid parameters!! Error: %i\n", mLastResult);
 			}
-			mLastResult = cuStreamSynchronize(hStream);
-			if (mLastResult != CUDA_SUCCESS)
+			mLastResult = hipStreamSynchronize(hStream);
+			if (mLastResult != hipSuccess)
 			{
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memcpyDtoDAsync failed!! Error: %i\n", mLastResult);
 			}
@@ -1335,18 +1336,18 @@ PxCUresult CudaCtx::memcpyDtoDAsync(CUdeviceptr dstDevice, CUdeviceptr srcDevice
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::memcpyDtoD(CUdeviceptr dstDevice, CUdeviceptr srcDevice, size_t ByteCount)
+PxCUresult CudaCtx::memcpyDtoD(hipDeviceptr_t dstDevice, hipDeviceptr_t srcDevice, size_t ByteCount)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
 	if (ByteCount > 0)
 	{
-		mLastResult = cuMemcpyDtoD(dstDevice, srcDevice, ByteCount);
+		mLastResult = hipMemcpyDtoD(dstDevice, srcDevice, ByteCount);
 		// synchronize to avoid race conditions. 
 		// https://docs.nvidia.com/cuda/cuda-driver-api/api-sync-behavior.html#api-sync-behavior__memcpy
-		mLastResult = cuStreamSynchronize(0);
-		if (mLastResult != CUDA_SUCCESS)
+		mLastResult = hipStreamSynchronize(0);
+		if (mLastResult != hipSuccess)
 		{
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memcpyDtoD invalid parameters!! Error: %i\n", mLastResult);
 		}
@@ -1354,7 +1355,7 @@ PxCUresult CudaCtx::memcpyDtoD(CUdeviceptr dstDevice, CUdeviceptr srcDevice, siz
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::memcpyPeerAsync(CUdeviceptr dstDevice, CUcontext dstContext, CUdeviceptr srcDevice, CUcontext srcContext, size_t ByteCount, CUstream hStream)
+PxCUresult CudaCtx::memcpyPeerAsync(hipDeviceptr_t dstDevice, hipCtx_t dstContext, hipDeviceptr_t srcDevice, hipCtx_t srcContext, size_t ByteCount, hipStream_t hStream)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
@@ -1362,23 +1363,23 @@ PxCUresult CudaCtx::memcpyPeerAsync(CUdeviceptr dstDevice, CUcontext dstContext,
 	return cuMemcpyPeerAsync(dstDevice, dstContext, srcDevice, srcContext, ByteCount, hStream);
 }
 
-PxCUresult CudaCtx::memsetD32Async(CUdeviceptr dstDevice, unsigned int ui, size_t N, CUstream hStream)
+PxCUresult CudaCtx::memsetD32Async(hipDeviceptr_t dstDevice, unsigned int ui, size_t N, hipStream_t hStream)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
 	if (N > 0)
 	{
-		mLastResult = cuMemsetD32Async(dstDevice, ui, N, hStream);
+		mLastResult = hipMemsetD32Async(dstDevice, ui, N, hStream);
 		if (mLaunchSynchronous)
 		{
-			PX_ASSERT(mLastResult == CUDA_SUCCESS);
-			if (mLastResult != CUDA_SUCCESS)
+			PX_ASSERT(mLastResult == hipSuccess);
+			if (mLastResult != hipSuccess)
 			{
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memsetD32Async invalid parameters!! Error: %i\n", mLastResult);
 			}
-			mLastResult = cuStreamSynchronize(hStream);
-			if (mLastResult != CUDA_SUCCESS)
+			mLastResult = hipStreamSynchronize(hStream);
+			if (mLastResult != hipSuccess)
 			{
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memsetD32Async failed!! Error: %i\n", mLastResult);
 			}
@@ -1387,39 +1388,39 @@ PxCUresult CudaCtx::memsetD32Async(CUdeviceptr dstDevice, unsigned int ui, size_
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::memsetD8Async(CUdeviceptr dstDevice, unsigned char uc, size_t N, CUstream hStream)
+PxCUresult CudaCtx::memsetD8Async(hipDeviceptr_t dstDevice, unsigned char uc, size_t N, hipStream_t hStream)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
 	if (N > 0)
 	{
-		mLastResult = cuMemsetD8Async(dstDevice, uc, N, hStream);
+		mLastResult = hipMemsetD8Async(dstDevice, uc, N, hStream);
 		if (mLaunchSynchronous)
 		{
-			if (mLastResult!= CUDA_SUCCESS)
+			if (mLastResult!= hipSuccess)
 			{
-				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "cuMemsetD8Async invalid parameters!! Error: %i\n", mLastResult);
+				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "hipMemsetD8Async invalid parameters!! Error: %i\n", mLastResult);
 			}
-			mLastResult = cuStreamSynchronize(hStream);
-			if (mLastResult != CUDA_SUCCESS)
+			mLastResult = hipStreamSynchronize(hStream);
+			if (mLastResult != hipSuccess)
 			{
-				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "cuMemsetD8Async failed!! Error: %i\n", mLastResult);
+				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "hipMemsetD8Async failed!! Error: %i\n", mLastResult);
 			}
 		}
 	}
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::memsetD32(CUdeviceptr dstDevice, unsigned int ui, size_t N)
+PxCUresult CudaCtx::memsetD32(hipDeviceptr_t dstDevice, unsigned int ui, size_t N)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
 	if (N > 0)
 	{
-		mLastResult = cuMemsetD32(dstDevice, ui, N);
-		if (mLastResult != CUDA_SUCCESS)
+		mLastResult = hipMemsetD32(dstDevice, ui, N);
+		if (mLastResult != hipSuccess)
 		{
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memsetD32 failed!! Error: %i\n", mLastResult);
 			return mLastResult;
@@ -1427,8 +1428,8 @@ PxCUresult CudaCtx::memsetD32(CUdeviceptr dstDevice, unsigned int ui, size_t N)
 
 		// synchronize to avoid race conditions.
 		// https://docs.nvidia.com/cuda/cuda-driver-api/api-sync-behavior.html#api-sync-behavior__memset
-		mLastResult = cuStreamSynchronize(0);
-		if (mLastResult != CUDA_SUCCESS)
+		mLastResult = hipStreamSynchronize(0);
+		if (mLastResult != hipSuccess)
 		{
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memsetD32 failed!! Error: %i\n", mLastResult);
 		}
@@ -1436,18 +1437,18 @@ PxCUresult CudaCtx::memsetD32(CUdeviceptr dstDevice, unsigned int ui, size_t N)
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::memsetD16(CUdeviceptr dstDevice, unsigned short uh, size_t N)
+PxCUresult CudaCtx::memsetD16(hipDeviceptr_t dstDevice, unsigned short uh, size_t N)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
 	if (N > 0)
 	{
-		cuMemsetD16(dstDevice, uh, N);
+		hipMemsetD16(dstDevice, uh, N);
 		// synchronize to avoid race conditions. 
 		// https://docs.nvidia.com/cuda/cuda-driver-api/api-sync-behavior.html#api-sync-behavior__memset
-		mLastResult = cuStreamSynchronize(0);
-		if (mLastResult != CUDA_SUCCESS)
+		mLastResult = hipStreamSynchronize(0);
+		if (mLastResult != hipSuccess)
 		{
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memsetD16 failed!! Error: %i\n", mLastResult);
 		}
@@ -1455,18 +1456,18 @@ PxCUresult CudaCtx::memsetD16(CUdeviceptr dstDevice, unsigned short uh, size_t N
 	return mLastResult;
 }
 
-PxCUresult CudaCtx::memsetD8(CUdeviceptr dstDevice, unsigned char uc, size_t N)
+PxCUresult CudaCtx::memsetD8(hipDeviceptr_t dstDevice, unsigned char uc, size_t N)
 {
 	if (mIsInAbortMode)
 		return mLastResult;
 
 	if (N > 0)
 	{
-		cuMemsetD8(dstDevice, uc, N);
+		hipMemsetD8(dstDevice, uc, N);
 		// synchronize to avoid race conditions. 
 		// https://docs.nvidia.com/cuda/cuda-driver-api/api-sync-behavior.html#api-sync-behavior__memset
-		mLastResult = cuStreamSynchronize(0);
-		if (mLastResult != CUDA_SUCCESS)
+		mLastResult = hipStreamSynchronize(0);
+		if (mLastResult != hipSuccess)
 		{
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memsetD8 failed!! Error: %i\n", mLastResult);
 		}
@@ -1478,13 +1479,13 @@ void CudaCtx::setAbortMode(bool abort)
 {
 	mIsInAbortMode = abort;
 	
-	if ((abort == false) && (mLastResult == CUDA_ERROR_OUT_OF_MEMORY))
+	if ((abort == false) && (mLastResult == hipErrorOutOfMemory))
 	{	
-		mLastResult = CUDA_SUCCESS;
+		mLastResult = hipSuccess;
 	}
 }
 
-PxCudaContext* createCudaContext(CUdevice device, PxDeviceAllocatorCallback* callback, bool launchSynchronous)
+PxCudaContext* createCudaContext(hipDevice_t device, PxDeviceAllocatorCallback* callback, bool launchSynchronous)
 {
 	PX_UNUSED(device);
 	return PX_NEW(CudaCtx)(callback, launchSynchronous);

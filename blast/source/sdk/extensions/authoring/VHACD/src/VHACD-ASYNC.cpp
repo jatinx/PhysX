@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 #include "../public/VHACD.h"
 #include <stdlib.h>
 #include <string.h>

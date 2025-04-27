@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -561,7 +562,7 @@ namespace physx
 		mDynamicContext->mGpuFEMClothCore->mPostSolveCallback = postSolveCallback;		
 	}
 
-	void PxgSimulationController::copySoftBodyDataDEPRECATED(void** data, void* dataEndIndices, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbCopySoftBodies, const PxU32 maxSize, CUevent copyEvent)
+	void PxgSimulationController::copySoftBodyDataDEPRECATED(void** data, void* dataEndIndices, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbCopySoftBodies, const PxU32 maxSize, hipEvent_t copyEvent)
 	{
 		PxgSolverCore* gpuSolverCore = mDynamicContext->getGpuSolverCore();
 		PxgSoftBodyCore* softBodyCore = mDynamicContext->mGpuSoftBodyCore;
@@ -571,7 +572,7 @@ namespace physx
 		gpuSolverCore->releaseContext();
 	}
 
-	void PxgSimulationController::applySoftBodyDataDEPRECATED(void** data, void* dataEndIndices, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbUpdatedSoftBodies, const PxU32 maxSize, CUevent applyEvent, CUevent signalEvent)
+	void PxgSimulationController::applySoftBodyDataDEPRECATED(void** data, void* dataEndIndices, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbUpdatedSoftBodies, const PxU32 maxSize, hipEvent_t applyEvent, hipEvent_t signalEvent)
 	{
 		PxgSolverCore* gpuSolverCore = mDynamicContext->getGpuSolverCore();
 		PxgSoftBodyCore* softBodyCore = mDynamicContext->mGpuSoftBodyCore;
@@ -581,24 +582,24 @@ namespace physx
 		gpuSolverCore->releaseContext();
 	}
 
-	bool PxgSimulationController::getRigidDynamicData(void* PX_RESTRICT data, const PxRigidDynamicGPUIndex* PX_RESTRICT gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, float oneOverDt, CUevent startEvent, CUevent finishEvent) const
+	bool PxgSimulationController::getRigidDynamicData(void* PX_RESTRICT data, const PxRigidDynamicGPUIndex* PX_RESTRICT gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, float oneOverDt, hipEvent_t startEvent, hipEvent_t finishEvent) const
 	{
 		return mSimulationCore->getRigidDynamicData(data, gpuIndices, dataType, nbElements, oneOverDt, startEvent, finishEvent);
 	}
 
-	bool PxgSimulationController::setRigidDynamicData(const void* PX_RESTRICT data, const PxRigidDynamicGPUIndex* PX_RESTRICT gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent)
+	bool PxgSimulationController::setRigidDynamicData(const void* PX_RESTRICT data, const PxRigidDynamicGPUIndex* PX_RESTRICT gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent)
 	{
 		return mSimulationCore->setRigidDynamicData(data, gpuIndices, dataType, nbElements, startEvent, finishEvent);
 	}
 
-	bool PxgSimulationController::getArticulationData(void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent) const
+	bool PxgSimulationController::getArticulationData(void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent) const
 	{
 		const PxgArticulationCore* artiCore = mDynamicContext->getArticulationCore();
 
 		return artiCore->getArticulationData(data, gpuIndices, dataType, nbElements, startEvent, finishEvent, mMaxLinks, mMaxDofs);
 	}
 
-	bool PxgSimulationController::setArticulationData(const void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent)
+	bool PxgSimulationController::setArticulationData(const void* PX_RESTRICT data, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent)
 	{
 		PxgArticulationCore* artiCore = mDynamicContext->getArticulationCore();
 
@@ -606,14 +607,14 @@ namespace physx
 	}
 
 	// PT: TODO: revisit this? It is unfortunate that the generic API now takes e.g. "gravity" as a parameter
-	bool PxgSimulationController::computeArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements, CUevent startEvent, CUevent finishEvent)
+	bool PxgSimulationController::computeArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent)
 	{
 		PxgArticulationCore* artiCore = mDynamicContext->getArticulationCore();
 
 		return artiCore->computeArticulationData(data, gpuIndices, operation, nbElements, mMaxLinks, mMaxDofs, startEvent, finishEvent);
 	}
 
-	bool PxgSimulationController::copyContactData(void* PX_RESTRICT data, PxU32* PX_RESTRICT numContactPairs, const PxU32 maxContactPairs, CUevent startEvent, CUevent copyEvent)
+	bool PxgSimulationController::copyContactData(void* PX_RESTRICT data, PxU32* PX_RESTRICT numContactPairs, const PxU32 maxContactPairs, hipEvent_t startEvent, hipEvent_t copyEvent)
 	{
 		PxgGpuNarrowphaseCore* npCore = mNpContext->getGpuNarrowphaseCore();
 
@@ -628,7 +629,7 @@ namespace physx
 			mNpContext->getContext().mForceAndIndiceStreamPool->mDataStream);
 	}
 
-	bool PxgSimulationController::evaluateSDFDistances(PxVec4* PX_RESTRICT localGradientAndSDFConcatenated, const PxShapeGPUIndex* PX_RESTRICT shapeIndices, const PxVec4* PX_RESTRICT localSamplePointsConcatenated, const PxU32* PX_RESTRICT samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, CUevent startEvent, CUevent finishEvent)
+	bool PxgSimulationController::evaluateSDFDistances(PxVec4* PX_RESTRICT localGradientAndSDFConcatenated, const PxShapeGPUIndex* PX_RESTRICT shapeIndices, const PxVec4* PX_RESTRICT localSamplePointsConcatenated, const PxU32* PX_RESTRICT samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, hipEvent_t startEvent, hipEvent_t finishEvent)
 	{
 		PxgGpuNarrowphaseCore* npCore = mNpContext->getGpuNarrowphaseCore();
 		// need to ack context in there!
@@ -648,7 +649,7 @@ namespace physx
 		return maxCounts;
 	}
 
-	bool PxgSimulationController::getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, PxF32 oneOverDt, CUevent startEvent, CUevent finishEvent) const
+	bool PxgSimulationController::getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, PxF32 oneOverDt, hipEvent_t startEvent, hipEvent_t finishEvent) const
 	{
 		return mSimulationCore->getD6JointData(data, gpuIndices, dataType, nbElements, oneOverDt, mJointManager.getGpuConstraintIdMapHost().size(),
 			startEvent, finishEvent);
@@ -668,9 +669,9 @@ namespace physx
 
 		if (mPBDParticleSystemCore)
 		{
-			CUresult syncResult = mPBDParticleSystemCore->mCudaContext->streamSynchronize(mPBDParticleSystemCore->getFinalizeStream());
+			hipError_t syncResult = mPBDParticleSystemCore->mCudaContext->streamSynchronize(mPBDParticleSystemCore->getFinalizeStream());
 			
-			if (syncResult != CUDA_SUCCESS)
+			if (syncResult != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "PhysX Internal CUDA error. Simulation can not continue! Error code %i!\n", PxI32(syncResult));
 
 			contactCountNeeded = mPBDParticleSystemCore->getHostContactCount();
@@ -685,13 +686,13 @@ namespace physx
 		mDynamicContext->getSimStats().mGpuDynamicsParticleContacts = PxMax(mDynamicContext->getSimStats().mGpuDynamicsParticleContacts, contactCountNeeded);
 	}
 	
-	void PxgSimulationController::applyParticleBufferDataDEPRECATED(const PxU32* indices, const PxGpuParticleBufferIndexPair* indexPairs, const PxParticleBufferFlags* flags, PxU32 nbUpdatedBuffers, CUevent waitEvent, CUevent signalEvent)
+	void PxgSimulationController::applyParticleBufferDataDEPRECATED(const PxU32* indices, const PxGpuParticleBufferIndexPair* indexPairs, const PxParticleBufferFlags* flags, PxU32 nbUpdatedBuffers, hipEvent_t waitEvent, hipEvent_t signalEvent)
 	{
 		PxScopedCudaLock lock(*mPBDParticleSystemCore->mCudaContextManager);
 		mPBDParticleSystemCore->applyParticleBufferDataDEPRECATED(indices, indexPairs, flags, nbUpdatedBuffers, waitEvent, signalEvent);
 	}
 
-	void PxgSimulationController::updateBoundsAndTransformCache(Bp::AABBManagerBase& aabbManager, CUstream npStream,
+	void PxgSimulationController::updateBoundsAndTransformCache(Bp::AABBManagerBase& aabbManager, hipStream_t npStream,
 																PxsTransformCache& transformCache, PxgCudaBuffer& gpuTransformCache)
 	{
 		Bp::BoundsArray& boundsArray = aabbManager.getBoundsArray();
@@ -725,7 +726,7 @@ namespace physx
 	void PxgSimulationController::mergeBoundsAndTransformsChanges(PxgBoundsArray& directGPUBoundsArray,
 																  PxsTransformCache& transformCache,
 																  PxgCudaBuffer& gpuTransformCache, PxU32 boundsArraySize,
-																  PxU32 totalTransformCacheSize, PxU32 numChanges, CUstream npStream)
+																  PxU32 totalTransformCacheSize, PxU32 numChanges, hipStream_t npStream)
 	{
 
 		PxBoundTransformUpdate* changes = reinterpret_cast<PxBoundTransformUpdate*>(
@@ -740,13 +741,13 @@ namespace physx
 		
 		PxgCudaBuffer* aabbBounds = mSimulationCore->getBoundArrayBuffer();
 		aabbBounds->allocateCopyOldDataAsync(boundsArraySize, mCudaContextManager->getCudaContext(), npStream, PX_FL);
-		CUdeviceptr boundsPtr = aabbBounds->getDevicePtr();
+		hipDeviceptr_t boundsPtr = aabbBounds->getDevicePtr();
 
 
 		gpuTransformCache.allocateCopyOldDataAsync(sizeof(PxsCachedTransform) * totalTransformCacheSize, mCudaContextManager->getCudaContext(), npStream, PX_FL);
-		CUdeviceptr transformCachePtr = gpuTransformCache.getDevicePtr();
+		hipDeviceptr_t transformCachePtr = gpuTransformCache.getDevicePtr();
 
-		CUfunction kernelFunction = mSimulationCore->mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(
+		hipFunction_t kernelFunction = mSimulationCore->mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(
 			PxgKernelIds::MERGE_TRANSFORMCACHE_AND_BOUNDARRAY_CHANGES);
 
 		PxCudaKernelParam kernelParams[] = { PX_CUDA_KERNEL_PARAM(boundsPtr),	 PX_CUDA_KERNEL_PARAM(transformCachePtr),
@@ -755,17 +756,17 @@ namespace physx
 
 		int gridDim = (numChanges + PxgSimulationCoreKernelBlockDim::MERGE_TRANSFORMCACHE_AND_BOUNDARRAY_CHANGES - 1) /
 					  PxgSimulationCoreKernelBlockDim::MERGE_TRANSFORMCACHE_AND_BOUNDARRAY_CHANGES;
-		CUresult result = mCudaContextManager->getCudaContext()->launchKernel(
+		hipError_t result = mCudaContextManager->getCudaContext()->launchKernel(
 			kernelFunction, gridDim, 1, 1, PxgSimulationCoreKernelBlockDim::MERGE_TRANSFORMCACHE_AND_BOUNDARRAY_CHANGES, 1, 1, 0, npStream,
 			kernelParams, sizeof(kernelParams), 0, PX_FL);
 
 		PX_UNUSED(result);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 	}
 
 	void PxgSimulationController::copyBoundsAndTransforms(Bp::BoundsArray& boundsArray, PxsTransformCache& transformCache,
 															   PxgCudaBuffer& gpuTransformCache, PxU32 boundsArraySize,
-															   PxU32 totalTransformCacheSize, CUstream npStream)
+															   PxU32 totalTransformCacheSize, hipStream_t npStream)
 	{
 		if(boundsArray.hasChanged())
 		{
@@ -791,7 +792,7 @@ namespace physx
 		PxScopedCudaLock _lock(*mCudaContextManager);
 
 		PxgGpuNarrowphaseCore* npCore = mDynamicContext->getNarrowphaseCore();
-		CUstream npStream = npCore->getStream();
+		hipStream_t npStream = npCore->getStream();
 		const bool hasShapeInstanceChanged = npCore->mGpuShapesManager.mHasShapeInstanceChanged; // we reset it in updateNarrowPhaseShape, but cache for computeRigidsToShapes.
 
 		// we are in Pxg-land, so GPU NP and dynamics is implied. Upload to GPU if dirty.
@@ -821,7 +822,7 @@ namespace physx
 
 			//broad phase and narrowphase need to wait for kinematic update to finish.
 			PxgCudaBroadPhaseSap* bp = static_cast<PxgCudaBroadPhaseSap*>(aabbManager.getBroadPhase());
-			CUstream bpStream = bp->getBpStream();
+			hipStream_t bpStream = bp->getBpStream();
 
 			// this will record an event on the articulation stream and make sure the BP and NP stream wait until updateArticulationsKinematic is done.
 			artiCore->synchronizedStreams(bpStream, npStream);
@@ -2638,7 +2639,7 @@ namespace physx
 		//PxRenderBuffer& renderBuffer = mNpContext->getContext().getRenderBuffer();
 		if (mBroadPhase)
 		{
-			CUstream bpStream = mBroadPhase->getBpStream();
+			hipStream_t bpStream = mBroadPhase->getBpStream();
 			mFEMClothCore->refitBound(nbActiveFEMCloths, bpStream);
 		}
 

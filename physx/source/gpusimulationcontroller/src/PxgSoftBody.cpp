@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -582,28 +583,28 @@ PxU32 PxgSoftBody::dataIndexFromFlagDEPRECATED(PxSoftBodyGpuDataFlag::Enum flag)
 	switch (flag)
 	{
 	case PxSoftBodyGpuDataFlag::eTET_INDICES:
-		return PX_OFFSET_OF_RT(PxgSoftBody, mTetIndices) / sizeof(CUdeviceptr);
+		return PX_OFFSET_OF_RT(PxgSoftBody, mTetIndices) / sizeof(hipDeviceptr_t);
 
 	case PxSoftBodyGpuDataFlag::eTET_REST_POSES:
-		return PX_OFFSET_OF_RT(PxgSoftBody, mTetraRestPoses) / sizeof(CUdeviceptr);
+		return PX_OFFSET_OF_RT(PxgSoftBody, mTetraRestPoses) / sizeof(hipDeviceptr_t);
 
 	case PxSoftBodyGpuDataFlag::eTET_ROTATIONS:
-		return PX_OFFSET_OF_RT(PxgSoftBody, mTetraRotations) / sizeof(CUdeviceptr);
+		return PX_OFFSET_OF_RT(PxgSoftBody, mTetraRotations) / sizeof(hipDeviceptr_t);
 
 	case PxSoftBodyGpuDataFlag::eTET_POSITION_INV_MASS:
-		return PX_OFFSET_OF_RT(PxgSoftBody, mPosition_InvMass) / sizeof(CUdeviceptr);
+		return PX_OFFSET_OF_RT(PxgSoftBody, mPosition_InvMass) / sizeof(hipDeviceptr_t);
 
 	case PxSoftBodyGpuDataFlag::eSIM_TET_INDICES:
-		return PX_OFFSET_OF_RT(PxgSoftBody, mSimTetIndices) / sizeof(CUdeviceptr);
+		return PX_OFFSET_OF_RT(PxgSoftBody, mSimTetIndices) / sizeof(hipDeviceptr_t);
 
 	case PxSoftBodyGpuDataFlag::eSIM_TET_ROTATIONS:
-		return PX_OFFSET_OF_RT(PxgSoftBody, mSimTetraRotations) / sizeof(CUdeviceptr);
+		return PX_OFFSET_OF_RT(PxgSoftBody, mSimTetraRotations) / sizeof(hipDeviceptr_t);
 
 	case PxSoftBodyGpuDataFlag::eSIM_VELOCITY_INV_MASS:
-		return PX_OFFSET_OF_RT(PxgSoftBody, mSimVelocity_InvMass) / sizeof(CUdeviceptr);
+		return PX_OFFSET_OF_RT(PxgSoftBody, mSimVelocity_InvMass) / sizeof(hipDeviceptr_t);
 
 	case PxSoftBodyGpuDataFlag::eSIM_POSITION_INV_MASS:
-		return PX_OFFSET_OF_RT(PxgSoftBody, mSimPosition_InvMass) / sizeof(CUdeviceptr);
+		return PX_OFFSET_OF_RT(PxgSoftBody, mSimPosition_InvMass) / sizeof(hipDeviceptr_t);
 	}
 	PX_ASSERT(false);
 	return 0;

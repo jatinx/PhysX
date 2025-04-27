@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -67,8 +68,8 @@ namespace physx
 
 
 		// calculate AABB bound for each particle volumes
-		void updateVolumeBound(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd, const PxU32 numActiveParticleSystems,
-			CUstream bpStream);
+		void updateVolumeBound(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd, const PxU32 numActiveParticleSystems,
+			hipStream_t bpStream);
 
 		virtual void preIntegrateSystems(const PxU32 nbActiveParticleSystems, const PxVec3 gravity, const PxReal dt);
 		//virtual void updateBounds(PxgParticleSystem* particleSystems, PxU32* activeParticleSystems, const PxU32 nbActiveParticleSystems);
@@ -76,72 +77,72 @@ namespace physx
 		virtual void selfCollision();
 		//this is for solving selfCollsion and contacts between particles and primitives based on sorted by particle id
 
-		virtual void constraintPrep(CUdeviceptr prePrepDescd, CUdeviceptr prepDescd, CUdeviceptr solverCoreDescd, CUdeviceptr sharedDescd,
-			const PxReal dt, CUstream solverStream, bool isTGS, PxU32 numSolverBodies);
+		virtual void constraintPrep(hipDeviceptr_t prePrepDescd, hipDeviceptr_t prepDescd, hipDeviceptr_t solverCoreDescd, hipDeviceptr_t sharedDescd,
+			const PxReal dt, hipStream_t solverStream, bool isTGS, PxU32 numSolverBodies);
 		virtual void updateParticles(const PxReal dt);
-		virtual void solve(CUdeviceptr prePrepDescd, CUdeviceptr solverCoreDescd,
-			CUdeviceptr sharedDescd, CUdeviceptr artiCoreDescd, const PxReal dt, CUstream solverStream);
+		virtual void solve(hipDeviceptr_t prePrepDescd, hipDeviceptr_t solverCoreDescd,
+			hipDeviceptr_t sharedDescd, hipDeviceptr_t artiCoreDescd, const PxReal dt, hipStream_t solverStream);
 
-		virtual void solveTGS(CUdeviceptr prePrepDescd, CUdeviceptr solverCoreDescd,
-			CUdeviceptr sharedDescd, CUdeviceptr artiCoreDescd, const PxReal dt, const PxReal totalInvDt, CUstream solverStream,
+		virtual void solveTGS(hipDeviceptr_t prePrepDescd, hipDeviceptr_t solverCoreDescd,
+			hipDeviceptr_t sharedDescd, hipDeviceptr_t artiCoreDescd, const PxReal dt, const PxReal totalInvDt, hipStream_t solverStream,
 			const bool isVelocityIteration, PxI32 iterationIndex, PxI32 numTGSIterations, PxReal coefficient);
 
-		virtual void prepParticleConstraint(CUdeviceptr prePrepDescd, CUdeviceptr prepDescd, CUdeviceptr sharedDescd, bool isTGS, const PxReal dt);
+		virtual void prepParticleConstraint(hipDeviceptr_t prePrepDescd, hipDeviceptr_t prepDescd, hipDeviceptr_t sharedDescd, bool isTGS, const PxReal dt);
 
 
 		virtual void integrateSystems(const PxReal dt, const PxReal epsilonSq);
 		virtual void onPostSolve();
-		virtual void gpuMemDmaUpParticleSystem(PxgBodySimManager& bodySimManager, CUstream stream);
+		virtual void gpuMemDmaUpParticleSystem(PxgBodySimManager& bodySimManager, hipStream_t stream);
 		virtual void getMaxIterationCount(PxgBodySimManager& bodySimManager, PxI32& maxPosIters, PxI32& maxVelIters);
 		virtual void releaseParticleSystemDataBuffer();
 
-		void solveVelocities(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd, const PxU32 nbActiveParticleSystems, const PxReal dt);
+		void solveVelocities(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd, const PxU32 nbActiveParticleSystems, const PxReal dt);
 
 		void solveParticleCollision(const PxReal dt, bool isTGS, PxReal coefficient);
 		
 		virtual void finalizeVelocities(const PxReal dt, const PxReal scale);
 
-		void solveSprings(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd,
+		void solveSprings(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd,
 			const PxU32 nbActiveParticleSystems, const PxReal dt, bool isTGS);
 
-		void initializeSprings(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd,
+		void initializeSprings(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd,
 			const PxU32 nbActiveParticleSystems);
 
 		// Direct-GPU API
-		PX_DEPRECATED void applyParticleBufferDataDEPRECATED(const PxU32* indices, const PxGpuParticleBufferIndexPair* indexPairs, const PxParticleBufferFlags* flags, PxU32 nbUpdatedBuffers, CUevent waitEvent, CUevent signalEvent);
+		PX_DEPRECATED void applyParticleBufferDataDEPRECATED(const PxU32* indices, const PxGpuParticleBufferIndexPair* indexPairs, const PxParticleBufferFlags* flags, PxU32 nbUpdatedBuffers, hipEvent_t waitEvent, hipEvent_t signalEvent);
 
 	private:
 
-		void allocateParticleBuffer(const PxU32 nbTotalParticleSystems, CUstream stream);
-		void allocateParticleDataBuffer(void** bodySimsLL, CUstream stream);
-		void updateDirtyData(PxgBodySimManager& bodySimManager, CUstream stream);
+		void allocateParticleBuffer(const PxU32 nbTotalParticleSystems, hipStream_t stream);
+		void allocateParticleDataBuffer(void** bodySimsLL, hipStream_t stream);
+		void updateDirtyData(PxgBodySimManager& bodySimManager, hipStream_t stream);
 
-		void resizeParticleDataBuffer(PxgParticleSystem& particleSystem, PxgParticleSystemBuffer* buffer, const PxU32 maxParticles, const PxU32 maxNeighborhood, CUstream stream);
-		void resizeDiffuseParticleDiffuseBuffer(PxgParticleSystem& particleSystem, PxgParticleSystemDiffuseBuffer* diffuseBuffer, const PxU32 maxDiffuseParticles, CUstream stream);
+		void resizeParticleDataBuffer(PxgParticleSystem& particleSystem, PxgParticleSystemBuffer* buffer, const PxU32 maxParticles, const PxU32 maxNeighborhood, hipStream_t stream);
+		void resizeDiffuseParticleDiffuseBuffer(PxgParticleSystem& particleSystem, PxgParticleSystemDiffuseBuffer* diffuseBuffer, const PxU32 maxDiffuseParticles, hipStream_t stream);
 		bool createUserParticleData(PxgParticleSystem& particleSystem, Dy::ParticleSystemCore& dyParticleSystemCore, PxgParticleSystemBuffer* buffer, PxgParticleSystemDiffuseBuffer* diffuseBuffer,
-			CUstream stream);
+			hipStream_t stream);
 
 		PX_FORCE_INLINE PxU32 getMaxSpringsPerBuffer() { return mMaxSpringsPerBuffer; }
 		PX_FORCE_INLINE PxU32 getMaxSpringPartitionsPerBuffer() { return mMaxSpringPartitionsPerBuffer; }
 		PX_FORCE_INLINE PxU32 getMaxSpringsPerPartitionPerBuffer() { return mMaxSpringsPerPartitionPerBuffer; }
 		PX_FORCE_INLINE PxU32 getMaxRigidsPerBuffer() { return mMaxRigidsPerBuffer; }
 
-		void calculateHashForDiffuseParticles(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd, const PxU32 numActiveParticleSystems);
+		void calculateHashForDiffuseParticles(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd, const PxU32 numActiveParticleSystems);
 
-		void solveDensities(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt,
+		void solveDensities(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt,
 			PxReal coefficient);
 
-		void solveInflatables(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal coefficient, const PxReal dt);
+		void solveInflatables(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal coefficient, const PxReal dt);
 
-		void solveShapes(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt, const PxReal biasCoefficient);
+		void solveShapes(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt, const PxReal biasCoefficient);
 
-		void solveAerodynamics(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt);
+		void solveAerodynamics(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt);
 
-		void solveDiffuseParticles(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt);
+		void solveDiffuseParticles(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt);
 
 		//-------------------------------------------------------------------------------
 		// Materials
-		void updateMaterials(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemd, const PxU32 nbActiveParticleSystems, CUstream bpStream, const PxReal invTotalDt);
+		void updateMaterials(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActiveParticleSystems, hipStream_t bpStream, const PxReal invTotalDt);
 
 		PxU32							mMaxClothBuffersPerSystem;
 		PxU32							mMaxClothsPerBuffer;

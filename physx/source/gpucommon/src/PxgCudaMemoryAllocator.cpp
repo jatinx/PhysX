@@ -36,7 +36,7 @@
 #pragma clang diagnostic ignored "-Wdocumentation"
 #pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
 #endif
-#include <cuda.h>
+#include <hip/hip_runtime.h>
 #if PX_LINUX && PX_CLANG
 #pragma clang diagnostic pop
 #endif
@@ -62,8 +62,8 @@ static MemTracker hostMemTracker;
 void* physx::PxgPinnedMemoryAllocate(PxCudaContext& cudaContext, size_t size, const char* filename, PxI32 line)
 {
 	PxU8* ptr = NULL;
-	CUresult result = cudaContext.memHostAlloc((void**)&ptr, size, CU_MEMHOSTALLOC_DEVICEMAP | CU_MEMHOSTALLOC_PORTABLE);
-	if (result != CUDA_SUCCESS || !ptr)
+	hipError_t result = cudaContext.memHostAlloc((void**)&ptr, size, hipHostMallocMapped | hipHostMallocPortable);
+	if (result != hipSuccess || !ptr)
 	{
 		PxGetFoundation().error(PX_WARN, PX_FL, "Failed to allocate pinned memory.");
 		return NULL;
@@ -94,9 +94,9 @@ void physx::PxgPinnedMemoryDeallocate(PxCudaContext& cudaContext, void* ptr)
 	if (ptr == NULL)
 		return;
 
-	CUresult result = cudaContext.memFreeHost(ptr);
+	hipError_t result = cudaContext.memFreeHost(ptr);
 	PX_UNUSED(result);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 #if PX_DEBUG
 	hostMemTracker.unregisterMemory(ptr, false);
 #endif
@@ -131,17 +131,17 @@ void* physx::PxgCudaDeviceMemoryAllocate(PxCudaContext& cudaContext, size_t size
 	}
 	else
 	{
-		CUdeviceptr ptr = 0;
-		CUresult result = cudaContext.memAlloc(&ptr, size);
+		hipDeviceptr_t ptr = 0;
+		hipError_t result = cudaContext.memAlloc(&ptr, size);
 		PX_ASSERT((ptr & 127) == 0);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 		{
 			cudaContext.setAbortMode(true);
 			PxGetFoundation().error(PxErrorCode::eOUT_OF_MEMORY, PX_FL, "PxgCudaDeviceMemoryAllocator failed to allocate memory %zu bytes! Result = %i", size, result);
 			return NULL;
 		}
 #if PX_DEBUG
-		if (result == CUDA_SUCCESS)
+		if (result == hipSuccess)
 			deviceMemTracker.registerMemory(reinterpret_cast<void*>(ptr), true, size, filename, line);
 #else
 	PX_UNUSED(filename);
@@ -162,8 +162,8 @@ void physx::PxgCudaDeviceMemoryDeallocate(PxCudaContext& cudaContext, void* ptr)
 	}
 	else
 	{
-		CUresult result = cudaContext.memFree(reinterpret_cast<CUdeviceptr>(ptr));
-		if (result != CUDA_SUCCESS)
+		hipError_t result = cudaContext.memFree(reinterpret_cast<hipDeviceptr_t>(ptr));
+		if (result != hipSuccess)
 			PxGetFoundation().error(PX_WARN, PX_FL, "PxgCudaDeviceMemoryDeallocate fail to deallocate memory!! Result = %i\n", result);
 	}
 #if PX_DEBUG

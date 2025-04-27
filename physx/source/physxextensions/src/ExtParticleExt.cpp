@@ -55,10 +55,10 @@ void PxDmaDataToDevice(PxCudaContextManager* cudaContextManager, PxParticleBuffe
 	PxCudaContext* cudaContext = cudaContextManager->getCudaContext();
 
 	//KS - TODO - use an event to wait for this
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(posInvMass), desc.positions, desc.numActiveParticles * sizeof(PxVec4), 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(velocities), desc.velocities, desc.numActiveParticles * sizeof(PxVec4), 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(phases), desc.phases, desc.numActiveParticles * sizeof(PxU32), 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(volumes), desc.volumes, desc.numVolumes * sizeof(PxParticleVolume), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(posInvMass), desc.positions, desc.numActiveParticles * sizeof(PxVec4), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(velocities), desc.velocities, desc.numActiveParticles * sizeof(PxVec4), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(phases), desc.phases, desc.numActiveParticles * sizeof(PxU32), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(volumes), desc.volumes, desc.numVolumes * sizeof(PxParticleVolume), 0);
 
 	particleBuffer->setNbActiveParticles(desc.numActiveParticles);
 	particleBuffer->setNbParticleVolumes(desc.numVolumes);
@@ -105,12 +105,12 @@ PxParticleClothBuffer* PxCreateAndPopulateParticleClothBuffer(const PxParticleBu
 
 	PxCudaContext* cudaContext = cudaContextManager->getCudaContext();
 
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(posInvMass), desc.positions, desc.numActiveParticles * sizeof(PxVec4), 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(velocities), desc.velocities, desc.numActiveParticles * sizeof(PxVec4), 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(phases), desc.phases, desc.numActiveParticles * sizeof(PxU32), 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(volumes), desc.volumes, desc.numVolumes * sizeof(PxParticleVolume), 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(triangles), clothDesc.triangles, clothDesc.nbTriangles * sizeof(PxU32) * 3, 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(restPositions), clothDesc.restPositions, desc.numActiveParticles * sizeof(PxVec4), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(posInvMass), desc.positions, desc.numActiveParticles * sizeof(PxVec4), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(velocities), desc.velocities, desc.numActiveParticles * sizeof(PxVec4), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(phases), desc.phases, desc.numActiveParticles * sizeof(PxU32), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(volumes), desc.volumes, desc.numVolumes * sizeof(PxParticleVolume), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(triangles), clothDesc.triangles, clothDesc.nbTriangles * sizeof(PxU32) * 3, 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(restPositions), clothDesc.restPositions, desc.numActiveParticles * sizeof(PxVec4), 0);
 
 	clothBuffer->setNbActiveParticles(desc.numActiveParticles);
 	clothBuffer->setNbParticleVolumes(desc.numVolumes);
@@ -155,16 +155,16 @@ PxParticleRigidBuffer* PxCreateAndPopulateParticleRigidBuffer(const PxParticleBu
 	const PxU32 numRigids = rigidDesc.numActiveRigids;
 	const PxU32 numActiveParticles = desc.numActiveParticles;
 
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(posInvMassd), desc.positions, numActiveParticles * sizeof(PxVec4), 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(velocitiesd), desc.velocities, numActiveParticles * sizeof(PxVec4), 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(phasesd), desc.phases, numActiveParticles * sizeof(PxU32), 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(volumesd), desc.volumes, desc.numVolumes * sizeof(PxParticleVolume), 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(rigidOffsetsd), rigidDesc.rigidOffsets, sizeof(PxU32) * (numRigids + 1), 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(rigidCoefficientsd), rigidDesc.rigidCoefficients, sizeof(PxReal) * numRigids, 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(rigidTranslationsd), rigidDesc.rigidTranslations, sizeof(PxVec4) * numRigids, 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(rigidRotationsd), rigidDesc.rigidRotations, sizeof(PxQuat) * numRigids, 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(rigidLocalPositionsd), rigidDesc.rigidLocalPositions, sizeof(PxVec4) * desc.numActiveParticles, 0);
-	cudaContext->memcpyHtoDAsync(CUdeviceptr(rigidLocalNormalsd), rigidDesc.rigidLocalNormals, sizeof(PxVec4) * desc.numActiveParticles, 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(posInvMassd), desc.positions, numActiveParticles * sizeof(PxVec4), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(velocitiesd), desc.velocities, numActiveParticles * sizeof(PxVec4), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(phasesd), desc.phases, numActiveParticles * sizeof(PxU32), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(volumesd), desc.volumes, desc.numVolumes * sizeof(PxParticleVolume), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(rigidOffsetsd), rigidDesc.rigidOffsets, sizeof(PxU32) * (numRigids + 1), 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(rigidCoefficientsd), rigidDesc.rigidCoefficients, sizeof(PxReal) * numRigids, 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(rigidTranslationsd), rigidDesc.rigidTranslations, sizeof(PxVec4) * numRigids, 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(rigidRotationsd), rigidDesc.rigidRotations, sizeof(PxQuat) * numRigids, 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(rigidLocalPositionsd), rigidDesc.rigidLocalPositions, sizeof(PxVec4) * desc.numActiveParticles, 0);
+	cudaContext->memcpyHtoDAsync(hipDeviceptr_t(rigidLocalNormalsd), rigidDesc.rigidLocalNormals, sizeof(PxVec4) * desc.numActiveParticles, 0);
 
 	rigidBuffer->setNbActiveParticles(numActiveParticles);
 	rigidBuffer->setNbRigids(numRigids);
@@ -199,9 +199,9 @@ PxParticleAttachmentBuffer::~PxParticleAttachmentBuffer()
 	PxCudaContext* cudaContext = mCudaContextManager->getCudaContext();
 
 	if (mDeviceAttachments)
-		cudaContext->memFree((CUdeviceptr)mDeviceAttachments);
+		cudaContext->memFree((hipDeviceptr_t)mDeviceAttachments);
 	if (mDeviceFilters)
-		cudaContext->memFree((CUdeviceptr)mDeviceFilters);
+		cudaContext->memFree((hipDeviceptr_t)mDeviceFilters);
 
 	mDeviceAttachments = NULL;
 	mDeviceFilters = NULL;
@@ -210,7 +210,7 @@ PxParticleAttachmentBuffer::~PxParticleAttachmentBuffer()
 #endif
 }
 
-void PxParticleAttachmentBuffer::copyToDevice(CUstream stream)
+void PxParticleAttachmentBuffer::copyToDevice(hipStream_t stream)
 {
 #if PX_SUPPORT_GPU_PHYSX
 	mCudaContextManager->acquireContext();
@@ -220,25 +220,25 @@ void PxParticleAttachmentBuffer::copyToDevice(CUstream stream)
 	if (mAttachments.size() > mNumDeviceAttachments)
 	{
 		if (mDeviceAttachments)
-			cudaContext->memFree((CUdeviceptr)mDeviceAttachments);
+			cudaContext->memFree((hipDeviceptr_t)mDeviceAttachments);
 
-		cudaContext->memAlloc((CUdeviceptr*)&mDeviceAttachments, sizeof(PxParticleRigidAttachment)*mAttachments.size());
+		cudaContext->memAlloc((hipDeviceptr_t*)&mDeviceAttachments, sizeof(PxParticleRigidAttachment)*mAttachments.size());
 		mNumDeviceAttachments = mAttachments.size();
 	}
 	if (mFilters.size() > mNumDeviceFilters)
 	{
 		if (mDeviceFilters)
-			cudaContext->memFree((CUdeviceptr)mDeviceFilters);
+			cudaContext->memFree((hipDeviceptr_t)mDeviceFilters);
 
-		cudaContext->memAlloc((CUdeviceptr*)&mDeviceFilters, sizeof(PxParticleRigidFilterPair)*mFilters.size());
+		cudaContext->memAlloc((hipDeviceptr_t*)&mDeviceFilters, sizeof(PxParticleRigidFilterPair)*mFilters.size());
 		mNumDeviceFilters = mFilters.size();
 	}
 
 	if (mAttachments.size())
-		cudaContext->memcpyHtoDAsync((CUdeviceptr)mDeviceAttachments, mAttachments.begin(), sizeof(PxParticleRigidAttachment)*mAttachments.size(), stream);
+		cudaContext->memcpyHtoDAsync((hipDeviceptr_t)mDeviceAttachments, mAttachments.begin(), sizeof(PxParticleRigidAttachment)*mAttachments.size(), stream);
 
 	if (mFilters.size())
-		cudaContext->memcpyHtoDAsync((CUdeviceptr)mDeviceFilters, mFilters.begin(), sizeof(PxParticleRigidFilterPair)*mFilters.size(), stream);
+		cudaContext->memcpyHtoDAsync((hipDeviceptr_t)mDeviceFilters, mFilters.begin(), sizeof(PxParticleRigidFilterPair)*mFilters.size(), stream);
 
 	mParticleBuffer.setRigidAttachments(mDeviceAttachments, mAttachments.size());
 	mParticleBuffer.setRigidFilters(mDeviceFilters, mFilters.size());

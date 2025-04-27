@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -42,7 +43,7 @@
 #include "PxgSapBox1D.h"
 #include "foundation/PxAllocator.h"
 #include "foundation/PxBounds3.h"
-#include "vector_types.h"
+#include "hip/hip_vector_types.h"
 #include "PxgBroadPhaseKernelIndices.h"
 #include "PxSceneDesc.h"
 #include "PxgCudaBroadPhaseSap.h"
@@ -56,8 +57,8 @@
 #if GPU_AABB_DEBUG
 	#define GPU_DEBUG_STREAM(s, x)									\
 	{																\
-		const CUresult err = mCudaContext->streamSynchronize(s);	\
-		if(err != CUDA_SUCCESS)										\
+		const hipError_t err = mCudaContext->streamSynchronize(s);	\
+		if(err != hipSuccess)										\
 			outputError<PxErrorCode::eINTERNAL_ERROR>(__LINE__, x);	\
 	}
 #else
@@ -642,9 +643,9 @@ void PxgAABBManager::updateBPSecondPass(PxcScratchAllocator* scratchAllocator, P
 		PxScopedCudaLock _lock_(*mCudaContextManager);
 
 		PxgCudaBroadPhaseSap& gpuBP = getGPUBroadPhase(mBroadPhase);
-		CUstream bpStream = gpuBP.getBpStream();
-		CUdeviceptr bpDescd = gpuBP.getBroadPhaseDescDevicePtr();
-		CUdeviceptr aggDescd = mAggregateDescBuf.getDevicePtr();
+		hipStream_t bpStream = gpuBP.getBpStream();
+		hipDeviceptr_t bpDescd = gpuBP.getBroadPhaseDescDevicePtr();
+		hipDeviceptr_t aggDescd = mAggregateDescBuf.getDevicePtr();
 
 		// process added/removed aggregated bounds
 		// DMA is happening with updateDirtyAggregates
@@ -653,8 +654,8 @@ void PxgAABBManager::updateBPSecondPass(PxcScratchAllocator* scratchAllocator, P
 		if (numRemovedAggregatedBounds || numAddedAggregatedBounds)
 		{
 
-			CUdeviceptr boundsd = mRemovedAggregatedBoundsBuf.getDevicePtr();
-			CUdeviceptr addedBoundsd = mAddedAggregatedBoundsBuf.getDevicePtr();
+			hipDeviceptr_t boundsd = mRemovedAggregatedBoundsBuf.getDevicePtr();
+			hipDeviceptr_t addedBoundsd = mAddedAggregatedBoundsBuf.getDevicePtr();
 
 			{
 				KERNEL_PARAM_TYPE kernelParams[] = { 
@@ -696,8 +697,8 @@ void PxgAABBManager::updateBPSecondPass(PxcScratchAllocator* scratchAllocator, P
 			_launch<GPU_AABB_DEBUG>(PROLOG, PxgKernelIds::AGG_SELF_COLLISION, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlocks, 1, 0, EPILOG);
 
 #if GPU_AABB_DEBUG
-			//CUresult res = mCudaContext->memcpyDtoH((void*)&mAggregateDesc, aggDescd, sizeof(PxgAggregateDesc));
-			//PX_ASSERT(res == CUDA_SUCCESS);
+			//hipError_t res = mCudaContext->memcpyDtoH((void*)&mAggregateDesc, aggDescd, sizeof(PxgAggregateDesc));
+			//PX_ASSERT(res == hipSuccess);
 
 		//	int bob = 0;
 			//PX_UNUSED(bob);
@@ -730,9 +731,9 @@ void PxgAABBManager::updateBPSecondPass(PxcScratchAllocator* scratchAllocator, P
 			_launch<GPU_AABB_DEBUG>(PROLOG, PxgKernelIds::AGG_PAIR_COLLISION, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlocks, 1, 0, EPILOG);
 
 #if GPU_AABB_DEBUG
-			CUresult res = mCudaContext->memcpyDtoH((void*)mAggregateDesc, aggDescd, sizeof(PxgAggregateDesc));
+			hipError_t res = mCudaContext->memcpyDtoH((void*)mAggregateDesc, aggDescd, sizeof(PxgAggregateDesc));
 			PX_UNUSED(res);
-			PX_ASSERT(res == CUDA_SUCCESS);
+			PX_ASSERT(res == hipSuccess);
 			PX_UNUSED(res);
 #endif
 		}
@@ -769,7 +770,7 @@ void PxgAABBManager::preBpUpdate_GPU()
 {
 	struct Local
 	{
-		static PX_FORCE_INLINE void dmaBitmap(PxCudaContext* ctx, CUstream bpStream, PxgCudaBuffer& dst, const PxBitMapPinned& src)
+		static PX_FORCE_INLINE void dmaBitmap(PxCudaContext* ctx, hipStream_t bpStream, PxgCudaBuffer& dst, const PxBitMapPinned& src)
 		{
 			const PxU32 nbBytesToMove = sizeof(PxU32)*src.getWordCount();
  			dst.allocate(nbBytesToMove, PX_FL);
@@ -782,7 +783,7 @@ void PxgAABBManager::preBpUpdate_GPU()
 
 	PxgCudaBroadPhaseSap& gpuBP = getGPUBroadPhase(mBroadPhase);
 
-	CUstream bpStream = gpuBP.getBpStream();
+	hipStream_t bpStream = gpuBP.getBpStream();
 	PxScopedCudaLock _lock_(*mCudaContextManager);
 
 	if (mPersistentStateChanged)
@@ -938,7 +939,7 @@ void PxgAABBManager::processFoundPairs()
 			PX_PROFILE_ZONE("PxgAABBManager::processFoundPairs - memsetD32Async", mContextID);
 			PxScopedCudaLock _lock_(*mCudaContextManager);
 
-			CUstream bpStream = gpuBP.getBpStream();
+			hipStream_t bpStream = gpuBP.getBpStream();
 			mCudaContext->memsetD32Async(mAddedHandleBuf.getDevicePtr(), 0, mAddedHandleBuf.getSize() / sizeof(PxU32), bpStream);
 			mCudaContext->memsetD32Async(mRemovedHandleBuf.getDevicePtr(), 0, mRemovedHandleBuf.getSize() / sizeof(PxU32), bpStream);
 		}
@@ -1047,7 +1048,7 @@ void PxgAABBManager::releaseDeferredAggregateIds()
 	mAddedAggregatedBounds.forceSize_Unsafe(0);
 }
 
-void PxgAABBManager::updateDescriptor(CUstream bpStream)
+void PxgAABBManager::updateDescriptor(hipStream_t bpStream)
 {
 	//create descriptor 
 	mAggregateDesc->aggregates = reinterpret_cast<PxgAggregate*>(mAggregateBuf.getDevicePtr());
@@ -1080,7 +1081,7 @@ void PxgAABBManager::updateDescriptor(CUstream bpStream)
 
 void PxgAABBManager::gpuDmaDataUp()
 {
-	CUstream bpStream = getGPUBroadPhase(mBroadPhase).getBpStream();
+	hipStream_t bpStream = getGPUBroadPhase(mBroadPhase).getBpStream();
 	PxScopedCudaLock _lock_(*mCudaContextManager);
 
 	const PxU32 numDirtyAggregates = mDirtyAggregateIndices.size();
@@ -1148,9 +1149,9 @@ void PxgAABBManager::gpuDmaDataUp()
 			}
 		}
 
-		CUdeviceptr aggregated = mAggregateBuf.getDevicePtr();
-		CUdeviceptr dirtyAggregateIndiced = mDirtyAggregateIndiceBuf.getDevicePtr();
-		CUdeviceptr dirtyAggregated = mDirtyAggregateBuf.getDevicePtr();
+		hipDeviceptr_t aggregated = mAggregateBuf.getDevicePtr();
+		hipDeviceptr_t dirtyAggregateIndiced = mDirtyAggregateIndiceBuf.getDevicePtr();
+		hipDeviceptr_t dirtyAggregated = mDirtyAggregateBuf.getDevicePtr();
 
 		mCudaContext->memcpyHtoDAsync(dirtyAggregateIndiced, mDirtyAggregateIndices.begin(), sizeof(AggregateHandle)* numDirtyAggregates, bpStream);
 		mCudaContext->memcpyHtoDAsync(dirtyAggregated, mDirtyAggregates.begin(), sizeof(PxgAggregate) * numDirtyAggregates, bpStream);
@@ -1178,8 +1179,8 @@ void PxgAABBManager::gpuDmaDataUp()
 		mDirtyBoundIndicesBuf.allocate(sizeof(PxU32) * totalNumBounds, PX_FL);
 		mDirtyBoundStartIndicesBuf.allocate(sizeof(PxU32) * numDirtyAggregates, PX_FL);
 
-		CUdeviceptr dirtyBoundIndicesd = mDirtyBoundIndicesBuf.getDevicePtr();
-		CUdeviceptr dirtyBoundStartIndicesd = mDirtyBoundStartIndicesBuf.getDevicePtr();
+		hipDeviceptr_t dirtyBoundIndicesd = mDirtyBoundIndicesBuf.getDevicePtr();
+		hipDeviceptr_t dirtyBoundStartIndicesd = mDirtyBoundStartIndicesBuf.getDevicePtr();
 		
 		mCudaContext->memcpyHtoDAsync(dirtyBoundIndicesd, mDirtyBoundIndices.begin(), sizeof(PxU32)* totalNumBounds, bpStream);
 		mCudaContext->memcpyHtoDAsync(dirtyBoundStartIndicesd, mDirtyBoundStartIndices.begin(), sizeof(PxU32) * numDirtyAggregates, bpStream);
@@ -1189,13 +1190,13 @@ void PxgAABBManager::gpuDmaDataUp()
 		// descriptor to be ready.
 		if (numRemovedAggregatedBounds)
 		{
-			CUdeviceptr removedBoundsd = mRemovedAggregatedBoundsBuf.getDevicePtr();
+			hipDeviceptr_t removedBoundsd = mRemovedAggregatedBoundsBuf.getDevicePtr();
 			mCudaContext->memcpyHtoDAsync(removedBoundsd, mRemovedAggregatedBounds.begin(), numRemovedAggregatedBounds * sizeof(PxU32), bpStream);
 		}
 
 		if (numAddedAggregatedBounds)
 		{
-			CUdeviceptr addedBoundsd = mAddedAggregatedBoundsBuf.getDevicePtr();
+			hipDeviceptr_t addedBoundsd = mAddedAggregatedBoundsBuf.getDevicePtr();
 			mCudaContext->memcpyHtoDAsync(addedBoundsd, mAddedAggregatedBounds.begin(), numAddedAggregatedBounds * sizeof(PxU32), bpStream);
 		}
 
@@ -1223,14 +1224,14 @@ void PxgAABBManager::gpuDmaDataUp()
 
 void PxgAABBManager::clearDirtyAggs()
 {
-	CUstream bpStream = getGPUBroadPhase(mBroadPhase).getBpStream();
+	hipStream_t bpStream = getGPUBroadPhase(mBroadPhase).getBpStream();
 	PxScopedCudaLock _lock_(*mCudaContextManager);
 
 	const PxU32 numDirtyAggregates = mDirtyAggregateIndices.size();
 	if (numDirtyAggregates)
 	{
-		CUdeviceptr aggregated = mAggregateBuf.getDevicePtr();
-		CUdeviceptr dirtyAggregateIndiced = mDirtyAggregateIndiceBuf.getDevicePtr();
+		hipDeviceptr_t aggregated = mAggregateBuf.getDevicePtr();
+		hipDeviceptr_t dirtyAggregateIndiced = mDirtyAggregateIndiceBuf.getDevicePtr();
 		
 		KERNEL_PARAM_TYPE kernelParams[] = {
 			CUDA_KERNEL_PARAM(aggregated),
@@ -1305,14 +1306,14 @@ void PxgAABBManager::computeAggregateBounds()
 	{
 		PxgCudaBroadPhaseSap& gpuBP = getGPUBroadPhase(mBroadPhase);
 
-		CUstream bpStream = gpuBP.getBpStream();
+		hipStream_t bpStream = gpuBP.getBpStream();
 		PxScopedCudaLock _lock_(*mCudaContextManager);
 
-		CUdeviceptr aggDescd = mAggregateDescBuf.getDevicePtr();
+		hipDeviceptr_t aggDescd = mAggregateDescBuf.getDevicePtr();
 
 		{
-			CUdeviceptr boundsd = gpuBP.getBoundsBuffer().getDevicePtr();
-			CUdeviceptr contactDistd = gpuBP.getContactDistBuffer().getDevicePtr();
+			hipDeviceptr_t boundsd = gpuBP.getBoundsBuffer().getDevicePtr();
+			hipDeviceptr_t contactDistd = gpuBP.getContactDistBuffer().getDevicePtr();
 			//copy cpu data to gpu
 			KERNEL_PARAM_TYPE kernelParams[] = {
 				CUDA_KERNEL_PARAM(aggDescd),
@@ -1336,10 +1337,10 @@ void PxgAABBManager::markAggregateBoundsBitmap()
 		PxScopedCudaLock _lock_(*mCudaContextManager);
 
 		PxgCudaBroadPhaseSap& gpuBP = getGPUBroadPhase(mBroadPhase);
-		CUstream bpStream = gpuBP.getBpStream();
+		hipStream_t bpStream = gpuBP.getBpStream();
 
-		CUdeviceptr aggDescd = mAggregateDescBuf.getDevicePtr();
-		CUdeviceptr changedHandles = mChangedAABBMgrHandlesBuf.getDevicePtr();
+		hipDeviceptr_t aggDescd = mAggregateDescBuf.getDevicePtr();
+		hipDeviceptr_t changedHandles = mChangedAABBMgrHandlesBuf.getDevicePtr();
 
 		// in the first step, this array does not exist yet, but by definition there are also 
 		// no changed handles. Everything is new.

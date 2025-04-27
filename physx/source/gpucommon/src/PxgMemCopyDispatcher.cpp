@@ -32,7 +32,7 @@
 
 namespace physx
 {
-	void PxgMemCopyDispatcher::flushCommands(CUstream stream, PxCudaContext* cudaContext, KernelWrangler* kernelWrangler)
+	void PxgMemCopyDispatcher::flushCommands(hipStream_t stream, PxCudaContext* cudaContext, KernelWrangler* kernelWrangler)
 	{
 		// AD - this assumes the context lock is already held?
 		if (mPinnedCopyBuffer.size())
@@ -40,7 +40,7 @@ namespace physx
 			mDeviceCopyCommands.allocate(mPinnedCopyBuffer.size() * sizeof(PxgPtrPair), PX_FL);
 			cudaContext->memcpyHtoDAsync(mDeviceCopyCommands.getDevicePtr(), mPinnedCopyBuffer.begin(), mPinnedCopyBuffer.size() * sizeof(PxgPtrPair), stream);
 
-			CUfunction function = kernelWrangler->getCuFunction(PxgKernelIds::COPY_USER_DATA);
+			hipFunction_t function = kernelWrangler->getCuFunction(PxgKernelIds::COPY_USER_DATA);
 
 			PX_ASSERT(mMaxSize <= PX_MAX_U32);
 			const PxU32 maxS = PxU32(mMaxSize);
@@ -48,7 +48,7 @@ namespace physx
 			const PxU32 blockSize = 256;
 			const PxU32 numBlocks = ((maxS/4) + blockSize-1)/ blockSize;
 
-			CUdeviceptr ptr = mDeviceCopyCommands.getDevicePtr();
+			hipDeviceptr_t ptr = mDeviceCopyCommands.getDevicePtr();
 			PxU32 count = mPinnedCopyBuffer.size();
 
 			PxCudaKernelParam kernelParams[] =
@@ -57,8 +57,8 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(count)
 			};
 
-			CUresult launchResult = cudaContext->launchKernel(function, numBlocks, count, 1, 256, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(launchResult == CUDA_SUCCESS);
+			hipError_t launchResult = cudaContext->launchKernel(function, numBlocks, count, 1, 256, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(launchResult == hipSuccess);
 			PX_UNUSED(launchResult);
 		}
 		mPinnedCopyBuffer.forceSize_Unsafe(0);

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -177,8 +178,8 @@ namespace physx
 
 		void gpuDmaUpdateData();
 
-		bool getRigidDynamicData(void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, float oneOverDt, CUevent startEvent, CUevent finishEvent) const;
-		bool setRigidDynamicData(const void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent);
+		bool getRigidDynamicData(void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, float oneOverDt, hipEvent_t startEvent, hipEvent_t finishEvent) const;
+		bool setRigidDynamicData(const void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent);
 
 		void setSoftBodyWakeCounter(const PxU32 remapId, const PxReal wakeCounter, const PxU32 numSoftBodies);
 		void setFEMClothWakeCounter(const PxU32 remapId, const PxReal wakeCounter, const PxU32 numClothes);
@@ -220,10 +221,10 @@ namespace physx
 
 		PX_FORCE_INLINE PxgTypedCudaBuffer<PxgD6JointData>&  getD6ArtiJointBuffer() { return mArtiJointBuffer; }
 		PX_FORCE_INLINE PxgTypedCudaBuffer<PxgConstraintPrePrep>&  getD6ArtiJointPrePreBuffer() { return mArtiJointPrePrepBuffer; }	
-		PX_FORCE_INLINE CUstream getStream() { return mStream; }
+		PX_FORCE_INLINE hipStream_t getStream() { return mStream; }
 
 		bool getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, PxF32 oneOverDt, 
-			PxU32 directGpuApiIndexMapHostSize, CUevent startEvent, CUevent finishEvent) const;
+			PxU32 directGpuApiIndexMapHostSize, hipEvent_t startEvent, hipEvent_t finishEvent) const;
 			
 
 		//soft body
@@ -349,7 +350,7 @@ namespace physx
 
 	private:
 
-		void constructDescriptor(CUdeviceptr boundsd, CUdeviceptr changedAABBMgrHandlesd, const PxU32 nbTotalShapes, const PxU32 bitMapWordCounts);
+		void constructDescriptor(hipDeviceptr_t boundsd, hipDeviceptr_t changedAABBMgrHandlesd, const PxU32 nbTotalShapes, const PxU32 bitMapWordCounts);
 		void createGpuStreamsAndEvents();
 		void releaseGpuStreamsAndEvents();
 		void syncData();
@@ -570,9 +571,9 @@ namespace physx
 		bool			mUsePartitionAveraging;
 		bool			mHasActiveBendingPairs;
 
-		CUstream		mStream;
-		CUevent			mEvent;
-		CUevent			mDmaEvent; 
+		hipStream_t		mStream;
+		hipEvent_t			mEvent;
+		hipEvent_t			mDmaEvent; 
 	
 		PxVec3			mGravity;
 

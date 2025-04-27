@@ -58,13 +58,13 @@ namespace physx
 		// the priorities array allows specifying a 5-bit [0-31] value priority such that lower priority
 		// leaves will always be returned first
 		void buildFromLeaveBounds(PxgBVH& bvh, const PxVec4* lowers, const PxVec4* uppers, const PxI32* priorities, PxI32 n, PxBounds3* totalBounds,
-			CUstream stream, bool skipAllocate = false);
+			hipStream_t stream, bool skipAllocate = false);
 
 		void buildFromTriangles(PxgBVH& bvh, const PxVec3* vertices, const PxU32* triangleIndices, const PxI32* priorities,
-			PxI32 n, PxBounds3* totalBounds, CUstream stream, PxReal boxMargin = 1e-5f);
+			PxI32 n, PxBounds3* totalBounds, hipStream_t stream, PxReal boxMargin = 1e-5f);
 		
 		void buildTreeAndWindingClustersFromTriangles(PxgBVH& bvh, PxgWindingClusterApproximation* windingNumberClustersD, const PxVec3* vertices, const PxU32* triangleIndices, const PxI32* priorities,
-			PxI32 n, PxBounds3* totalBounds, CUstream stream, PxReal boxMargin = 1e-5f, bool skipAllocate = false);
+			PxI32 n, PxBounds3* totalBounds, hipStream_t stream, PxReal boxMargin = 1e-5f, bool skipAllocate = false);
 
 
 		void resizeBVH(PxgBVH& bvh, PxU32 numNodes);
@@ -77,7 +77,7 @@ namespace physx
 		PxI32* mMaxTreeDepth;
 	private:
 
-		void prepareHierarchConstruction(PxgBVH& bvh, const PxVec4* lowers, const PxVec4* uppers, const PxI32* priorities, PxI32 n, PxBounds3* totalBounds, CUstream stream);
+		void prepareHierarchConstruction(PxgBVH& bvh, const PxVec4* lowers, const PxVec4* uppers, const PxI32* priorities, PxI32 n, PxBounds3* totalBounds, hipStream_t stream);
 		
 		PxgKernelLauncher mKernelLauncher;
 		PxGpuRadixSort<PxU32> mSort;
@@ -104,19 +104,19 @@ namespace physx
 		PxgKernelLauncher mKernelLauncher;
 
 		void computeDenseSDF(const PxgBvhTriangleMesh& mesh, const PxgWindingClusterApproximation* windingNumberClustersD,
-			const Gu::GridQueryPointSampler& sampler, PxU32 sizeX, PxU32 sizeY, PxU32 sizeZ, PxReal* sdfDataD, CUstream stream, PxReal* windingNumbersD = NULL);
+			const Gu::GridQueryPointSampler& sampler, PxU32 sizeX, PxU32 sizeY, PxU32 sizeZ, PxReal* sdfDataD, hipStream_t stream, PxReal* windingNumbersD = NULL);
 
 		// returns NULL if GPU errors occurred.
 		PxReal* buildDenseSDF(const PxVec3* vertices, PxU32 numVertices, const PxU32* indicesOrig, PxU32 numTriangleIndices, PxU32 width, PxU32 height, PxU32 depth,
-			const PxVec3& minExtents, const PxVec3& maxExtents, bool cellCenteredSamples, CUstream stream);
+			const PxVec3& minExtents, const PxVec3& maxExtents, bool cellCenteredSamples, hipStream_t stream);
 
 		void compressSDF(PxReal* denseSdfD, PxU32 width, PxU32 height, PxU32 depth,
 			PxU32 subgridSize, PxReal narrowBandThickness, PxU32 bytesPerSubgridPixel, PxReal errorThreshold,
 			PxReal& subgridGlobalMinValue, PxReal& subgridGlobalMaxValue, PxArray<PxReal>& sdfCoarse, PxArray<PxU32>& sdfSubgridsStartSlots, PxArray<PxU8>& sdfDataSubgrids,
-			PxU32& sdfSubgrids3DTexBlockDimX, PxU32& sdfSubgrids3DTexBlockDimY, PxU32& sdfSubgrids3DTexBlockDimZ, CUstream stream);
+			PxU32& sdfSubgrids3DTexBlockDimX, PxU32& sdfSubgrids3DTexBlockDimY, PxU32& sdfSubgrids3DTexBlockDimZ, hipStream_t stream);
 		
 		void fixHoles(PxU32 width, PxU32 height, PxU32 depth, PxReal* sdfDataD, const PxVec3& cellSize, const PxVec3& minExtents, const PxVec3& maxExtents,
-			Gu::GridQueryPointSampler& sampler, CUstream stream);
+			Gu::GridQueryPointSampler& sampler, hipStream_t stream);
 
 		bool allocateBuffersForCompression(PxReal*& backgroundSdfD, PxU32 numBackgroundSdfSamples, PxU32*& subgridAddressesD, PxU8*& subgridActiveD, PxU32 numAddressEntries,
 			PxReal*& subgridGlobalMinValueD, PxReal*& subgridGlobalMaxValueD, PxGpuScan& scan);
@@ -128,13 +128,13 @@ namespace physx
 		PxgSDFBuilder(PxgKernelLauncher& kernelLauncher);
 
 		virtual bool buildSDF(const PxVec3* vertices, PxU32 numVertices, const PxU32* indicesOrig, PxU32 numTriangleIndices, PxU32 width, PxU32 height, PxU32 depth,
-			const PxVec3& minExtents, const PxVec3& maxExtents, bool cellCenteredSamples, PxReal* sdf, CUstream stream) PX_OVERRIDE;
+			const PxVec3& minExtents, const PxVec3& maxExtents, bool cellCenteredSamples, PxReal* sdf, hipStream_t stream) PX_OVERRIDE;
 	
 		virtual bool buildSparseSDF(const PxVec3* vertices, PxU32 numVertices, const PxU32* indicesOrig, PxU32 numTriangleIndices, PxU32 width, PxU32 height, PxU32 depth,
 			const PxVec3& minExtents, const PxVec3& maxExtents, PxReal narrowBandThickness, PxU32 subgridSize, PxSdfBitsPerSubgridPixel::Enum bytesPerSubgridPixel,
 			PxArray<PxReal>& sdfCoarse, PxArray<PxU32>& sdfSubgridsStartSlots, PxArray<PxU8>& sdfDataSubgrids,
 			PxReal& subgridsMinSdfValue, PxReal& subgridsMaxSdfValue, 
-			PxU32& sdfSubgrids3DTexBlockDimX, PxU32& sdfSubgrids3DTexBlockDimY, PxU32& sdfSubgrids3DTexBlockDimZ, CUstream stream) PX_OVERRIDE;
+			PxU32& sdfSubgrids3DTexBlockDimX, PxU32& sdfSubgrids3DTexBlockDimY, PxU32& sdfSubgrids3DTexBlockDimZ, hipStream_t stream) PX_OVERRIDE;
 	
 		void release();
 	};

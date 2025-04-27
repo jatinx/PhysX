@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // [DEAR IMGUI] 
 // This is a slightly modified version of stb_truetype.h 1.20.
 // Mostly fixing for compiler and static analyzer warnings.

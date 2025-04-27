@@ -163,7 +163,7 @@ void PxgLinearBVHBuilderGPU::release()
 	mMaxItems = 0;
 }
 	
-void PxgLinearBVHBuilderGPU::buildFromTriangles(PxgBVH& bvh, const PxVec3* vertices, const PxU32* triangleIndices, const PxI32* itemPriorities, PxI32 numItems, PxBounds3* totalBounds, CUstream stream, PxReal boxMargin)
+void PxgLinearBVHBuilderGPU::buildFromTriangles(PxgBVH& bvh, const PxVec3* vertices, const PxU32* triangleIndices, const PxI32* itemPriorities, PxI32 numItems, PxBounds3* totalBounds, hipStream_t stream, PxReal boxMargin)
 {
 	allocateOrResize(bvh, numItems);
 
@@ -187,7 +187,7 @@ void PxgLinearBVHBuilderGPU::buildFromTriangles(PxgBVH& bvh, const PxVec3* verti
 }
 
 void PxgLinearBVHBuilderGPU::buildTreeAndWindingClustersFromTriangles(PxgBVH& bvh, PxgWindingClusterApproximation* windingNumberClustersD, const PxVec3* vertices, const PxU32* triangleIndices, const PxI32* itemPriorities,
-	PxI32 numItems, PxBounds3* totalBounds, CUstream stream, PxReal boxMargin, bool skipAllocate)
+	PxI32 numItems, PxBounds3* totalBounds, hipStream_t stream, PxReal boxMargin, bool skipAllocate)
 {
 	if (!skipAllocate)
 		allocateOrResize(bvh, numItems);
@@ -216,7 +216,7 @@ void PxgLinearBVHBuilderGPU::buildTreeAndWindingClustersFromTriangles(PxgBVH& bv
 	{
 		PxCudaContextManager* ccm = mKernelLauncher.getCudaContextManager();
 		PxCUresult result = ccm->getCudaContext()->streamSynchronize(stream);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxArray<PxVec4> lowerDebug;
 		lowerDebug.resize(2 * numItems);
@@ -225,19 +225,19 @@ void PxgLinearBVHBuilderGPU::buildTreeAndWindingClustersFromTriangles(PxgBVH& bv
 		PxU32 root = 0xFFFFFFFF;
 
 		result = ccm->getCudaContext()->streamSynchronize(stream);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxgCudaHelpers::copyDToH(*ccm->getCudaContext(), lowerDebug.begin(), reinterpret_cast<PxVec4*>(bvh.mNodeLowers), lowerDebug.size());
 		PxgCudaHelpers::copyDToH(*ccm->getCudaContext(), upperDebug.begin(), reinterpret_cast<PxVec4*>(bvh.mNodeUppers), upperDebug.size());
 		PxgCudaHelpers::copyDToH(*ccm->getCudaContext(), &root, bvh.mRootNode, 1u);
 
 		result = ccm->getCudaContext()->streamSynchronize(stream);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 	}
 #endif
 }
 
-void PxgLinearBVHBuilderGPU::buildFromLeaveBounds(PxgBVH& bvh, const PxVec4* itemLowers, const PxVec4* itemUppers, const PxI32* itemPriorities, PxI32 numItems, PxBounds3* totalBounds, CUstream stream, bool skipAllocate)
+void PxgLinearBVHBuilderGPU::buildFromLeaveBounds(PxgBVH& bvh, const PxVec4* itemLowers, const PxVec4* itemUppers, const PxI32* itemPriorities, PxI32 numItems, PxBounds3* totalBounds, hipStream_t stream, bool skipAllocate)
 {
 	const PxU32 kNumThreadsPerBlock = PxgBVHKernelBlockDim::BUILD_HIERARCHY;
 	const PxU32 kNumBlocks = (numItems + kNumThreadsPerBlock - 1) / kNumThreadsPerBlock;
@@ -251,7 +251,7 @@ void PxgLinearBVHBuilderGPU::buildFromLeaveBounds(PxgBVH& bvh, const PxVec4* ite
 		&numItems, &bvh.mRootNode, &mMaxTreeDepth, &mDeltas, &mNumChildren, &mRangeLefts, &mRangeRights, &bvh.mNodeLowers, &bvh.mNodeUppers);
 }
 
-void PxgLinearBVHBuilderGPU::prepareHierarchConstruction(PxgBVH& bvh, const PxVec4* itemLowers, const PxVec4* itemUppers, const PxI32* itemPriorities, PxI32 numItems, PxBounds3* totalBounds, CUstream stream)
+void PxgLinearBVHBuilderGPU::prepareHierarchConstruction(PxgBVH& bvh, const PxVec4* itemLowers, const PxVec4* itemUppers, const PxI32* itemPriorities, PxI32 numItems, PxBounds3* totalBounds, hipStream_t stream)
 {
 	const PxU32 maxNodes = 2 * numItems;
 
@@ -313,9 +313,9 @@ void PxgLinearBVHBuilderGPU::prepareHierarchConstruction(PxgBVH& bvh, const PxVe
 }
 
 void PxgSDFBuilder::computeDenseSDF(const PxgBvhTriangleMesh& mesh, const PxgWindingClusterApproximation* windingNumberClustersD,
-	const Gu::GridQueryPointSampler& sampler, PxU32 sizeX, PxU32 sizeY, PxU32 sizeZ, PxReal* sdfDataD, CUstream stream, PxReal* windingNumbersD)
+	const Gu::GridQueryPointSampler& sampler, PxU32 sizeX, PxU32 sizeY, PxU32 sizeZ, PxReal* sdfDataD, hipStream_t stream, PxReal* windingNumbersD)
 {
-	PxCUresult result = CUDA_SUCCESS;
+	PxCUresult result = hipSuccess;
 
 	PxU32 blockDimX = 8;
 	PxU32 blockDimY = 8;
@@ -340,13 +340,13 @@ void PxgSDFBuilder::computeDenseSDF(const PxgBvhTriangleMesh& mesh, const PxgWin
 		if (enableStatistics) 
 		{
 			result = mKernelLauncher.getCudaContextManager()->getCudaContext()->streamSynchronize(stream);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			PxU32 counter;
 			PxgcudaHelpers::copyDToH(*mKernelLauncher.getCudaContextManager(), &counter, atomicCounter, 1);
 
 			result = mKernelLauncher.getCudaContextManager()->getCudaContext()->streamSynchronize(stream);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			PX_DEVICE_MEMORY_FREE(*mKernelLauncher.getCudaContextManager(), atomicCounter);
 
@@ -360,7 +360,7 @@ void PxgSDFBuilder::computeDenseSDF(const PxgBvhTriangleMesh& mesh, const PxgWin
 			&mesh, &windingNumberClustersD, &sampler, &sizeX, &sizeY, &sizeZ, &sdfDataD, &windingNumbersD);
 	}		
 
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 }
 
 PxgSDFBuilder::PxgSDFBuilder(PxgKernelLauncher& kernelLauncher) : mKernelLauncher(kernelLauncher)
@@ -368,7 +368,7 @@ PxgSDFBuilder::PxgSDFBuilder(PxgKernelLauncher& kernelLauncher) : mKernelLaunche
 }
 
 void PxgSDFBuilder::fixHoles(PxU32 width, PxU32 height, PxU32 depth, PxReal* sdfDataD, const PxVec3& cellSize, const PxVec3& minExtents, const PxVec3& maxExtents,
-	Gu::GridQueryPointSampler& sampler, CUstream stream)
+	Gu::GridQueryPointSampler& sampler, hipStream_t stream)
 {
 	PxCudaContextManager* ccm = mKernelLauncher.getCudaContextManager();
 
@@ -391,12 +391,12 @@ void PxgSDFBuilder::fixHoles(PxU32 width, PxU32 height, PxU32 depth, PxReal* sdf
 	PxU32 numPointsInCloud = 0;
 
 	PxCUresult result = ccm->getCudaContext()->streamSynchronize(stream);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	PxgCudaHelpers::copyDToH(*ccm->getCudaContext(), &numPointsInCloud, atomicCounter, 1);
 
 	result = ccm->getCudaContext()->streamSynchronize(stream);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	if (numPointsInCloud > 0)
 	{
@@ -439,13 +439,13 @@ void PxgSDFBuilder::fixHoles(PxU32 width, PxU32 height, PxU32 depth, PxReal* sdf
 			upper.resize(numPointsInCloud);
 
 			result = ccm->getCudaContext()->streamSynchronize(stream);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			PxgcudaHelpers::copyDToH(*ccm, lower.begin(), reinterpret_cast<PxVec4*>(&pointCloudBvh.mNodeLowers[0]), numPointsInCloud);
 			PxgcudaHelpers::copyDToH(*ccm, upper.begin(), reinterpret_cast<PxVec4*>(&pointCloudBvh.mNodeUppers[0]), numPointsInCloud);
 
 			result = ccm->getCudaContext()->streamSynchronize(stream);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 		}
 #endif
 
@@ -469,13 +469,13 @@ void PxgSDFBuilder::fixHoles(PxU32 width, PxU32 height, PxU32 depth, PxReal* sdf
 	}
 
 	result = ccm->getCudaContext()->streamSynchronize(stream);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	PX_DEVICE_MEMORY_FREE(*ccm, atomicCounter);
 }
 
 PxReal* PxgSDFBuilder::buildDenseSDF(const PxVec3* vertices, PxU32 numVertices, const PxU32* indicesOrig, PxU32 numTriangleIndices, PxU32 width, PxU32 height, PxU32 depth,
-	const PxVec3& minExtents, const PxVec3& maxExtents, bool cellCenteredSamples, CUstream stream)
+	const PxVec3& minExtents, const PxVec3& maxExtents, bool cellCenteredSamples, hipStream_t stream)
 {
 	PxCudaContextManager* ccm = mKernelLauncher.getCudaContextManager();
 
@@ -542,12 +542,12 @@ PxReal* PxgSDFBuilder::buildDenseSDF(const PxVec3* vertices, PxU32 numVertices, 
 	if (debugWindingNumbers)
 	{
 		PxCUresult result = ccm->getCudaContext()->streamSynchronize(stream);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxgCudaHelpers::copyDToH(*ccm, windingNumbers.begin(), windingNumbersD, width * height * depth);
 			
 		result = ccm->getCudaContext()->streamSynchronize(stream);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 		PX_UNUSED(result);
 
 		PxReal minWinding = FLT_MAX;
@@ -592,7 +592,7 @@ PxReal* PxgSDFBuilder::buildDenseSDF(const PxVec3* vertices, PxU32 numVertices, 
 }
 
 bool PxgSDFBuilder::buildSDF(const PxVec3* vertices, PxU32 numVertices, const PxU32* indicesOrig, PxU32 numTriangleIndices, PxU32 width, PxU32 height, PxU32 depth,
-	const PxVec3& minExtents, const PxVec3& maxExtents, bool cellCenteredSamples, PxReal* sdf, CUstream stream)
+	const PxVec3& minExtents, const PxVec3& maxExtents, bool cellCenteredSamples, PxReal* sdf, hipStream_t stream)
 {
 	PxCudaContextManager* ccm = mKernelLauncher.getCudaContextManager();
 	PxScopedCudaLock lock(*ccm);
@@ -600,7 +600,7 @@ bool PxgSDFBuilder::buildSDF(const PxVec3* vertices, PxU32 numVertices, const Px
 	bool destroyStream = false;
 	if (stream == 0)
 	{
-		mKernelLauncher.getCudaContextManager()->getCudaContext()->streamCreate(&stream, CU_STREAM_NON_BLOCKING);
+		mKernelLauncher.getCudaContextManager()->getCudaContext()->streamCreate(&stream, hipStreamNonBlocking);
 		destroyStream = true;
 	}		
 
@@ -612,10 +612,10 @@ bool PxgSDFBuilder::buildSDF(const PxVec3* vertices, PxU32 numVertices, const Px
 
 	PxU32 numSDFSamples = width * height * depth;
 	PxCUresult result = ccm->getCudaContext()->streamSynchronize(stream);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 	PxgCudaHelpers::copyDToH(*ccm->getCudaContext(), sdf, sdfDataD, numSDFSamples);
 	result = ccm->getCudaContext()->streamSynchronize(stream);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	PX_DEVICE_MEMORY_FREE(*ccm, sdfDataD);
 
@@ -637,7 +637,7 @@ bool PxgSDFBuilder::buildSparseSDF(const PxVec3* vertices, PxU32 numVertices, co
 	const PxVec3& minExtents, const PxVec3& maxExtents, PxReal narrowBandThickness, PxU32 subgridSize, PxSdfBitsPerSubgridPixel::Enum bytesPerSubgridPixel,
 	PxArray<PxReal>& sdfCoarse, PxArray<PxU32>& sdfSubgridsStartSlots, PxArray<PxU8>& sdfDataSubgrids,
 	PxReal& subgridsMinSdfValue, PxReal& subgridsMaxSdfValue, 
-	PxU32& sdfSubgrids3DTexBlockDimX, PxU32& sdfSubgrids3DTexBlockDimY, PxU32& sdfSubgrids3DTexBlockDimZ, CUstream stream)
+	PxU32& sdfSubgrids3DTexBlockDimX, PxU32& sdfSubgrids3DTexBlockDimY, PxU32& sdfSubgrids3DTexBlockDimZ, hipStream_t stream)
 {
 	if (mKernelLauncher.getCudaContextManager()->tryAcquireContext())
 	{
@@ -645,7 +645,7 @@ bool PxgSDFBuilder::buildSparseSDF(const PxVec3* vertices, PxU32 numVertices, co
 		bool destroyStream = false;
 		if (stream == 0)
 		{
-			mKernelLauncher.getCudaContextManager()->getCudaContext()->streamCreate(&stream, CU_STREAM_NON_BLOCKING);
+			mKernelLauncher.getCudaContextManager()->getCudaContext()->streamCreate(&stream, hipStreamNonBlocking);
 			destroyStream = true;
 		}
 		PX_ASSERT(width % subgridSize == 0);
@@ -739,7 +739,7 @@ void PxgSDFBuilder::compressSDF(PxReal* denseSdfD, PxU32 width, PxU32 height, Px
 	PxU32 cellsPerSubgrid, PxReal narrowBandThickness, PxU32 bytesPerSubgridPixel, PxReal errorThreshold, 
 	PxReal& subgridGlobalMinValue, PxReal& subgridGlobalMaxValue, PxArray<PxReal>& sdfCoarse, 
 	PxArray<PxU32>& sdfSubgridsStartSlots, PxArray<PxU8>& sdfDataSubgrids,
-	PxU32& sdfSubgrids3DTexBlockDimX, PxU32& sdfSubgrids3DTexBlockDimY, PxU32& sdfSubgrids3DTexBlockDimZ, CUstream stream)
+	PxU32& sdfSubgrids3DTexBlockDimX, PxU32& sdfSubgrids3DTexBlockDimY, PxU32& sdfSubgrids3DTexBlockDimZ, hipStream_t stream)
 {
 	// allocations upfront
 	PxReal* backgroundSdfD = NULL;
@@ -797,14 +797,14 @@ void PxgSDFBuilder::compressSDF(PxReal* denseSdfD, PxU32 width, PxU32 height, Px
 
 	PxU32 numSubgrids = 0;
 	PxCUresult result = ccm->getCudaContext()->streamSynchronize(stream);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 	PxgCudaHelpers::copyDToH(*ccm->getCudaContext(), &numSubgrids, scan.getSumPointer(), 1);
 	PxgCudaHelpers::copyDToH(*ccm->getCudaContext(), &subgridGlobalMinValue, subgridGlobalMinValueD, 1);
 	PxgCudaHelpers::copyDToH(*ccm->getCudaContext(), &subgridGlobalMaxValue, subgridGlobalMaxValueD, 1);
 
 	//Synchronize the stream because the size of following memory allocations depends on calculations done in previously ran kernels
 	result = ccm->getCudaContext()->streamSynchronize(stream);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	const PxU32 valuesPerSubgrid = (cellsPerSubgrid + 1)*(cellsPerSubgrid + 1)*(cellsPerSubgrid + 1);
 
@@ -845,12 +845,12 @@ void PxgSDFBuilder::compressSDF(PxReal* denseSdfD, PxU32 width, PxU32 height, Px
 	sdfDataSubgrids.resize(subgridDataSize);
 		
 	result = ccm->getCudaContext()->streamSynchronize(stream);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 	PxgCudaHelpers::copyDToH(*ccm->getCudaContext(), sdfCoarse.begin(), backgroundSdfD, numBackgroundSdfSamples);
 	PxgCudaHelpers::copyDToH(*ccm->getCudaContext(), sdfSubgridsStartSlots.begin(), subgridAddressesD, numAddressEntries);
 	PxgCudaHelpers::copyDToH(*ccm->getCudaContext(), sdfDataSubgrids.begin(), reinterpret_cast<PxU8*>(quantizedSparseSDFIn3DTextureFormatD), subgridDataSize);
 	result = ccm->getCudaContext()->streamSynchronize(stream);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	releaseBuffersForCompression(backgroundSdfD, subgridAddressesD, subgridActiveD, subgridGlobalMinValueD, subgridGlobalMaxValueD, scan);
 	PX_DEVICE_MEMORY_FREE(*ccm, quantizedSparseSDFIn3DTextureFormatD);

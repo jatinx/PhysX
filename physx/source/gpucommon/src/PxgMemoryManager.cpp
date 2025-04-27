@@ -38,7 +38,7 @@ namespace physx
 
 namespace
 {	
-	// PT: this one calls PxgPinnedMemoryAllocate/PxgPinnedMemoryDeallocate, i.e. cuMemHostAlloc/cuMemFreeHost
+	// PT: this one calls PxgPinnedMemoryAllocate/PxgPinnedMemoryDeallocate, i.e. hipHostAlloc/hipHostFree
 	class PxgCudaHostMemoryAllocatorCallback : public PxgCudaAllocatorCallbackBase
 	{
 	public:
@@ -62,7 +62,7 @@ namespace
 		//~PxVirtualAllocatorCallback
 	};
 
-	// PT: this one calls PxgCudaDeviceMemoryAllocate/PxgCudaDeviceMemoryDeallocate, i.e. cuMemAlloc/cuMemFree
+	// PT: this one calls PxgCudaDeviceMemoryAllocate/PxgCudaDeviceMemoryDeallocate, i.e. hipMalloc/hipFree
 	class PxgCudaDeviceMemoryAllocatorCallback : public PxgCudaAllocatorCallbackBase
 	{
 	public:

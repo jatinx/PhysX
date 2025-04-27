@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -37,7 +38,7 @@
 #include "PxSpatialMatrix.h"
 #include "DyFeatherstoneArticulation.h"
 #include "foundation/PxUserAllocated.h"
-#include "vector_types.h"
+#include "hip/hip_vector_types.h"
 
 namespace physx
 {

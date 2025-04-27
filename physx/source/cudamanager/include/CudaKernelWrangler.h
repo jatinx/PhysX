@@ -40,7 +40,7 @@
 #pragma clang diagnostic ignored "-Wdocumentation"
 #pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
 #endif
-#include <cuda.h>
+#include <hip/hip_runtime.h>
 #if PX_LINUX && PX_CLANG
 #pragma clang diagnostic pop
 #endif
@@ -57,9 +57,9 @@ public:
 	KernelWrangler(PxCudaContextManager& cudaContextManager, PxErrorCallback& errorCallback, const char** funcNames, uint16_t numFuncs);
 	virtual ~KernelWrangler() {}
 
-	PX_FORCE_INLINE	CUfunction getCuFunction(uint16_t funcIndex) const
+	PX_FORCE_INLINE	hipFunction_t getCuFunction(uint16_t funcIndex) const
 	{
-		CUfunction func = mCuFunctions[ funcIndex ];
+		hipFunction_t func = mCuFunctions[ funcIndex ];
 		PX_ASSERT(func);
 		return func;
 	}
@@ -71,7 +71,7 @@ public:
 protected:
 	bool					mError;
 	const char**			mKernelNames;
-	PxArray<CUfunction>		mCuFunctions;
+	PxArray<hipFunction_t>		mCuFunctions;
 	PxCudaContextManager&	mCudaContextManager;
 	PxCudaContext*			mCudaContext;
 	PxErrorCallback&		mErrorCallback;

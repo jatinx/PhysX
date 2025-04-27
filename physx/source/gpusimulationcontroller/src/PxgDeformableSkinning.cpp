@@ -46,7 +46,7 @@ namespace physx
 
 	void PxgDeformableSkinning::computeNormalVectors(
 		PxTrimeshSkinningGpuData* skinningDataArrayD, PxU32 arrayLength,
-		CUstream stream, PxU32 numGpuThreads)
+		hipStream_t stream, PxU32 numGpuThreads)
 	{
 		physx::PxScopedCudaLock _lock(*mKernelLauncher.getCudaContextManager());
 
@@ -68,7 +68,7 @@ namespace physx
 
 	void PxgDeformableSkinning::evaluateVerticesEmbeddedIntoSurface(
 		PxTrimeshSkinningGpuData* skinningDataArrayD, PxU32 arrayLength,
-		CUstream stream, PxU32 numGpuThreads)
+		hipStream_t stream, PxU32 numGpuThreads)
 	{
 		physx::PxScopedCudaLock _lock(*mKernelLauncher.getCudaContextManager());
 		const PxU32 numThreadsPerBlock = 256;
@@ -79,7 +79,7 @@ namespace physx
 
 	void PxgDeformableSkinning::evaluateVerticesEmbeddedIntoVolume(
 		PxTetmeshSkinningGpuData* skinningDataArrayD, PxU32 arrayLength,
-		CUstream stream, PxU32 numGpuThreads)
+		hipStream_t stream, PxU32 numGpuThreads)
 	{
 		physx::PxScopedCudaLock _lock(*mKernelLauncher.getCudaContextManager());
 		const PxU32 numThreadsPerBlock = 256;

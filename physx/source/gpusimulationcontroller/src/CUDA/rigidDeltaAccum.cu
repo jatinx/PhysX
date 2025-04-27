@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -26,7 +27,7 @@
 // Copyright (c) 2004-2008 AGEIA Technologies, Inc. All rights reserved.
 // Copyright (c) 2001-2004 NovodeX AG. All rights reserved.  
 
-#include "vector_types.h"
+#include "hip/hip_vector_types.h"
 #include "foundation/PxVec3.h"
 #include "cutil_math.h"
 #include "PxgParticleSystemCoreKernelIndices.h"

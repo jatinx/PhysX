@@ -38,17 +38,17 @@ namespace physx
 	template <typename T>
 	struct PxgDevicePointer
 	{
-		CUdeviceptr mPtr;
+		hipDeviceptr_t mPtr;
 
-		PxgDevicePointer(CUdeviceptr ptr) : mPtr(ptr) {}
+		PxgDevicePointer(hipDeviceptr_t ptr) : mPtr(ptr) {}
 
-		operator CUdeviceptr& () { return mPtr; }
-		operator CUdeviceptr() const { return mPtr; }
+		operator hipDeviceptr_t& () { return mPtr; }
+		operator hipDeviceptr_t() const { return mPtr; }
 
 		T* getPointer() const { return reinterpret_cast<T*>(mPtr); }
 	};
     
-	PX_COMPILE_TIME_ASSERT(sizeof(PxgDevicePointer<PxU32>) == sizeof(CUdeviceptr));
+	PX_COMPILE_TIME_ASSERT(sizeof(PxgDevicePointer<PxU32>) == sizeof(hipDeviceptr_t));
 }
 
 #endif

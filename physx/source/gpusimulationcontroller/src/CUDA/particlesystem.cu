@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -26,7 +27,7 @@
 // Copyright (c) 2004-2008 AGEIA Technologies, Inc. All rights reserved.
 // Copyright (c) 2001-2004 NovodeX AG. All rights reserved.
 
-#include "vector_types.h"
+#include "hip/hip_vector_types.h"
 #include "foundation/PxVec3.h"
 #include "foundation/PxVec4.h"
 #include "foundation/PxBounds3.h"
@@ -5219,7 +5220,7 @@ extern "C" __global__ void ps_solveShapes(PxgParticleSystem* particleSystems, co
 	//if (!threadIdx.x) printf("index = %d, n = %d oldCom = %f, %f, %f\n", r, n, oldCom.x, oldCom.y, oldCom.z);
 
 	// temp memory for vec3 reductions
-	//typedef cub::BlockReduce<Vec3, threadsPerBlock> BlockReduceVec3;
+	//typedef hipcub::BlockReduce<Vec3, threadsPerBlock> BlockReduceVec3;
 	//__shared__ typename BlockReduceVec3::TempStorage temp1;
 
 	// calculate center of mass

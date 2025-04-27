@@ -62,7 +62,7 @@ public:
     */
     static void copyToDevice(PxDeformableSurface& deformableSurface, PxDeformableSurfaceDataFlags flags, PxU32 nbVertices,
 							 PxVec4* positionsPinned, PxVec4* velocitiesPinned, PxVec4* restPositionsPinned,
-							 CUstream copyStream = CUstream(0));
+							 hipStream_t copyStream = hipStream_t(0));
 
     /**
     \brief Distributes a list of triangles masses to vertices.

@@ -145,7 +145,7 @@ namespace physx
 			}
 
 			PointedToT*					hostPtr;
-			CUdeviceptr					devPtr;
+			hipDeviceptr_t					devPtr;
 		};
 
 		template<>
@@ -213,7 +213,7 @@ namespace physx
 			}
 
 			void*						hostPtr;
-			CUdeviceptr					devPtr;
+			hipDeviceptr_t					devPtr;
 		};
 
 

@@ -59,8 +59,8 @@ struct PxgTriangleMesh
 	PxU32 pad;
 
 	//const PxReal* sdf;
-	CUtexObject mTexObject;
-	CUtexObject mTexObjectSparse;
+	hipTextureObject_t mTexObject;
+	hipTextureObject_t mTexObjectSparse;
 
 	const PxU32* subgridStarts;
 };
@@ -181,10 +181,10 @@ static __device__ void readTriangleMesh(const PxgShape& trimeshShape, PxgTriangl
 		//triangleMesh.numCoarseGridElements = sizeInfo.w;
 
 		//triangleMesh.sdf = reinterpret_cast<const PxReal*>(trimeshGeomPtr);
-		triangleMesh.mTexObject = *reinterpret_cast<const CUtexObject*>(trimeshGeomPtr);
-		trimeshGeomPtr += sizeof(const CUtexObject);
-		triangleMesh.mTexObjectSparse = *reinterpret_cast<const CUtexObject*>(trimeshGeomPtr);
-		trimeshGeomPtr += sizeof(const CUtexObject);
+		triangleMesh.mTexObject = *reinterpret_cast<const hipTextureObject_t*>(trimeshGeomPtr);
+		trimeshGeomPtr += sizeof(const hipTextureObject_t);
+		triangleMesh.mTexObjectSparse = *reinterpret_cast<const hipTextureObject_t*>(trimeshGeomPtr);
+		trimeshGeomPtr += sizeof(const hipTextureObject_t);
 
 		triangleMesh.subgridStarts = reinterpret_cast<const PxU32 *>(trimeshGeomPtr);
 

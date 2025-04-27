@@ -48,13 +48,13 @@
 using namespace physx;
 
 #if ENABLE_KERNEL_LAUNCH_ERROR_CHECK
-	#define checkCudaError() { cudaError_t err = cudaDeviceSynchronize(); if (err != 0) printf("Cuda error file: %s, line: %i, error: %i\n", PX_FL, err); }	
+	#define checkCudaError() { hipError_t err = hipDeviceSynchronize(); if (err != 0) printf("Cuda error file: %s, line: %i, error: %i\n", PX_FL, err); }	
 #else
 	#define checkCudaError() { }
 #endif
 
 void updateSmoothedPositions(PxgKernelLauncher& launcher, PxGpuParticleSystem* particleSystems, const PxU32 id, PxSmoothedPositionData* smoothingDataPerParticleSystem,
-	PxU32 numParticles, CUstream stream, PxU32 numThreadsPerBlock = 256)
+	PxU32 numParticles, hipStream_t stream, PxU32 numThreadsPerBlock = 256)
 {
 	const PxU32 numBlocks = (numParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
 	launcher.launchKernel(PxgKernelIds::smoothPositionsLaunch, numBlocks, numThreadsPerBlock, 0, stream,
@@ -64,7 +64,7 @@ void updateSmoothedPositions(PxgKernelLauncher& launcher, PxGpuParticleSystem* p
 	
 void smoothPositionsLaunch(PxgKernelLauncher& launcher, float4* deviceParticlePos, PxU32* sortedToOriginalParticleIndex, PxU32* sortedParticleToSubgrid, PxU32 maxNumSubgrids,
 	PxU32* subgridNeighbors, PxU32* subgridEndIndices, int numParticles, PxU32* phases, PxU32 validPhaseMask,
-	float4* smoothPos, PxReal smoothing, PxReal particleContactDistance, CUstream stream, PxU32 numThreadsPerBlock = 256)
+	float4* smoothPos, PxReal smoothing, PxReal particleContactDistance, hipStream_t stream, PxU32 numThreadsPerBlock = 256)
 {
 	const PxU32 numBlocks = (numParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
 	launcher.launchKernel(PxgKernelIds::smoothPositionsKernel, numBlocks, numThreadsPerBlock, 0, stream,
@@ -116,23 +116,23 @@ void PxgSmoothedPositionGenerator::release()
 	PX_DELETE_THIS;
 }
 
-void PxgSmoothedPositionGenerator::generateSmoothedPositions(PxGpuParticleSystem* gpuParticleSystem, PxU32 numParticles, CUstream stream)
+void PxgSmoothedPositionGenerator::generateSmoothedPositions(PxGpuParticleSystem* gpuParticleSystem, PxU32 numParticles, hipStream_t stream)
 {
 	if (mDirty)
 	{
 		mDirty = false;
-		mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyHtoDAsync(CUdeviceptr(mPositionSmoothingDataPerParticleSystemDevice), &mPositionSmoothingDataHost, sizeof(PxSmoothedPositionData), stream);
+		mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyHtoDAsync(hipDeviceptr_t(mPositionSmoothingDataPerParticleSystemDevice), &mPositionSmoothingDataHost, sizeof(PxSmoothedPositionData), stream);
 	}
 
 	updateSmoothedPositions(mKernelLauncher, gpuParticleSystem, 0, mPositionSmoothingDataPerParticleSystemDevice, numParticles, stream);
 
 	if (mSmoothedPositions)
 	{
-		mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mSmoothedPositions, CUdeviceptr(mPositionSmoothingDataHost.mPositions), numParticles * sizeof(PxVec4), stream);
+		mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mSmoothedPositions, hipDeviceptr_t(mPositionSmoothingDataHost.mPositions), numParticles * sizeof(PxVec4), stream);
 	}
 }
 
-void PxgSmoothedPositionGenerator::generateSmoothedPositions(PxVec4* particlePositionsGpu, PxParticleNeighborhoodProvider& neighborhoodProvider, PxU32 numParticles, PxReal particleContactOffset, CUstream stream)
+void PxgSmoothedPositionGenerator::generateSmoothedPositions(PxVec4* particlePositionsGpu, PxParticleNeighborhoodProvider& neighborhoodProvider, PxU32 numParticles, PxReal particleContactOffset, hipStream_t stream)
 {
 	PxgParticleNeighborhoodProvider* n = static_cast<PxgParticleNeighborhoodProvider*>(&neighborhoodProvider);
 
@@ -143,7 +143,7 @@ void PxgSmoothedPositionGenerator::generateSmoothedPositions(PxVec4* particlePos
 
 	if (mSmoothedPositions)
 	{
-		mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mSmoothedPositions, CUdeviceptr(mPositionSmoothingDataHost.mPositions), numParticles * sizeof(PxVec4), stream);
+		mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mSmoothedPositions, hipDeviceptr_t(mPositionSmoothingDataHost.mPositions), numParticles * sizeof(PxVec4), stream);
 	}
 }
 

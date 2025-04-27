@@ -186,7 +186,7 @@ namespace physx
         */
         virtual void computeNormalVectors(
             PxTrimeshSkinningGpuData* skinningDataArrayD, PxU32 arrayLength,
-            CUstream stream, PxU32 nbGpuThreads = 8192) = 0;
+            hipStream_t stream, PxU32 nbGpuThreads = 8192) = 0;
 
         /**
         \brief Evaluates interpolated deformable surface vertices.
@@ -197,7 +197,7 @@ namespace physx
         */
         virtual void evaluateVerticesEmbeddedIntoSurface(
             PxTrimeshSkinningGpuData* skinningDataArrayD, PxU32 arrayLength,
-            CUstream stream, PxU32 nbGpuThreads = 8192) = 0;
+            hipStream_t stream, PxU32 nbGpuThreads = 8192) = 0;
 
         /**
         \brief Evaluates interpolated deformable volume vertices.
@@ -208,7 +208,7 @@ namespace physx
         */
         virtual void evaluateVerticesEmbeddedIntoVolume(
             PxTetmeshSkinningGpuData* skinningDataArrayD, PxU32 arrayLength,
-            CUstream stream, PxU32 nbGpuThreads = 8192) = 0;
+            hipStream_t stream, PxU32 nbGpuThreads = 8192) = 0;
 
         /**
         \brief Virtual destructor for PxDeformableSkinning.

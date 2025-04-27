@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /*
 Copyright (c) 2003-2009 Erwin Coumans  http://bullet.googlecode.com
 

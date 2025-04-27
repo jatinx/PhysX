@@ -64,7 +64,7 @@ namespace physx
 		\param[in] numParticles The number of particles
 		\param[in] stream The stream on which the cuda call gets scheduled
 		*/
-		virtual void generateAnisotropy(PxGpuParticleSystem* gpuParticleSystem, PxU32 numParticles, CUstream stream) = 0;
+		virtual void generateAnisotropy(PxGpuParticleSystem* gpuParticleSystem, PxU32 numParticles, hipStream_t stream) = 0;
 
 		/**
 		\brief Schedules the compuation of anisotropy information on the specified cuda stream
@@ -75,7 +75,7 @@ namespace physx
 		\param[in] particleContactOffset The particle contact offset
 		\param[in] stream The stream on which the cuda call gets scheduled
 		*/
-		virtual void generateAnisotropy(PxVec4* particlePositionsGpu, PxParticleNeighborhoodProvider& neighborhoodProvider, PxU32 numParticles, PxReal particleContactOffset, CUstream stream) = 0;
+		virtual void generateAnisotropy(PxVec4* particlePositionsGpu, PxParticleNeighborhoodProvider& neighborhoodProvider, PxU32 numParticles, PxReal particleContactOffset, hipStream_t stream) = 0;
 
 		/**
 		\brief Set a host buffer that holds the anisotropy data after the timestep completed
@@ -193,7 +193,7 @@ namespace physx
 			mAnistropyGenerator = anistropyGenerator;
 		}
 
-		virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, CUstream stream)
+		virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, hipStream_t stream)
 		{
 			if (mAnistropyGenerator)
 			{
@@ -201,9 +201,9 @@ namespace physx
 			}
 		}
 
-		virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, CUstream /*stream*/) { }
+		virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, hipStream_t /*stream*/) { }
 
-		virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, CUstream /*stream*/) { }
+		virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, hipStream_t /*stream*/) { }
 
 	private:
 		PxAnisotropyGenerator* mAnistropyGenerator;

@@ -43,7 +43,7 @@
 #include "DyParticleSystemCore.h"
 #include "PxsParticleBuffer.h"
 
-#include <vector_types.h>
+#include <hip/hip_vector_types.h>
 #include "PxNodeIndex.h"
 #include "PxgSimulationCoreDesc.h"
 
@@ -246,7 +246,7 @@ namespace physx
 		PxU32 getNbRigidAttachments() const { return mNumRigidAttachments; }
 		PxParticleRigidFilterPair* getRigidFilters() const { return mFilterPairs; }
 		PxU32 getNbRigidFilters() const { return mNumFilterPairs; }
-		void copyToHost(CUstream stream);
+		void copyToHost(hipStream_t stream);
 
 		PxU32 mBufferFlags;
 
@@ -283,7 +283,7 @@ namespace physx
 		virtual void release() PX_OVERRIDE PX_FINAL { PX_DELETE_THIS; }
 		//~PxsParticleBuffer
 
-		void copyToHost(CUstream stream);
+		void copyToHost(hipStream_t stream);
 	};
 
 	class PxgParticleAndDiffuseBuffer : public PxgParticleBufferBase<PxsParticleAndDiffuseBuffer>
@@ -303,7 +303,7 @@ namespace physx
 		virtual const PxDiffuseParticleParams& getDiffuseParticleParams() const PX_OVERRIDE PX_FINAL { return mParams; }
 		//~PxsParticleAndDiffuseBuffer
 
-		void copyToHost(CUstream stream);
+		void copyToHost(hipStream_t stream);
 
 	public:
 		PxDiffuseParticleParams	mParams;
@@ -334,7 +334,7 @@ namespace physx
 		virtual void setNbActiveParticles(PxU32 nbActiveParticles) PX_OVERRIDE PX_FINAL;
 		//~PxsParticleClothBuffer
 
-		void copyToHost(CUstream stream);
+		void copyToHost(hipStream_t stream);
 
 	public:
 		PxVec4* mRestPositionsD;
@@ -384,7 +384,7 @@ namespace physx
 		PxU32 getNbRigids() const PX_OVERRIDE PX_FINAL { return mNumActiveRigids; }
 		//~PxsParticleRigidBuffer
 
-		void copyToHost(CUstream stream);
+		void copyToHost(hipStream_t stream);
 
 	public:
 		PxU32* mRigidOffsetsD;

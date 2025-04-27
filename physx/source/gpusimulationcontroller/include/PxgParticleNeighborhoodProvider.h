@@ -55,7 +55,7 @@ namespace physx
 
 		PxgParticleNeighborhoodProvider(PxgKernelLauncher& cudaContextManager, const PxU32 maxNumParticles, const PxReal particleContactOffset, const PxU32 maxNumSparseGridCells);
 
-		virtual void buildNeighborhood(PxVec4* deviceParticlePos, const PxU32 numParticles, CUstream stream, PxU32* devicePhases = NULL,
+		virtual void buildNeighborhood(PxVec4* deviceParticlePos, const PxU32 numParticles, hipStream_t stream, PxU32* devicePhases = NULL,
 			PxU32 validPhase = PxParticlePhaseFlag::eParticlePhaseFluid, const PxU32* deviceActiveIndices = NULL)
 		{
 			mSparseGridBuilder.updateSparseGrid(deviceParticlePos, numParticles, devicePhases, stream, validPhase, deviceActiveIndices);

@@ -46,14 +46,14 @@ namespace physx
 {
 
 	void scanPerBlockLaunch(PxgKernelLauncher& launcher, const PxU32* data, PxU32* result, PxU32* partialSums, const PxU32 length, const PxU32 numBlocks,
-		const PxU32 numThreadsPerBlock, CUstream stream, const PxU32 exclusiveScan, PxU32* totalSum)
+		const PxU32 numThreadsPerBlock, hipStream_t stream, const PxU32 exclusiveScan, PxU32* totalSum)
 	{
 		launcher.launchKernel(PxgKernelIds::scanPerBlockKernel, numBlocks, numThreadsPerBlock, numThreadsPerBlock * sizeof(int) / 32, stream,
 			data, result, partialSums, length, exclusiveScan, totalSum);
 	}
 
 	void addBlockSumsLaunch(PxgKernelLauncher& launcher, const PxU32* partialSums, PxU32* data, const PxU32 length,
-		const PxU32 numBlocks, const PxU32 numThreadsPerBlock, CUstream stream, PxU32* totalSum)
+		const PxU32 numBlocks, const PxU32 numThreadsPerBlock, hipStream_t stream, PxU32* totalSum)
 	{
 		launcher.launchKernel(PxgKernelIds::addBlockSumsKernel, numBlocks, numThreadsPerBlock, 0, stream,
 			partialSums, data, length, totalSum);
@@ -61,34 +61,34 @@ namespace physx
 
 
 	void scanPerBlockLaunch(PxgKernelLauncher& launcher, const PxInt4x4* data, PxInt4x4* result, PxInt4x4* partialSums, const PxU32 length, const PxU32 numBlocks,
-		const PxU32 numThreadsPerBlock, CUstream stream, const PxU32 exclusiveScan, PxInt4x4* totalSum)
+		const PxU32 numThreadsPerBlock, hipStream_t stream, const PxU32 exclusiveScan, PxInt4x4* totalSum)
 	{
 		launcher.launchKernel(PxgKernelIds::scanPerBlockKernel4x4, numBlocks, numThreadsPerBlock, numThreadsPerBlock * sizeof(PxInt4) / 32, stream,
 			data, result, partialSums, length, exclusiveScan, totalSum);
 	}
 
 	void addBlockSumsLaunch(PxgKernelLauncher& launcher, const PxInt4x4* partialSums, PxInt4x4* data, const PxU32 length,
-		const PxU32 numBlocks, const PxU32 numThreadsPerBlock, CUstream stream, PxInt4x4* totalSum)
+		const PxU32 numBlocks, const PxU32 numThreadsPerBlock, hipStream_t stream, PxInt4x4* totalSum)
 	{
 		launcher.launchKernel(PxgKernelIds::addBlockSumsKernel4x4, numBlocks, numThreadsPerBlock, 0, stream,
 			partialSums, data, length, totalSum);
 	}
 
 	void radixFourBitCountPerBlockLaunch(PxgKernelLauncher& launcher, const PxU32* data, PxU16* offsets, const int passIndex, PxInt4x4* partialSums, const PxU32 length, const PxU32 numBlocks,
-		const PxU32 numThreadsPerBlock, CUstream stream, PxInt4x4* totalSum)
+		const PxU32 numThreadsPerBlock, hipStream_t stream, PxInt4x4* totalSum)
 	{
 		launcher.launchKernel(PxgKernelIds::radixFourBitCountPerBlockKernel, numBlocks, numThreadsPerBlock, numThreadsPerBlock * sizeof(PxInt4x4) / 32, stream,
 			data, offsets, passIndex, partialSums, length, totalSum);
 	}
 
 	void radixFourBitReorderLaunch(PxgKernelLauncher& launcher, const PxU32* data, const PxU16* offsets, PxU32* reordered, PxU32 passIndex, PxInt4x4* partialSums, const PxU32 length, PxInt4x4* cumulativeSum,
-		const PxU32 numBlocks, const PxU32 numThreadsPerBlock, CUstream stream, PxU32* dependentData, PxU32* dependentDataReordered)
+		const PxU32 numBlocks, const PxU32 numThreadsPerBlock, hipStream_t stream, PxU32* dependentData, PxU32* dependentDataReordered)
 	{
 		launcher.launchKernel(PxgKernelIds::radixFourBitReorderKernel, numBlocks, numThreadsPerBlock, 0, stream,
 			data, offsets, reordered, passIndex, partialSums, length, cumulativeSum, dependentData, dependentDataReordered);
 	}
 
-	void reorderLaunch(PxgKernelLauncher& launcher, const float4* data, float4* reordered, const PxU32 length, const PxU32* reorderedToOriginalMap, CUstream stream)
+	void reorderLaunch(PxgKernelLauncher& launcher, const float4* data, float4* reordered, const PxU32 length, const PxU32* reorderedToOriginalMap, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = 512;
 		const PxU32 numBlocks = (length + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -119,7 +119,7 @@ namespace physx
 
 	template<typename T>
 	void computeBlockSum(PxgKernelLauncher& launcher, const T* blockSum, T* blockSumScan, T* blockSumBlockSum, T* result,
-		const PxU32 blockSize, const PxU32 n, const PxU32 numBlocks, const CUstream& stream, T* totalSum = NULL)
+		const PxU32 blockSize, const PxU32 n, const PxU32 numBlocks, const hipStream_t& stream, T* totalSum = NULL)
 	{
 		PxU32 numThreads2 = blockSize;
 		PxU32 numBlocks2 = (numBlocks + numThreads2 - 1) / numThreads2;
@@ -150,7 +150,7 @@ namespace physx
 	}
 
 	template<typename T>
-	void PxGpuRadixSort<T>::sort(T* inAndOutBuf, PxU32 numBitsToSort, const CUstream& stream, PxU32* outReorderTrackingBuffer, PxU32 numElementsToSort)
+	void PxGpuRadixSort<T>::sort(T* inAndOutBuf, PxU32 numBitsToSort, const hipStream_t& stream, PxU32* outReorderTrackingBuffer, PxU32 numElementsToSort)
 	{
 		if (!mValueReorderBuffer && outReorderTrackingBuffer)
 		{
@@ -236,7 +236,7 @@ namespace physx
 		return true;
 	}
 
-	void PxGpuScan::scan(PxU32* inAndOutBuf, PxU32 exclusiveScan, const CUstream& stream, PxU32 numElementsToScan)
+	void PxGpuScan::scan(PxU32* inAndOutBuf, PxU32 exclusiveScan, const hipStream_t& stream, PxU32 numElementsToScan)
 	{
 		PxU32 numActiveElements = numElementsToScan != 0xFFFFFFFF ? PxU32(numElementsToScan) : mNumElements;
 		if (numActiveElements == 0)
@@ -252,7 +252,7 @@ namespace physx
 			computeBlockSum(*mKernelLauncher, blockSumsBuf, blockSumScanBuf, blockSumsBuf + numBlocks, inAndOutBuf, mNumThreadsPerBlock, numActiveElements, numBlocks, stream, mTotalSum);
 	}
 
-	void PxGpuScan::sumOnly(PxU32* inBuf, const CUstream& stream, PxU32 numElementsToScan)
+	void PxGpuScan::sumOnly(PxU32* inBuf, const hipStream_t& stream, PxU32 numElementsToScan)
 	{
 		PxU32 numActiveElements = numElementsToScan != 0xFFFFFFFF ? PxU32(numElementsToScan) : mNumElements;
 		if (numActiveElements == 0)

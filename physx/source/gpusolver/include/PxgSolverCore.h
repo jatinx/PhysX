@@ -163,13 +163,13 @@ namespace physx
 		PxgPrePrepDesc*					mPrePrepDesc;
 		PxgRadixSortDesc*				mRsDesc;
 
-		CUdeviceptr						mIslandContextPool;
-		CUdeviceptr						mSolverCoreDescd;
-		CUdeviceptr						mSharedDescd;
-		CUdeviceptr						mPrepareDescd;
-		CUdeviceptr						mPrePrepDescd;
-		CUdeviceptr						mPartionDescd;
-		CUdeviceptr						mRadixSortDescd[2];
+		hipDeviceptr_t						mIslandContextPool;
+		hipDeviceptr_t						mSolverCoreDescd;
+		hipDeviceptr_t						mSharedDescd;
+		hipDeviceptr_t						mPrepareDescd;
+		hipDeviceptr_t						mPrePrepDescd;
+		hipDeviceptr_t						mPartionDescd;
+		hipDeviceptr_t						mRadixSortDescd[2];
 
 		PxU32							mNbStaticRigidSlabs;
 		PxU32							mMaxNumStaticPartitions;
@@ -196,10 +196,10 @@ namespace physx
 		/*PX_FORCE_INLINE void setArticulationCore(PxgArticulationCore* articulationCore) { mArticulationCore = articulationCore; }
 		PX_FORCE_INLINE PxgArticulationCore* getArticulationCore() { return mArticulationCore; }
 */
-		PX_FORCE_INLINE CUdeviceptr getPrePrepDescDeviceptr() { return mPrePrepDescd; }
-		PX_FORCE_INLINE CUdeviceptr getPrepDescDeviceptr() { return mPrepareDescd; }
-		PX_FORCE_INLINE CUdeviceptr getSolverCoreDescDeviceptr() { return mSolverCoreDescd; }
-		PX_FORCE_INLINE CUdeviceptr getSharedDescDeviceptr() { return mSharedDescd; }
+		PX_FORCE_INLINE hipDeviceptr_t getPrePrepDescDeviceptr() { return mPrePrepDescd; }
+		PX_FORCE_INLINE hipDeviceptr_t getPrepDescDeviceptr() { return mPrepareDescd; }
+		PX_FORCE_INLINE hipDeviceptr_t getSolverCoreDescDeviceptr() { return mSolverCoreDescd; }
+		PX_FORCE_INLINE hipDeviceptr_t getSharedDescDeviceptr() { return mSharedDescd; }
 
 		virtual PxU32 getDescriptorsAllocationSize() = 0;
 		virtual void allocatePinnedDescriptors(PxgPinnedHostLinearMemoryAllocator& hostAllocator) = 0;
@@ -295,9 +295,9 @@ namespace physx
 
 		PX_FORCE_INLINE PxgDevicePointer<PxNodeIndex> getGpuIslandNodeIndices()  { return mIslandNodeIndices2.getTypedDevicePtr(); }
 
-		PX_FORCE_INLINE void setGpuContactManagerOutputBase(PxsContactManagerOutput* gpuContactManagerOutputBase) { mGpuContactManagerOutputBase = reinterpret_cast<CUdeviceptr>(gpuContactManagerOutputBase); }
+		PX_FORCE_INLINE void setGpuContactManagerOutputBase(PxsContactManagerOutput* gpuContactManagerOutputBase) { mGpuContactManagerOutputBase = reinterpret_cast<hipDeviceptr_t>(gpuContactManagerOutputBase); }
 
-		PX_FORCE_INLINE CUstream getStream() { return mStream; } 
+		PX_FORCE_INLINE hipStream_t getStream() { return mStream; } 
 
 		PX_FORCE_INLINE PxgDevicePointer<PxU32> getSolverBodyIndices() { return mSolverBodyIndices.getTypedDevicePtr(); }
 
@@ -387,15 +387,15 @@ namespace physx
 		PxgTypedCudaBuffer<float4>					mMotionVelocityArray;
 
 		PxgTypedCudaBuffer<PxgBlockConstraintBatch>	mBlockConstraintBatches;
-		CUdeviceptr									mConstraintBatchHeaders;
-		CUdeviceptr									mConstraintUniqueIndices;
-		CUdeviceptr									mContactUniqueIndices;
+		hipDeviceptr_t									mConstraintBatchHeaders;
+		hipDeviceptr_t									mConstraintUniqueIndices;
+		hipDeviceptr_t									mContactUniqueIndices;
 
-		CUdeviceptr			mArtiConstraintUniqueIndices;
-		CUdeviceptr			mArtiContactUniqueIndices;
+		hipDeviceptr_t			mArtiConstraintUniqueIndices;
+		hipDeviceptr_t			mArtiContactUniqueIndices;
 
-		CUdeviceptr			mArtiStaticConstraintUniqueIndices;
-		CUdeviceptr			mArtiStaticContactUniqueIndices;
+		hipDeviceptr_t			mArtiStaticConstraintUniqueIndices;
+		hipDeviceptr_t			mArtiStaticContactUniqueIndices;
 
 		PxgTypedCudaBuffer<PxU32>		mArtiOrderedStaticConstraints;
 		PxgTypedCudaBuffer<PxU32>		mArtiOrderedStaticContacts;
@@ -423,7 +423,7 @@ namespace physx
 		PxgTypedCudaBuffer<PxReal>					mForceBuffer; // contact write back buffer
 		PxgTypedCudaBuffer<PxFrictionPatch>			mFrictionPatches;
 
-		CUdeviceptr						mGpuContactManagerOutputBase;
+		hipDeviceptr_t						mGpuContactManagerOutputBase;
 
 		PxgTypedCudaBuffer<PxU32>		mArtiStaticContactIndices;
 		PxgTypedCudaBuffer<PxU32>		mArtiStaticJointIndices;
@@ -460,19 +460,19 @@ namespace physx
 
 		PxU32				mCurrentIndex;
 
-		CUdeviceptr			mArtiStaticConstraintStartIndex;
-		CUdeviceptr			mArtiStaticConstraintCount;
-		CUdeviceptr			mArtiStaticContactStartIndex;
-		CUdeviceptr			mArtiStaticContactCount;
+		hipDeviceptr_t			mArtiStaticConstraintStartIndex;
+		hipDeviceptr_t			mArtiStaticConstraintCount;
+		hipDeviceptr_t			mArtiStaticContactStartIndex;
+		hipDeviceptr_t			mArtiStaticContactCount;
 
-		CUstream			mStream;
-		CUstream			mStream2;
+		hipStream_t			mStream;
+		hipStream_t			mStream2;
 
 		PxU32*				mPinnedEvent;
 
-		CUevent				mEventDmaBack;
+		hipEvent_t				mEventDmaBack;
 
-		CUevent				mIntegrateEvent;
+		hipEvent_t				mIntegrateEvent;
 
 		PxNodeIndex*		mCpuIslandNodeIndices;
 

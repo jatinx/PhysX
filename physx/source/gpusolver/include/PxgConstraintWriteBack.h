@@ -30,7 +30,7 @@
 #define PXG_CONSTRAINT_WRITE_BACK_H
 
 #include "foundation/PxPreprocessor.h"
-#include "vector_types.h"
+#include "hip/hip_vector_types.h"
 
 namespace physx
 {

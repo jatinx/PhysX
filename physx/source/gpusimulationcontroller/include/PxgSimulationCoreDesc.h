@@ -32,7 +32,7 @@
 #include "PxDeformableSurface.h"
 #include "PxDeformableVolume.h"
 
-#include <vector_types.h>
+#include <hip/hip_vector_types.h>
 
 #define PXG_CHECK_BITSHIFT_32(lowmask, highmask, bitshift) \
 	((1 << bitshift) - 1 == lowmask) && (0xffffffff >> bitshift == highmask)

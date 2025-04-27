@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -45,7 +46,7 @@
 #include "PxgRadixSortDesc.h"
 #include "PxgSimulationCoreDesc.h"
 
-#include <vector_types.h>
+#include <hip/hip_vector_types.h>
 
 namespace physx
 {
@@ -92,14 +93,14 @@ namespace physx
 		void sortContacts(const PxU32 nbActiveParticleSystems);
 
 
-		virtual void gpuMemDmaUpParticleSystem(PxgBodySimManager& bodySimManager, CUstream stream) = 0;
+		virtual void gpuMemDmaUpParticleSystem(PxgBodySimManager& bodySimManager, hipStream_t stream) = 0;
 
-		virtual void constraintPrep(CUdeviceptr prePrepDescd, CUdeviceptr prepDescd, CUdeviceptr solverCoreDescd, CUdeviceptr sharedDescd,
-			const PxReal dt, CUstream solverStream, bool isTGS, PxU32 numSolverBodies) = 0;
-		virtual void solve(CUdeviceptr prePrepDescd, CUdeviceptr solverCoreDescd, 
-			CUdeviceptr sharedDescd, CUdeviceptr artiCoreDescd, const PxReal dt, CUstream solverStream) = 0;
-		virtual void solveTGS(CUdeviceptr prePrepDescd, CUdeviceptr solverCoreDescd,
-			CUdeviceptr sharedDescd, CUdeviceptr artiCoreDescd, const PxReal dt, const PxReal totalInvDt, CUstream solverStream,
+		virtual void constraintPrep(hipDeviceptr_t prePrepDescd, hipDeviceptr_t prepDescd, hipDeviceptr_t solverCoreDescd, hipDeviceptr_t sharedDescd,
+			const PxReal dt, hipStream_t solverStream, bool isTGS, PxU32 numSolverBodies) = 0;
+		virtual void solve(hipDeviceptr_t prePrepDescd, hipDeviceptr_t solverCoreDescd, 
+			hipDeviceptr_t sharedDescd, hipDeviceptr_t artiCoreDescd, const PxReal dt, hipStream_t solverStream) = 0;
+		virtual void solveTGS(hipDeviceptr_t prePrepDescd, hipDeviceptr_t solverCoreDescd,
+			hipDeviceptr_t sharedDescd, hipDeviceptr_t artiCoreDescd, const PxReal dt, const PxReal totalInvDt, hipStream_t solverStream,
 			const bool isVelocityIteration, PxI32 iterationIndex, PxI32 numTGSIterations, PxReal coefficient) = 0;
 
 		virtual void integrateSystems(const PxReal dt, const PxReal epsilonSq) = 0;
@@ -119,10 +120,10 @@ namespace physx
 		PxgTypedCudaBuffer<PxgParticlePrimitiveContact>& getParticleContacts() { return mPrimitiveContactsBuf; }
 		PxgTypedCudaBuffer<PxU32>& getParticleContactCount() { return mPrimitiveContactCountBuf; }
 	
-		CUstream getStream() { return mStream; }
-		CUstream getFinalizeStream() { return mFinalizeStream; }
+		hipStream_t getStream() { return mStream; }
+		hipStream_t getFinalizeStream() { return mFinalizeStream; }
 
-		CUevent getBoundsUpdatedEvent() { return mBoundUpdateEvent;}
+		hipEvent_t getBoundsUpdatedEvent() { return mBoundUpdateEvent;}
 
 		PxgDevicePointer<float4> getDeltaVelParticle() { return mDeltaVelParticleBuf.getTypedDevicePtr(); }
 
@@ -132,7 +133,7 @@ namespace physx
 
 		virtual void releaseParticleSystemDataBuffer() = 0;
 
-		void gpuDMAActiveParticleIndices(const PxU32* activeParticleSystems, const PxU32 numActiveParticleSystems, CUstream stream);
+		void gpuDMAActiveParticleIndices(const PxU32* activeParticleSystems, const PxU32 numActiveParticleSystems, hipStream_t stream);
 		
 		PX_FORCE_INLINE PxU32 getMaxParticles() { return mMaxParticles; }
 
@@ -153,82 +154,82 @@ namespace physx
 		void getMaxIterationCount(PxgBodySimManager& bodySimManager, const PxU32 nbActiveParticles, const PxU32* activeParticles, PxI32& maxPosIters, PxI32& maxVelIters);
 
 		void updateGrid(PxgParticleSystem* particleSystems, const PxU32* activeParticleSystems, const PxU32 nbActiveParticles,
-			CUdeviceptr particleSystemsd);
+			hipDeviceptr_t particleSystemsd);
 
 
-		void copyUserBufferToUnsortedArray(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd, 
-			const PxU32 nbActiveParticle, CUstream bpStream);
+		void copyUserBufferToUnsortedArray(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd, 
+			const PxU32 nbActiveParticle, hipStream_t bpStream);
 
-		void copyUnsortedArrayToUserBuffer(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd, const PxU32 nbActiveParticles);
+		void copyUnsortedArrayToUserBuffer(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd, const PxU32 nbActiveParticles);
 
 		void copyUserBufferDataToHost(PxgParticleSystem* particleSystems, PxU32* activeParticleSystems, PxU32 nbActiveParticleSystems);
 
-		void copyUserDiffuseBufferToUnsortedArray(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd,
-			const PxU32 nbActiveParticle, CUstream bpStream);
+		void copyUserDiffuseBufferToUnsortedArray(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd,
+			const PxU32 nbActiveParticle, hipStream_t bpStream);
 		
 		//integrate particle position based on gravity
-		void preIntegrateSystem(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd, const PxU32 nbActiveParticles, const PxVec3 gravity,
-			const PxReal dt, CUstream bpStream);
+		void preIntegrateSystem(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd, const PxU32 nbActiveParticles, const PxVec3 gravity,
+			const PxReal dt, hipStream_t bpStream);
 		
 		// calculate particle system's world bound
 		void updateBound(const PxgParticleSystem& sys, PxgParticleSystem* particleSystems,
-			PxBounds3* boundArray, PxReal* contactDists, CUstream bpStream);
+			PxBounds3* boundArray, PxReal* contactDists, hipStream_t bpStream);
 		
 		// calculate grid hash
-		void calculateHash(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd, const PxU32 numActiveParticleSystems);
+		void calculateHash(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd, const PxU32 numActiveParticleSystems);
 
 		// reorder particle arrays into sorted order and
 		// find start and end of each cell
-		void reorderDataAndFindCellStart(PxgParticleSystem* particleSystems, CUdeviceptr particleSystemsd, const PxU32 id, const PxU32 numParticles);
+		void reorderDataAndFindCellStart(PxgParticleSystem* particleSystems, hipDeviceptr_t particleSystemsd, const PxU32 id, const PxU32 numParticles);
 		
 		void selfCollision(PxgParticleSystem& particleSystem, PxgParticleSystem* particleSystemsd, const PxU32 id, const PxU32 numParticles);
 
 		//----------------------------------------------------------------------------------------
 		//These method are using the particle stream
-		virtual void prepParticleConstraint(CUdeviceptr prePrepDescd, CUdeviceptr prepDescd, CUdeviceptr sharedDescd, bool isTGS, const PxReal dt);
+		virtual void prepParticleConstraint(hipDeviceptr_t prePrepDescd, hipDeviceptr_t prepDescd, hipDeviceptr_t sharedDescd, bool isTGS, const PxReal dt);
 
 		//void solveSelfCollision(PxgParticleSystem& particleSystem, PxgParticleSystem* particleSystemsd, const PxU32 id, const PxU32 numParticles, PxReal dt);
 
-		void applyDeltas(CUdeviceptr particleSystemd, CUdeviceptr activeParticleSystemd, const PxU32 nbActivParticleSystem, const PxReal dt, CUstream stream);
-		/*void solveSprings(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd,
+		void applyDeltas(hipDeviceptr_t particleSystemd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActivParticleSystem, const PxReal dt, hipStream_t stream);
+		/*void solveSprings(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd,
 			const PxU32 nbActiveParticleSystems, const PxReal dt, bool isTGS);
 */
-		void solveOneWayCollision(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd, 
+		void solveOneWayCollision(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd, 
 			const PxU32 nbActiveParticleSystems, const PxReal dt, const PxReal biasCoefficient, const bool isVelocityIteration);
 
-		void updateSortedVelocity(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd,
+		void updateSortedVelocity(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd,
 			const PxU32 nbActiveParticleSystems, const PxReal dt, const bool skipNewPositionAdjustment = false);
 
-		void stepParticleSystems(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd, const PxU32 nbActiveParticleSystems,
+		void stepParticleSystems(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd, const PxU32 nbActiveParticleSystems,
 			const PxReal dt, const PxReal totalInvDt, bool isParticleSystem);
 
 		//-------------------------------------------------------------------------------
 		//These method are using the solverStream
-		void prepPrimitiveConstraint(CUdeviceptr prePrepDescd, CUdeviceptr prepDescd, CUdeviceptr sharedDescd,
-			const PxReal dt, bool isTGS, CUstream solverStream);
+		void prepPrimitiveConstraint(hipDeviceptr_t prePrepDescd, hipDeviceptr_t prepDescd, hipDeviceptr_t sharedDescd,
+			const PxReal dt, bool isTGS, hipStream_t solverStream);
 		
 		//this is for solving contacts between particles and primitives based on sorted by rigid id
-		void solvePrimitiveCollisionForParticles(CUdeviceptr prePrepDescd, CUdeviceptr solverCoreDescd, 
-			CUdeviceptr sharedDescd, CUdeviceptr artiCoreDescd, const PxReal dt, bool isTGS, const PxReal coefficient,
+		void solvePrimitiveCollisionForParticles(hipDeviceptr_t prePrepDescd, hipDeviceptr_t solverCoreDescd, 
+			hipDeviceptr_t sharedDescd, hipDeviceptr_t artiCoreDescd, const PxReal dt, bool isTGS, const PxReal coefficient,
 			bool isVelIteration);
 
-		void solvePrimitiveCollisionForRigids(CUdeviceptr prePrepDescd, CUdeviceptr solverCoreDescd,
-			CUdeviceptr sharedDescd, CUdeviceptr artiCoreDescd, CUstream solverStream, const PxReal dt, bool isTGS, const PxReal coefficient,
+		void solvePrimitiveCollisionForRigids(hipDeviceptr_t prePrepDescd, hipDeviceptr_t solverCoreDescd,
+			hipDeviceptr_t sharedDescd, hipDeviceptr_t artiCoreDescd, hipStream_t solverStream, const PxReal dt, bool isTGS, const PxReal coefficient,
 			bool isVelIteration);
 
-		void accumulateRigidDeltas(CUdeviceptr prePrepDescd, CUdeviceptr solverCoreDescd, 
-			CUdeviceptr sharedDescd, CUdeviceptr artiCoreDescd, CUdeviceptr rigidIdsd, CUdeviceptr numIdsd, CUstream stream,
+		void accumulateRigidDeltas(hipDeviceptr_t prePrepDescd, hipDeviceptr_t solverCoreDescd, 
+			hipDeviceptr_t sharedDescd, hipDeviceptr_t artiCoreDescd, hipDeviceptr_t rigidIdsd, hipDeviceptr_t numIdsd, hipStream_t stream,
 			const bool isTGS);
 
-		void prepRigidAttachments(CUdeviceptr prePrepDescd, CUdeviceptr prepDescd, bool isTGS, const PxReal dt, CUstream stream,
-			const PxU32 nbActiveParticleSystems, CUdeviceptr activeParticleSystemsd, PxU32 numSolverBodies);
+		void prepRigidAttachments(hipDeviceptr_t prePrepDescd, hipDeviceptr_t prepDescd, bool isTGS, const PxReal dt, hipStream_t stream,
+			const PxU32 nbActiveParticleSystems, hipDeviceptr_t activeParticleSystemsd, PxU32 numSolverBodies);
 
-		void solveRigidAttachments(CUdeviceptr prePrepDescd, CUdeviceptr solverCoreDescd, 
-			CUdeviceptr sharedDescd, CUdeviceptr artiCoreDescd, CUstream solverStream, const PxReal dt, 
-			const bool isTGS, 	const PxReal biasCoefficient, const bool isVelocityIteration, CUdeviceptr particleSystemd, CUdeviceptr activeParticleSystemd, const PxU32 nbActiveParticleSystems);
+		void solveRigidAttachments(hipDeviceptr_t prePrepDescd, hipDeviceptr_t solverCoreDescd, 
+			hipDeviceptr_t sharedDescd, hipDeviceptr_t artiCoreDescd, hipStream_t solverStream, const PxReal dt, 
+			const bool isTGS, 	const PxReal biasCoefficient, const bool isVelocityIteration, hipDeviceptr_t particleSystemd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActiveParticleSystems);
 
 		//integrate particle position and velocity based on contact constraints
-		void integrateSystem(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt, const PxReal epsilonSq);
+		void integrateSystem(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt, const PxReal epsilonSq);
 				
 		PxgTypedCudaBuffer<PxgParticleSystem> mParticleSystemBuffer; //persistent buffer for particle system
 		PxgTypedCudaBuffer<PxU32>		mActiveParticleSystemBuffer;
@@ -271,13 +272,13 @@ namespace physx
 
 		//------------------------------------------------------------------------
 
-		CUstream								mFinalizeStream;
-		CUevent									mFinalizeStartEvent;
-		CUevent									mBoundUpdateEvent;//this event is used to synchronize the broad phase stream(updateBound is running on broad phase stream) and mStream
-		CUevent									mSolveParticleEvent; //this event is used to synchronize solve particle/particle, paricle/rigid and solver rigid/particle
-		CUevent									mSelfCollisionEvent;
-		CUevent									mSolveParticleRigidEvent;
-		CUevent									mSolveRigidParticleEvent;
+		hipStream_t								mFinalizeStream;
+		hipEvent_t									mFinalizeStartEvent;
+		hipEvent_t									mBoundUpdateEvent;//this event is used to synchronize the broad phase stream(updateBound is running on broad phase stream) and mStream
+		hipEvent_t									mSolveParticleEvent; //this event is used to synchronize solve particle/particle, paricle/rigid and solver rigid/particle
+		hipEvent_t									mSelfCollisionEvent;
+		hipEvent_t									mSolveParticleRigidEvent;
+		hipEvent_t									mSolveRigidParticleEvent;
 		PxU32									mCurrentTMIndex; //current temp marker buffer index
 
 		PxgCudaBuffer							mHasFlipPhase;
@@ -315,8 +316,8 @@ public:
 
 	void releaseInternalDiffuseParticleDataBuffer();
 
-	void preDiffuseIntegrateSystem(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd, const PxU32 nbActiveParticles, const PxVec3 gravity,
-		const PxReal dt, CUstream bpStream);
+	void preDiffuseIntegrateSystem(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd, const PxU32 nbActiveParticles, const PxVec3 gravity,
+		const PxReal dt, hipStream_t bpStream);
 
 	PxgEssentialCore*							mEssentialCore;
 	PxgCudaBuffer								mDiffuseParticlesRandomTableBuf;

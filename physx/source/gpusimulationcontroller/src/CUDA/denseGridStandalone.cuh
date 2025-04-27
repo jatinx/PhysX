@@ -26,7 +26,7 @@
 // Copyright (c) 2004-2008 AGEIA Technologies, Inc. All rights reserved.
 // Copyright (c) 2001-2004 NovodeX AG. All rights reserved.
 
-#include "vector_types.h"
+#include "hip/hip_vector_types.h"
 #include "foundation/PxSimpleTypes.h"
 #include "PxgDenseGridData.h"
 

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -42,7 +43,7 @@
 
 #include "PxsTransformCache.h"
 
-#include <vector_types.h>
+#include <hip/hip_vector_types.h>
 
 #include "PxgCommonDefines.h"
 #include "dataReadWriteHelper.cuh"

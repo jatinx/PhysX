@@ -32,7 +32,7 @@
 #include "PxvConfig.h"
 #include "foundation/PxSimpleTypes.h"
 #include "foundation/PxVec3.h"
-#include "vector_types.h"
+#include "hip/hip_vector_types.h"
 
 namespace physx
 {

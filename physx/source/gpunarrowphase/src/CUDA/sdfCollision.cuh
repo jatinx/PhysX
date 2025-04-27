@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -47,10 +48,10 @@ struct PX_ALIGN_PREFIX(16) SparseSDFTexture
 	PxReal sdfDx;
 	PxVec3 sdfBoxHigher;
 	PxReal invSdfDx;
-	CUtexObject texture;
+	hipTextureObject_t texture;
 
 	//Sparse info - for high resolution in narrow band around isolevel 0
-	CUtexObject textureSubgrids;
+	hipTextureObject_t textureSubgrids;
 
 	uint3 coarseSize;
 	PxU32 subgridSize;

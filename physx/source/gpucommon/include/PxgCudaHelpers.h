@@ -35,7 +35,7 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdocumentation"
 #endif
-#include <cuda.h>
+#include <hip/hip_runtime.h>
 #if PX_LINUX && PX_CLANG
 #pragma clang diagnostic pop
 #endif
@@ -75,8 +75,8 @@ public:
     		return;
 
         PxU64 numBytes = numElements * sizeof(T);
-	    PxCUresult result = cudaContext.memcpyDtoH(hostBuffer, CUdeviceptr(deviceBuffer), numBytes);
-	    if (result != CUDA_SUCCESS)
+	    PxCUresult result = cudaContext.memcpyDtoH(hostBuffer, hipDeviceptr_t(deviceBuffer), numBytes);
+	    if (result != hipSuccess)
 	        PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyDtoH set failed with error code %i!\n", PxI32(result));
 	}
 
@@ -105,8 +105,8 @@ public:
 
         PxU64 numBytes = numElements * sizeof(T);
 
-	    PxCUresult result = cudaContext.memcpyHtoD(CUdeviceptr(deviceBuffer), hostBuffer, numBytes);
-	    if (result != CUDA_SUCCESS)
+	    PxCUresult result = cudaContext.memcpyHtoD(hipDeviceptr_t(deviceBuffer), hostBuffer, numBytes);
+	    if (result != hipSuccess)
 	    	PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyHtoD set failed with error code %i!\n", PxI32(result));
 	}
 
@@ -128,14 +128,14 @@ public:
 	* The cuda context needs to be acquired by the user!
 	*/
 	template<typename T>
-	static void copyDToHAsync(PxCudaContext& cudaContext, T* hostBuffer, const T* deviceBuffer, PxU64 numElements, CUstream stream)
+	static void copyDToHAsync(PxCudaContext& cudaContext, T* hostBuffer, const T* deviceBuffer, PxU64 numElements, hipStream_t stream)
 	{
         if (!deviceBuffer || !hostBuffer)
 		    return;
 
         PxU64 numBytes = numElements * sizeof(T);
-	    PxCUresult result = cudaContext.memcpyDtoHAsync(hostBuffer, CUdeviceptr(deviceBuffer), numBytes, stream);
-	    if (result != CUDA_SUCCESS)
+	    PxCUresult result = cudaContext.memcpyDtoHAsync(hostBuffer, hipDeviceptr_t(deviceBuffer), numBytes, stream);
+	    if (result != hipSuccess)
 	    	PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyDtoHAsync set failed with error code %i!\n", PxI32(result));
 	}
 
@@ -145,7 +145,7 @@ public:
 	* The cuda context will get acquired automatically
 	*/
 	template<typename T>
-	static void copyDToHAsync(PxCudaContextManager& cudaContextManager, T* hostBuffer, const T* deviceBuffer, PxU64 numElements, CUstream stream)
+	static void copyDToHAsync(PxCudaContextManager& cudaContextManager, T* hostBuffer, const T* deviceBuffer, PxU64 numElements, hipStream_t stream)
 	{
         PxScopedCudaLock _lock(cudaContextManager);
 		copyDToHAsync(*cudaContextManager.getCudaContext(), hostBuffer, deviceBuffer, numElements, stream);
@@ -157,15 +157,15 @@ public:
 	* The cuda context needs to be acquired by the user!
 	*/
 	template<typename T>
-	static void copyHToDAsync(PxCudaContext& cudaContext, T* deviceBuffer, const T* hostBuffer, PxU64 numElements, CUstream stream)
+	static void copyHToDAsync(PxCudaContext& cudaContext, T* deviceBuffer, const T* hostBuffer, PxU64 numElements, hipStream_t stream)
 	{
 		if (!deviceBuffer || !hostBuffer)
 		    return;
 
         PxU64 numBytes = numElements * sizeof(T);
 
-	    PxCUresult result = cudaContext.memcpyHtoDAsync(CUdeviceptr(deviceBuffer), hostBuffer, numBytes, stream);
-	    if (result != CUDA_SUCCESS)
+	    PxCUresult result = cudaContext.memcpyHtoDAsync(hipDeviceptr_t(deviceBuffer), hostBuffer, numBytes, stream);
+	    if (result != hipSuccess)
 	    	PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyHtoDAsync set failed with error code %i!\n", PxI32(result));
 	}
 
@@ -175,7 +175,7 @@ public:
 	* The cuda context will get acquired automatically
 	*/
 	template<typename T>
-	static void copyHToDAsync(PxCudaContextManager& cudaContextManager, T* deviceBuffer, const T* hostBuffer, PxU64 numElements, CUstream stream)
+	static void copyHToDAsync(PxCudaContextManager& cudaContextManager, T* deviceBuffer, const T* hostBuffer, PxU64 numElements, hipStream_t stream)
 	{
         PxScopedCudaLock _lock(cudaContextManager);
 		copyHToDAsync(*cudaContextManager.getCudaContext(), deviceBuffer, hostBuffer, numElements, stream);
@@ -187,15 +187,15 @@ public:
 	* The cuda context needs to be acquired by the user!
 	*/
 	template<typename T>
-	static void copyDToDAsync(PxCudaContext& cudaContext, T* dstDeviceBuffer, const T* srcDeviceBuffer, PxU64 numElements, CUstream stream)
+	static void copyDToDAsync(PxCudaContext& cudaContext, T* dstDeviceBuffer, const T* srcDeviceBuffer, PxU64 numElements, hipStream_t stream)
 	{
 		if (!srcDeviceBuffer || !dstDeviceBuffer)
 		    return;
 
         PxU64 numBytes = numElements * sizeof(T);
 
-	    PxCUresult result = cudaContext.memcpyDtoDAsync(CUdeviceptr(dstDeviceBuffer), CUdeviceptr(srcDeviceBuffer), numBytes, stream);
-	    if (result != CUDA_SUCCESS)
+	    PxCUresult result = cudaContext.memcpyDtoDAsync(hipDeviceptr_t(dstDeviceBuffer), hipDeviceptr_t(srcDeviceBuffer), numBytes, stream);
+	    if (result != hipSuccess)
 		    PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyDtoDAsync set failed with error code %i!\n", PxI32(result));
 	}
 
@@ -205,7 +205,7 @@ public:
 	* The cuda context will get acquired automatically
 	*/
 	template<typename T>
-	static void copyDToDAsync(PxCudaContextManager& cudaContextManager, T* dstDeviceBuffer, const T* srcDeviceBuffer, PxU64 numElements, CUstream stream)
+	static void copyDToDAsync(PxCudaContextManager& cudaContextManager, T* dstDeviceBuffer, const T* srcDeviceBuffer, PxU64 numElements, hipStream_t stream)
 	{
         PxScopedCudaLock _lock(cudaContextManager);
 		copyDToDAsync(*cudaContextManager.getCudaContext(), dstDeviceBuffer, srcDeviceBuffer, numElements * sizeof(T), stream);
@@ -217,7 +217,7 @@ public:
 	* The cuda context needs to be acquired by the user!
 	*/
 	template<typename T>
-	static void memsetAsync(PxCudaContext& cudaContext, T* dstDeviceBuffer, const T& value, PxU64 numElements, CUstream stream)
+	static void memsetAsync(PxCudaContext& cudaContext, T* dstDeviceBuffer, const T& value, PxU64 numElements, hipStream_t stream)
 	{
 		PX_COMPILE_TIME_ASSERT(sizeof(T) == sizeof(PxU32) || sizeof(T) == sizeof(PxU8));
 
@@ -226,13 +226,13 @@ public:
 
         PxU64 numBytes = numElements * sizeof(T);
 
-        PxCUresult result = CUDA_SUCCESS;
+        PxCUresult result = hipSuccess;
 	    if (sizeof(T) == sizeof(PxU32))
-            result = cudaContext.memsetD32Async(CUdeviceptr(dstDeviceBuffer), reinterpret_cast<const PxU32&>(value), numBytes >> 2, stream);
+            result = cudaContext.memsetD32Async(hipDeviceptr_t(dstDeviceBuffer), reinterpret_cast<const PxU32&>(value), numBytes >> 2, stream);
 	    else
-            result = cudaContext.memsetD8Async(CUdeviceptr(dstDeviceBuffer), reinterpret_cast<const PxU8&>(value), numBytes, stream);
+            result = cudaContext.memsetD8Async(hipDeviceptr_t(dstDeviceBuffer), reinterpret_cast<const PxU8&>(value), numBytes, stream);
 
-        if (result != CUDA_SUCCESS)
+        if (result != hipSuccess)
 		    PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "Memset failed with error code %i!\n", PxI32(result));
 	}
 
@@ -243,7 +243,7 @@ public:
 	* The cuda context will get acquired automatically
 	*/
 	template<typename T>
-	static void memsetAsync(PxCudaContextManager& cudaContextManager, T* dstDeviceBuffer, const T& value, PxU64 numElements, CUstream stream)
+	static void memsetAsync(PxCudaContextManager& cudaContextManager, T* dstDeviceBuffer, const T& value, PxU64 numElements, hipStream_t stream)
 	{
 		PxScopedCudaLock _lock(cudaContextManager);
         memsetAsync(*cudaContextManager.getCudaContext(), dstDeviceBuffer, value, numElements, stream);		

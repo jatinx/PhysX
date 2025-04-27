@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 #include "NvBlastExtAuthoringMeshUtils.h"
 #include "NvBlastExtAuthoringMeshImpl.h"
 #include "NvBlastExtAuthoringPerlinNoise.h"

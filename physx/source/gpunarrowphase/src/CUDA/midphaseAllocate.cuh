@@ -31,7 +31,7 @@
 
 #include "foundation/PxSimpleTypes.h"
 #include "convexNpCommon.h"
-#include <vector_types.h>
+#include <hip/hip_vector_types.h>
 
 using namespace physx;
 

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -68,7 +69,7 @@ public:
 	\return A boolean that indicates whether the SDF creation succeeded
 	*/
 	virtual bool buildSDF(const PxVec3* vertices, PxU32 numVertices, const PxU32* indices, PxU32 numTriangleIndices, PxU32 width, PxU32 height, PxU32 depth,
-		const PxVec3& minExtents, const PxVec3& maxExtents, bool cellCenteredSamples, PxReal* sdf, CUstream stream = 0) = 0;
+		const PxVec3& minExtents, const PxVec3& maxExtents, bool cellCenteredSamples, PxReal* sdf, hipStream_t stream = 0) = 0;
 
 	/**
 	\brief Constructs a sparse grid SDF for a triangle mesh using the GPU
@@ -100,7 +101,7 @@ public:
 		const PxVec3& minExtents, const PxVec3& maxExtents, PxReal narrowBandThickness, PxU32 cellsPerSubgrid, PxSdfBitsPerSubgridPixel::Enum bitsPerSubgridPixel,
 		PxArray<PxReal>& sdfCoarse, PxArray<PxU32>& sdfSubgridsStartSlots, PxArray<PxU8>& sdfDataSubgrids, 
 		PxReal& subgridsMinSdfValue, PxReal& subgridsMaxSdfValue, 
-		PxU32& sdfSubgrids3DTexBlockDimX, PxU32& sdfSubgrids3DTexBlockDimY, PxU32& sdfSubgrids3DTexBlockDimZ, CUstream stream = 0) = 0;
+		PxU32& sdfSubgrids3DTexBlockDimX, PxU32& sdfSubgrids3DTexBlockDimY, PxU32& sdfSubgrids3DTexBlockDimZ, hipStream_t stream = 0) = 0;
 	
 	/**
 	\brief Releases the memory including the this pointer

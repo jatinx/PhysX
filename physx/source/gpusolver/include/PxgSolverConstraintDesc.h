@@ -31,7 +31,7 @@
 
 #include "foundation/PxSimpleTypes.h"
 #include "foundation/PxPreprocessor.h"
-#include <vector_types.h>
+#include <hip/hip_vector_types.h>
 #include "PxNodeIndex.h"
 
 

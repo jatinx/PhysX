@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 #include "vhacdRaycastMesh.h"
 #include <math.h>
 #include <assert.h>

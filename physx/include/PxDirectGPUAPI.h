@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -304,7 +305,7 @@ public:
 	\return bool Whether the operation was successful. Note that this might not include asynchronous CUDA errors.
 	
 	*/
-	virtual bool getRigidDynamicData(void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent = NULL, CUevent finishEvent = NULL) const = 0;
+	virtual bool getRigidDynamicData(void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) const = 0;
 	
 	/**
 	\brief Sets the simulation state for a set of PxRigidDynamic actors from a user-provided GPU data buffer.
@@ -318,7 +319,7 @@ public:
 
 	\return bool Whether the operation was successful. Note that this might not include asynchronous CUDA errors.
 	*/
-	virtual bool setRigidDynamicData(const void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent = NULL, CUevent finishEvent = NULL) = 0;
+	virtual bool setRigidDynamicData(const void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) = 0;
 
 	/**
 	\brief Gets the simulation state for a set of articulations, i.e. PxArticulationReducedCoordinate objects and copies into a user-provided GPU data buffer.
@@ -340,7 +341,7 @@ public:
 
 	The link and dof indexing of these blocks then follows the same pattern as the PxArticulationCache API. We refer to the user guide for an explanation.
 	*/
-	virtual bool getArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent = NULL, CUevent finishEvent = NULL) const = 0;
+	virtual bool getArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) const = 0;
 	
 	/**
 	\brief Sets the simulation state for a set of articulations, i.e. PxArticulationReducedCoordinate objects from a user-provided GPU data buffer.
@@ -362,7 +363,7 @@ public:
 
 	The internal indexing of these blocks then follows the same pattern as the PxArticulationCache API. We refer to the user guide for an explanation.
 	*/
-	virtual bool setArticulationData(const void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent = NULL, CUevent finishEvent = NULL) = 0;
+	virtual bool setArticulationData(const void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) = 0;
 	
 	/**
 	\brief performs a compute operation on a set of articulations, i.e. PxArticulationReducedCoordinate objects.
@@ -378,7 +379,7 @@ public:
 
 	The appropriate sizing of the data buffer as well as the data layout is documented alongside the compute operations in the API documentation of PxArticulationGPUAPIComputeType.
 	*/
-	virtual bool computeArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements, CUevent startEvent = NULL, CUevent finishEvent = NULL) = 0;
+	virtual bool computeArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) = 0;
 
 	/**
 	\brief Copy rigid body (PxRigidBody) and articulation (PxArticulationReducedCoordinate) contact data to a user-provided GPU data buffer.
@@ -394,7 +395,7 @@ public:
 
 	\return bool Whether the operation was successful. Note that this might not include asynchronous CUDA errors.
 	*/
-	virtual bool copyContactData(void* data, PxU32* nbContactPairs, PxU32 maxPairs, CUevent startEvent = NULL, CUevent finishEvent = NULL) const = 0;
+	virtual bool copyContactData(void* data, PxU32* nbContactPairs, PxU32 maxPairs, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) const = 0;
 	
 	/**
 	\brief Evaluate sample point distances and gradients on SDF shapes in local space. Local space is the space in which the mesh's raw vertex positions are represented.
@@ -426,7 +427,7 @@ public:
 
 	\return bool Whether the operation was successful. Note that this might not include asynchronous CUDA errors.
 	*/
-	virtual bool evaluateSDFDistances(PxVec4* localGradientAndSignedDistanceConcatenated, const PxShapeGPUIndex* shapeIndices, const PxVec4* localSamplePointsConcatenated, const PxU32* samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, CUevent startEvent = NULL, CUevent finishEvent = NULL) const = 0;
+	virtual bool evaluateSDFDistances(PxVec4* localGradientAndSignedDistanceConcatenated, const PxShapeGPUIndex* shapeIndices, const PxVec4* localSamplePointsConcatenated, const PxU32* samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) const = 0;
 
 	/**
 	\brief Get the maximal articulation index and component counts for a PxScene.
@@ -456,7 +457,7 @@ public:
 	\return bool Whether the operation was successful. Note that this might not include asynchronous CUDA errors.
 	
 	*/
-	virtual bool getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent = NULL, CUevent finishEvent = NULL) const = 0;
+	virtual bool getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) const = 0;
 };
 
 #if !PX_DOXYGEN

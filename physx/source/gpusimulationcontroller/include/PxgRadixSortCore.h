@@ -58,13 +58,13 @@ namespace physx
 
 		void allocate(PxU32 nbRequired = 1);
 
-		static void updateGPURadixSortDesc(PxCudaContext* cudaContext, const CUstream& stream, CUdeviceptr inputKeyd, CUdeviceptr inputRankd,
-			CUdeviceptr outputKeyd, CUdeviceptr outputRankd, CUdeviceptr radixCountd, PxgRadixSortDesc* rsDescs,
-			CUdeviceptr radixSortDescBuf0, CUdeviceptr radixSortDescBuf1, const PxU32 count);
+		static void updateGPURadixSortDesc(PxCudaContext* cudaContext, const hipStream_t& stream, hipDeviceptr_t inputKeyd, hipDeviceptr_t inputRankd,
+			hipDeviceptr_t outputKeyd, hipDeviceptr_t outputRankd, hipDeviceptr_t radixCountd, PxgRadixSortDesc* rsDescs,
+			hipDeviceptr_t radixSortDescBuf0, hipDeviceptr_t radixSortDescBuf1, const PxU32 count);
 
-		static void sort(PxgCudaKernelWranglerManager* gpuKernelWranglerManager, PxCudaContext*cudaContext, const CUstream& stream,
+		static void sort(PxgCudaKernelWranglerManager* gpuKernelWranglerManager, PxCudaContext*cudaContext, const hipStream_t& stream,
 			const PxU32 numOfKeys, PxgCudaBuffer* radixSortDescBuf, const PxU32 numBits, PxgRadixSortDesc* rsDescs);
-		static void sort(PxgCudaKernelWranglerManager* gpuKernelWranglerManager, PxCudaContext*cudaContext, const CUstream& stream,
+		static void sort(PxgCudaKernelWranglerManager* gpuKernelWranglerManager, PxCudaContext*cudaContext, const hipStream_t& stream,
 			PxgCudaBuffer* radixSortDescBuf, const PxU32 numBits);
 
 
@@ -80,7 +80,7 @@ namespace physx
 			return n;
 		}
 
-		void sort(CUdeviceptr inputKeyd, CUdeviceptr inputRankd, CUdeviceptr outputKeyd, CUdeviceptr outputRankd, const PxU32 numOfKeys, const PxU32 numBits, const CUstream& stream, PxU32 id = 0)
+		void sort(hipDeviceptr_t inputKeyd, hipDeviceptr_t inputRankd, hipDeviceptr_t outputKeyd, hipDeviceptr_t outputRankd, const PxU32 numOfKeys, const PxU32 numBits, const hipStream_t& stream, PxU32 id = 0)
 		{
 			PxgRadixSortDesc* rsDescs = &mRSDesc[id * 2];
 
@@ -90,7 +90,7 @@ namespace physx
 			sort(mEssentialCore->mGpuKernelWranglerManager, mEssentialCore->mCudaContext, stream, numOfKeys, mRadixSortDescBuf.begin(), numBits, rsDescs);
 		}
 
-		void sort(CUdeviceptr inputKeyd, CUdeviceptr inputRankd, CUdeviceptr outputKeyd, CUdeviceptr outputRankd, const PxU32 numOfKeys, const PxU32 numBits, PxU32 id = 0)
+		void sort(hipDeviceptr_t inputKeyd, hipDeviceptr_t inputRankd, hipDeviceptr_t outputKeyd, hipDeviceptr_t outputRankd, const PxU32 numOfKeys, const PxU32 numBits, PxU32 id = 0)
 		{
 			sort(inputKeyd, inputRankd, outputKeyd, outputRankd, numOfKeys, numBits, mEssentialCore->mStream, id);
 		}

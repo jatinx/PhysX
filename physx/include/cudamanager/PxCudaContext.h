@@ -44,7 +44,7 @@ namespace physx
 	};
 
 	// workaround for not being able to forward declare enums in PxCudaTypes.h. 
-	// provides different automatic casting depending on whether cuda.h was included beforehand or not.
+	// provides different automatic casting depending on whether hip/hip_runtime.h was included beforehand or not.
 	template<typename CUenum>
 	struct PxCUenum
 	{
@@ -55,8 +55,8 @@ namespace physx
 	};
 
 #ifdef CUDA_VERSION
-	typedef PxCUenum<CUjit_option> PxCUjit_option;
-	typedef PxCUenum<CUresult> PxCUresult;
+	typedef PxCUenum<hipJitOption> PxCUjit_option;
+	typedef PxCUenum<hipError_t> PxCUresult;
 #else
 	typedef PxCUenum<PxU32> PxCUjit_option;
 	typedef PxCUenum<PxU32> PxCUresult;
@@ -79,48 +79,48 @@ namespace physx
 	public:
 		virtual void release() = 0;
 
-		virtual PxCUresult memAlloc(CUdeviceptr *dptr, size_t bytesize) = 0;
+		virtual PxCUresult memAlloc(hipDeviceptr_t *dptr, size_t bytesize) = 0;
 
-		virtual PxCUresult memFree(CUdeviceptr dptr) = 0;
+		virtual PxCUresult memFree(hipDeviceptr_t dptr) = 0;
 
 		virtual PxCUresult memHostAlloc(void **pp, size_t bytesize, unsigned int Flags) = 0;
 
 		virtual PxCUresult memFreeHost(void *p) = 0;
 
-		virtual PxCUresult memHostGetDevicePointer(CUdeviceptr *pdptr, void *p, unsigned int Flags) = 0;
+		virtual PxCUresult memHostGetDevicePointer(hipDeviceptr_t *pdptr, void *p, unsigned int Flags) = 0;
 
-		virtual PxCUresult moduleLoadDataEx(CUmodule *module, const void *image, unsigned int numOptions, PxCUjit_option *options, void **optionValues) = 0;
+		virtual PxCUresult moduleLoadDataEx(hipModule_t *module, const void *image, unsigned int numOptions, PxCUjit_option *options, void **optionValues) = 0;
 
-		virtual PxCUresult moduleGetFunction(CUfunction *hfunc, CUmodule hmod, const char *name) = 0;
+		virtual PxCUresult moduleGetFunction(hipFunction_t *hfunc, hipModule_t hmod, const char *name) = 0;
 
-		virtual PxCUresult moduleUnload(CUmodule hmod) = 0;
+		virtual PxCUresult moduleUnload(hipModule_t hmod) = 0;
 
-		virtual PxCUresult streamCreate(CUstream *phStream, unsigned int Flags) = 0;
+		virtual PxCUresult streamCreate(hipStream_t *phStream, unsigned int Flags) = 0;
 
-		virtual PxCUresult streamCreateWithPriority(CUstream *phStream, unsigned int flags, int priority) = 0;
+		virtual PxCUresult streamCreateWithPriority(hipStream_t *phStream, unsigned int flags, int priority) = 0;
 
-		virtual PxCUresult streamFlush(CUstream hStream) = 0;
+		virtual PxCUresult streamFlush(hipStream_t hStream) = 0;
 
-		virtual PxCUresult streamWaitEvent(CUstream hStream, CUevent hEvent, unsigned int Flags) = 0;
+		virtual PxCUresult streamWaitEvent(hipStream_t hStream, hipEvent_t hEvent, unsigned int Flags) = 0;
 
-		virtual PxCUresult streamWaitEvent(CUstream hStream, CUevent hEvent) = 0;
+		virtual PxCUresult streamWaitEvent(hipStream_t hStream, hipEvent_t hEvent) = 0;
 
-		virtual PxCUresult streamDestroy(CUstream hStream) = 0;
+		virtual PxCUresult streamDestroy(hipStream_t hStream) = 0;
 
-		virtual PxCUresult streamSynchronize(CUstream hStream) = 0;
+		virtual PxCUresult streamSynchronize(hipStream_t hStream) = 0;
 
-		virtual PxCUresult eventCreate(CUevent *phEvent, unsigned int Flags) = 0;
+		virtual PxCUresult eventCreate(hipEvent_t *phEvent, unsigned int Flags) = 0;
 
-		virtual PxCUresult eventRecord(CUevent hEvent, CUstream hStream) = 0;
+		virtual PxCUresult eventRecord(hipEvent_t hEvent, hipStream_t hStream) = 0;
 
-		virtual PxCUresult eventQuery(CUevent hEvent) = 0;
+		virtual PxCUresult eventQuery(hipEvent_t hEvent) = 0;
 
-		virtual PxCUresult eventSynchronize(CUevent hEvent) = 0;
+		virtual PxCUresult eventSynchronize(hipEvent_t hEvent) = 0;
 
-		virtual PxCUresult eventDestroy(CUevent hEvent) = 0;
+		virtual PxCUresult eventDestroy(hipEvent_t hEvent) = 0;
 
 		virtual PxCUresult launchKernel(
-			CUfunction f,
+			hipFunction_t f,
 			unsigned int gridDimX,
 			unsigned int gridDimY,
 			unsigned int gridDimZ,
@@ -128,7 +128,7 @@ namespace physx
 			unsigned int blockDimY,
 			unsigned int blockDimZ,
 			unsigned int sharedMemBytes,
-			CUstream hStream,
+			hipStream_t hStream,
 			PxCudaKernelParam* kernelParams,
 			size_t kernelParamsSizeInBytes,
 			void** extra,
@@ -139,40 +139,40 @@ namespace physx
 		// PT: same as above but without copying the kernel params to a local stack before the launch
 		// i.e. the kernelParams data is passed directly to the kernel.
 		virtual PxCUresult launchKernel(
-			CUfunction f,
+			hipFunction_t f,
 			PxU32 gridDimX, PxU32 gridDimY, PxU32 gridDimZ,
 			PxU32 blockDimX, PxU32 blockDimY, PxU32 blockDimZ,
 			PxU32 sharedMemBytes,
-			CUstream hStream,
+			hipStream_t hStream,
 			void** kernelParams,
 			void** extra,
 			const char* file,
 			int line
 		) = 0;
 
-		virtual PxCUresult memcpyDtoH(void *dstHost, CUdeviceptr srcDevice, size_t ByteCount) = 0;
+		virtual PxCUresult memcpyDtoH(void *dstHost, hipDeviceptr_t srcDevice, size_t ByteCount) = 0;
 
-		virtual PxCUresult memcpyDtoHAsync(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount, CUstream hStream) = 0;
+		virtual PxCUresult memcpyDtoHAsync(void* dstHost, hipDeviceptr_t srcDevice, size_t ByteCount, hipStream_t hStream) = 0;
 
-		virtual PxCUresult memcpyHtoD(CUdeviceptr dstDevice, const void *srcHost, size_t ByteCount) = 0;
+		virtual PxCUresult memcpyHtoD(hipDeviceptr_t dstDevice, const void *srcHost, size_t ByteCount) = 0;
 
-		virtual PxCUresult memcpyHtoDAsync(CUdeviceptr dstDevice, const void *srcHost, size_t ByteCount, CUstream hStream) = 0;
+		virtual PxCUresult memcpyHtoDAsync(hipDeviceptr_t dstDevice, const void *srcHost, size_t ByteCount, hipStream_t hStream) = 0;
 
-		virtual PxCUresult memcpyDtoDAsync(CUdeviceptr dstDevice, CUdeviceptr srcDevice, size_t ByteCount, CUstream hStream) = 0;
+		virtual PxCUresult memcpyDtoDAsync(hipDeviceptr_t dstDevice, hipDeviceptr_t srcDevice, size_t ByteCount, hipStream_t hStream) = 0;
 
-		virtual PxCUresult memcpyDtoD(CUdeviceptr dstDevice, CUdeviceptr srcDevice, size_t ByteCount) = 0;
+		virtual PxCUresult memcpyDtoD(hipDeviceptr_t dstDevice, hipDeviceptr_t srcDevice, size_t ByteCount) = 0;
 
-		virtual PxCUresult memcpyPeerAsync(CUdeviceptr dstDevice, CUcontext dstContext, CUdeviceptr srcDevice, CUcontext srcContext, size_t ByteCount, CUstream hStream) = 0;
+		virtual PxCUresult memcpyPeerAsync(hipDeviceptr_t dstDevice, hipCtx_t dstContext, hipDeviceptr_t srcDevice, hipCtx_t srcContext, size_t ByteCount, hipStream_t hStream) = 0;
 
-		virtual PxCUresult memsetD32Async(CUdeviceptr dstDevice, unsigned int ui, size_t N, CUstream hStream) = 0;
+		virtual PxCUresult memsetD32Async(hipDeviceptr_t dstDevice, unsigned int ui, size_t N, hipStream_t hStream) = 0;
 
-		virtual PxCUresult memsetD8Async(CUdeviceptr dstDevice, unsigned char uc, size_t N, CUstream hStream) = 0;
+		virtual PxCUresult memsetD8Async(hipDeviceptr_t dstDevice, unsigned char uc, size_t N, hipStream_t hStream) = 0;
 
-		virtual PxCUresult memsetD32(CUdeviceptr dstDevice, unsigned int ui, size_t N) = 0;
+		virtual PxCUresult memsetD32(hipDeviceptr_t dstDevice, unsigned int ui, size_t N) = 0;
 
-		virtual PxCUresult memsetD16(CUdeviceptr dstDevice, unsigned short uh, size_t N) = 0;
+		virtual PxCUresult memsetD16(hipDeviceptr_t dstDevice, unsigned short uh, size_t N) = 0;
 
-		virtual PxCUresult memsetD8(CUdeviceptr dstDevice, unsigned char uc, size_t N) = 0;
+		virtual PxCUresult memsetD8(hipDeviceptr_t dstDevice, unsigned char uc, size_t N) = 0;
 
 		virtual PxCUresult getLastError() = 0;
 

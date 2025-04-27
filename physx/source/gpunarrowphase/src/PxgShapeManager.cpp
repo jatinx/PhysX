@@ -85,7 +85,7 @@ PxgShapeManager::PxgShapeManager(PxgHeapMemoryAllocatorManager* heapManager) :
 	mHasShapeInstanceChanged = false;
 }
 
-void PxgShapeManager::initialize(PxCudaContext* cudaContext, CUstream stream)
+void PxgShapeManager::initialize(PxCudaContext* cudaContext, hipStream_t stream)
 {
 	cudaContext->memsetD32Async(mGpuShapesRemapTableBuffer.getDevicePtr(), 0xFFFFFFFF, mGpuShapesRemapTableBuffer.getSize()/sizeof(PxU32), stream);
 	cudaContext->memsetD32Async(mGpuRigidIndiceBuffer.getDevicePtr(), 0xFFFFFFFF, mGpuRigidIndiceBuffer.getSize() / sizeof(PxU32), stream);
@@ -157,7 +157,7 @@ void PxgShapeManager::unregisterShapeInstance(const PxU32 transformCacheID)
 	mHasShapeInstanceChanged = true;
 }
 
-void PxgShapeManager::scheduleCopyHtoD(PxgCopyManager& copyManager, PxCudaContext* cudaContext, CUstream stream)
+void PxgShapeManager::scheduleCopyHtoD(PxgCopyManager& copyManager, PxCudaContext* cudaContext, hipStream_t stream)
 {
 	PX_UNUSED(copyManager);
 
@@ -416,7 +416,7 @@ void PxgMaterialManager::unregisterMaterial(const PxU32 id)
 }
 
 void PxgMaterialManager::scheduleCopyHtoD(PxgCopyManager& copyManager, PxCudaContext* cudaContext, 
-	CUstream stream, const PxU32 elemSize)
+	hipStream_t stream, const PxU32 elemSize)
 {
 	if (mResizeRequired)
 	{
@@ -497,7 +497,7 @@ PxgFEMMaterialManager::PxgFEMMaterialManager(PxgHeapMemoryAllocatorManager* heap
 }
 
 void PxgFEMMaterialManager::scheduleCopyHtoD(PxgCopyManager& copyManager, PxCudaContext* cudaContext,
-	CUstream stream, const PxU32 elemSize)
+	hipStream_t stream, const PxU32 elemSize)
 {
 	if (mResizeRequired)
 	{

@@ -27,8 +27,8 @@
 #ifndef PX_CUDA_TYPES_H
 #define PX_CUDA_TYPES_H
 
-//type definitions to avoid forced inclusion of cuda.h
-//if cuda.h is needed anyway, please include it before PxCudaContextManager.h, PxCudaContext.h or PxCudaTypes.h
+//type definitions to avoid forced inclusion of hip/hip_runtime.h
+//if hip/hip_runtime.h is needed anyway, please include it before PxCudaContextManager.h, PxCudaContext.h or PxCudaTypes.h
 
 #include "foundation/PxPreprocessor.h"
 
@@ -43,29 +43,29 @@
 #endif
 
 #if PX_P64_FAMILY
-typedef unsigned long long CUdeviceptr;
+typedef unsigned long long hipDeviceptr_t;
 #else
-typedef unsigned int CUdeviceptr;
+typedef unsigned int hipDeviceptr_t;
 #endif
 
 #if PX_CLANG
 #pragma clang diagnostic pop
 #endif
 
-typedef int CUdevice;
+typedef int hipDevice_t;
 
-typedef struct CUctx_st* CUcontext;
-typedef struct CUmod_st* CUmodule;
-typedef struct CUfunc_st* CUfunction;
-typedef struct CUstream_st* CUstream;
-typedef struct CUevent_st* CUevent;
-typedef struct CUgraphicsResource_st* CUgraphicsResource;
+typedef struct ihipCtx_t* hipCtx_t;
+typedef struct ihipModule_t* hipModule_t;
+typedef struct ihipModuleSymbol_t* hipFunction_t;
+typedef struct ihipStream_t* hipStream_t;
+typedef struct ihipEvent_t* hipEvent_t;
+typedef struct hipGraphicsResource* hipGraphicsResource_t;
 
 #endif
 
 #else
-typedef struct CUstream_st* CUstream; // We declare some callbacks taking CUstream as an argument even when building with PX_SUPPORT_GPU_PHYSX = 0.
-typedef struct CUevent_st* CUevent;
+typedef struct ihipStream_t* hipStream_t; // We declare some callbacks taking hipStream_t as an argument even when building with PX_SUPPORT_GPU_PHYSX = 0.
+typedef struct ihipEvent_t* hipEvent_t;
 #endif // PX_SUPPORT_GPU_PHYSX
 #endif
 

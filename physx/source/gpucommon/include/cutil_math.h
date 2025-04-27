@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -44,7 +45,7 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdocumentation"
 #endif
-#include <vector_types.h>
+#include <hip/hip_vector_types.h>
 #include "vector_functions.h" // why does this pull in the runtime api?
 #if PX_LINUX && PX_CLANG
 #pragma clang diagnostic pop

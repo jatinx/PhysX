@@ -38,22 +38,22 @@ using namespace physx;
 
 void PxDeformableSurfaceExt::copyToDevice(PxDeformableSurface& fm, PxDeformableSurfaceDataFlags flags, PxU32 nbVertices,
 										  PxVec4* positionInvMassPinned, PxVec4* velocityPinned, PxVec4* restPositionPinned,
-										  CUstream stream)
+										  hipStream_t stream)
 {
 #if PX_SUPPORT_GPU_PHYSX
 	PxScopedCudaLock _lock(*fm.getCudaContextManager());
 	PxCudaContext* ctx = fm.getCudaContextManager()->getCudaContext();
 
 	if(flags & PxDeformableSurfaceDataFlag::ePOSITION_INVMASS && positionInvMassPinned)
-		ctx->memcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(fm.getPositionInvMassBufferD()), positionInvMassPinned,
+		ctx->memcpyHtoDAsync(reinterpret_cast<hipDeviceptr_t>(fm.getPositionInvMassBufferD()), positionInvMassPinned,
 		                     nbVertices * sizeof(PxVec4), stream);
 
 	if(flags & PxDeformableSurfaceDataFlag::eVELOCITY && velocityPinned)
-		ctx->memcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(fm.getVelocityBufferD()), velocityPinned,
+		ctx->memcpyHtoDAsync(reinterpret_cast<hipDeviceptr_t>(fm.getVelocityBufferD()), velocityPinned,
 		                     nbVertices * sizeof(PxVec4), stream);
 
 	if(flags & PxDeformableSurfaceDataFlag::eREST_POSITION && restPositionPinned)
-		ctx->memcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(fm.getRestPositionBufferD()), restPositionPinned,
+		ctx->memcpyHtoDAsync(reinterpret_cast<hipDeviceptr_t>(fm.getRestPositionBufferD()), restPositionPinned,
 		                     nbVertices * sizeof(PxVec4), stream);
 
 	if(stream == 0)

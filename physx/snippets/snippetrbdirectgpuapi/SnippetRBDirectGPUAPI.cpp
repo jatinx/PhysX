@@ -56,11 +56,11 @@ static PxArray<PxU32> gRBIndices;
 static PxArray<PxGeometryHolder> gRBGeometries;
 static PxArray<PxTransform> gRBPoses;
 
-static CUdeviceptr gRBIndicesD;
-static CUdeviceptr gRBPosesD;
-static CUdeviceptr gRBInitPosesD;
-static CUdeviceptr gRBInitLinVelsD;
-static CUdeviceptr gRBInitAngVelsD;
+static hipDeviceptr_t gRBIndicesD;
+static hipDeviceptr_t gRBPosesD;
+static hipDeviceptr_t gRBInitPosesD;
+static hipDeviceptr_t gRBInitLinVelsD;
+static hipDeviceptr_t gRBInitAngVelsD;
 
 PxU32 getRBCount()
 {

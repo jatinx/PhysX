@@ -56,8 +56,8 @@ namespace physx
 
 
 		//this method push CopyDesc to PxgCopyManager
-		void initialize(PxCudaContext* cudaContext, CUstream stream);
-		void scheduleCopyHtoD(PxgCopyManager& copyManager, PxCudaContext* cudaContext, CUstream stream);
+		void initialize(PxCudaContext* cudaContext, hipStream_t stream);
+		void scheduleCopyHtoD(PxgCopyManager& copyManager, PxCudaContext* cudaContext, hipStream_t stream);
 
 		PxU32 registerShape(PxgShape& shape);
 		void registerShapeInstance(const PxNodeIndex& nodeIndex, const PxU32 transformCacheID, PxActor* actor, bool aggregate = false);
@@ -104,7 +104,7 @@ namespace physx
 		virtual ~PxgMaterialManager(){}
 
 		//this method push CopyDesc to PxgCopyManager
-		virtual void scheduleCopyHtoD(PxgCopyManager& copyManager, PxCudaContext* cudaContext, CUstream stream, const PxU32 elemSize);
+		virtual void scheduleCopyHtoD(PxgCopyManager& copyManager, PxCudaContext* cudaContext, hipStream_t stream, const PxU32 elemSize);
 
 		PxU32 registerMaterial(const PxU8* materialData, const PxU32 elemSize);
 		void updateMaterial(const PxU8* materialData, const PxU32 elemSize, const PxU32 id);
@@ -128,7 +128,7 @@ namespace physx
 
 		PxgFEMMaterialManager(PxgHeapMemoryAllocatorManager* heapManager, const PxU32 elemSize);
 
-		virtual void scheduleCopyHtoD(PxgCopyManager& copyManager, PxCudaContext* cudaContext, CUstream stream, const PxU32 elemSize);
+		virtual void scheduleCopyHtoD(PxgCopyManager& copyManager, PxCudaContext* cudaContext, hipStream_t stream, const PxU32 elemSize);
 	};
 
 	class PxgFEMSoftBodyMaterialManager : public PxgFEMMaterialManager

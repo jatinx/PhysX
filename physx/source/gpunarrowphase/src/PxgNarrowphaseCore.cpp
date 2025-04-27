@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -102,7 +103,7 @@ using namespace physx;
 using namespace Gu;
 
 PxgGpuNarrowphaseCore::PxgGpuNarrowphaseCore(PxgCudaKernelWranglerManager* gpuKernelWrangler, PxCudaContextManager* cudaContextManager, const PxGpuDynamicsMemoryConfig& gpuDynamicsConfig,
-	void* contactStreamBase, void* patchStreamBase, void* forceAndIndiceStreamBase, IG::IslandSim* islandSim, CUstream solverStream, PxgHeapMemoryAllocatorManager* heapMemoryManager,
+	void* contactStreamBase, void* patchStreamBase, void* forceAndIndiceStreamBase, IG::IslandSim* islandSim, hipStream_t solverStream, PxgHeapMemoryAllocatorManager* heapMemoryManager,
 	PxgNphaseImplementationContext* nphaseImplContext) :
 	mPairManagementBuffers(heapMemoryManager),
 	mGpuTransformCache(heapMemoryManager, PxsHeapStats::eNARROWPHASE),
@@ -183,9 +184,9 @@ PxgGpuNarrowphaseCore::PxgGpuNarrowphaseCore(PxgCudaKernelWranglerManager* gpuKe
 	mCollisionStackSizeBytes = gpuDynamicsConfig.collisionStackSize;
 
 	// allocated in GpuDynamicsContext.
-	mContactStream = reinterpret_cast<CUdeviceptr>(contactStreamBase);
-	mPatchStream = reinterpret_cast<CUdeviceptr>(patchStreamBase);
-	mForceAndIndiceStream = reinterpret_cast<CUdeviceptr>(forceAndIndiceStreamBase);
+	mContactStream = reinterpret_cast<hipDeviceptr_t>(contactStreamBase);
+	mPatchStream = reinterpret_cast<hipDeviceptr_t>(patchStreamBase);
+	mForceAndIndiceStream = reinterpret_cast<hipDeviceptr_t>(forceAndIndiceStreamBase);
 
 	PxU32 blockAccumArraySize = PxgNarrowPhaseGridDims::COMPACT_LOST_FOUND_PAIRS;
 
@@ -328,7 +329,7 @@ void PxgGpuNarrowphaseCore::drawManifold(PxgPersistentContactManifold* manifolds
 
 void PxgGpuNarrowphaseCore::compactLostFoundPairs(PxgGpuContactManagers& gpuManagers, const PxU32 numTests, PxU32* touchChangeFlags, PxsContactManagerOutput* cmOutputs)
 {
-	CUresult result;
+	hipError_t result;
 
 	PxU32* tempRunsum = (PxU32*)gpuManagers.mTempRunsumArray2.getDevicePtr();
 	PxsContactManagerOutputCounts* lostFoundOutputs = (PxsContactManagerOutputCounts*)gpuManagers.mLostFoundPairsOutputData.getDevicePtr();
@@ -338,8 +339,8 @@ void PxgGpuNarrowphaseCore::compactLostFoundPairs(PxgGpuContactManagers& gpuMana
 	PxsContactManager** cmArray = (PxsContactManager**)gpuManagers.mCpuContactManagerMapping.getDevicePtr();
 
 	{
-		CUfunction kernelFunction1 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPACT_LOST_FOUND_PAIRS_1);
-		CUfunction kernelFunction2 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPACT_LOST_FOUND_PAIRS_2);
+		hipFunction_t kernelFunction1 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPACT_LOST_FOUND_PAIRS_1);
+		hipFunction_t kernelFunction2 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPACT_LOST_FOUND_PAIRS_2);
 
 		PxCudaKernelParam kernelParams1[] =
 		{
@@ -366,24 +367,24 @@ void PxgGpuNarrowphaseCore::compactLostFoundPairs(PxgGpuContactManagers& gpuMana
 			WARP_SIZE, PxgNarrowPhaseBlockDims::COMPACT_LOST_FOUND_PAIRS / WARP_SIZE, 1,
 			0, mStream, kernelParams1, sizeof(kernelParams1), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU prepareLostFoundPairs_Stage1 fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU prepareLostFoundPairs_Stage1 kernel fail!!!\n");
 #endif
 		result = mCudaContext->launchKernel(kernelFunction2, PxgNarrowPhaseGridDims::COMPACT_LOST_FOUND_PAIRS, 1, 1,
 			WARP_SIZE, PxgNarrowPhaseBlockDims::COMPACT_LOST_FOUND_PAIRS / WARP_SIZE, 1,
 			0, mStream, kernelParams2, sizeof(kernelParams2), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU prepareLostFoundPairs_Stage2 fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU prepareLostFoundPairs_Stage2 kernel fail!!!\n");
 #endif
 	}
@@ -407,19 +408,19 @@ void PxgGpuNarrowphaseCore::testSDKSphereGpu(
 	const PxgContactManagerInput* cmInputs = reinterpret_cast<const PxgContactManagerInput*>(gpuManagers.mContactManagerInputData.getDevicePtr());
 	PxsContactManagerOutput* cmOutputs = reinterpret_cast<PxsContactManagerOutput*>(gpuManagers.mContactManagerOutputData.getDevicePtr());
 
-	CUdeviceptr gpuShapes = mGpuShapesManager.mGpuShapesBuffer.getDevicePtr();
+	hipDeviceptr_t gpuShapes = mGpuShapesManager.mGpuShapesBuffer.getDevicePtr();
 	PxsCachedTransform* transformCache = reinterpret_cast<PxsCachedTransform*>(mGpuTransformCache.getDevicePtr());
 	PxReal*	contactDistance = reinterpret_cast<PxReal*>(mGpuContactDistance.getDevicePtr());
 	PX_ASSERT(transformCache);
 	PxsMaterialData* materials = reinterpret_cast<PxsMaterialData*>(mGpuMaterialManager.mGpuMaterialBuffer.getDevicePtr());
 	PxU32* touchChangeFlags = reinterpret_cast<PxU32*>(gpuManagers.mTempRunsumArray.getDevicePtr());
 	PxU32* patchChangeFlags = reinterpret_cast<PxU32*>(gpuManagers.mTempRunsumArray.getDevicePtr() + sizeof(PxU32) * numTests);
-	CUresult result;
+	hipError_t result;
 
 	PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
 
 	{
-		CUfunction sphereKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SPHERE_KERNEL_MAIN);
+		hipFunction_t sphereKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SPHERE_KERNEL_MAIN);
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -448,12 +449,12 @@ void PxgGpuNarrowphaseCore::testSDKSphereGpu(
 		const PxU32 numBlocks = (numTests + (numThreadsPerBlock - 1)) / numThreadsPerBlock;
 		//Each thread do one collision detection
 		result = mCudaContext->launchKernel(sphereKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sphereNphase_Kernel fail to launch kernel stage 3!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cudaMainGjkEpa error in kernel stage 3!!!\n");
 #endif
 
@@ -499,7 +500,7 @@ void PxgGpuNarrowphaseCore::testSDKBoxBoxGpu(
 	const PxgContactManagerInput* cmInputs = reinterpret_cast<const PxgContactManagerInput*>(gpuManagers.mContactManagerInputData.getDevicePtr());
 	PxsContactManagerOutput* cmOutputs = reinterpret_cast<PxsContactManagerOutput*>(gpuManagers.mContactManagerOutputData.getDevicePtr());
 
-	CUdeviceptr gpuShapes = mGpuShapesManager.mGpuShapesBuffer.getDevicePtr();
+	hipDeviceptr_t gpuShapes = mGpuShapesManager.mGpuShapesBuffer.getDevicePtr();
 	PxsCachedTransform* transformCache = reinterpret_cast<PxsCachedTransform*>(mGpuTransformCache.getDevicePtr());
 	PxReal*	contactDistance = reinterpret_cast<PxReal*>(mGpuContactDistance.getDevicePtr());
 	PX_ASSERT(transformCache);
@@ -508,10 +509,10 @@ void PxgGpuNarrowphaseCore::testSDKBoxBoxGpu(
 	PxU32* touchFoundFlags = reinterpret_cast<PxU32*>(gpuManagers.mTempRunsumArray.getDevicePtr() + sizeof(PxU32) * numTests);
 	PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
 
-	CUresult result;
+	hipError_t result;
 
 	{
-		CUfunction sphereKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::BOX_BOX_KERNEL_MAIN);
+		hipFunction_t sphereKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::BOX_BOX_KERNEL_MAIN);
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -541,12 +542,12 @@ void PxgGpuNarrowphaseCore::testSDKBoxBoxGpu(
 		const PxU32 numBlocks = (numTests + (numPairsPerBlock - 1)) / numPairsPerBlock;
 		//Each thread do one collision detection
 		result = mCudaContext->launchKernel(sphereKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU boxBoxNphase_Kernel fail to launch kernel stage 3!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cudaMainGjkEpa error in kernel stage 3!!!\n");
 #endif
 
@@ -599,7 +600,7 @@ void PxgGpuNarrowphaseCore::testSDKConvexConvexGjkEpaGpu(
 
 	PxU32* touchLostFlags = reinterpret_cast<PxU32*>( gpuManagers.mTempRunsumArray.getDevicePtr());
 	PxU32* touchFoundFlags = reinterpret_cast<PxU32*>(gpuManagers.mTempRunsumArray.getDevicePtr() + sizeof(PxU32) * numTests);
-	CUresult result;
+	hipError_t result;
 
 	{
 		PxCudaKernelParam kernelParams_stage1[] =
@@ -615,18 +616,18 @@ void PxgGpuNarrowphaseCore::testSDKConvexConvexGjkEpaGpu(
 
 		PxU32 numBlocks_stage1 = (numTests * 4 + PxgNarrowPhaseBlockDims::EARLY_OUT_KERNEL - 1) / PxgNarrowPhaseBlockDims::EARLY_OUT_KERNEL;
 		
-		CUfunction kernelFunction_stage1 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_CONVEX_KERNEL_EARLY_OUT);
+		hipFunction_t kernelFunction_stage1 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_CONVEX_KERNEL_EARLY_OUT);
 
-		CUfunction kernelFunction_stage2 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_CONVEX_KERNEL_MAIN);
+		hipFunction_t kernelFunction_stage2 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_CONVEX_KERNEL_MAIN);
 
 		result = mCudaContext->launchKernel(kernelFunction_stage1, numBlocks_stage1, 1, 1, WARP_SIZE, PxgNarrowPhaseBlockDims::EARLY_OUT_KERNEL / WARP_SIZE, 1, 0,
 			mStream, kernelParams_stage1, sizeof(kernelParams_stage1), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cudaMainGjkEpa fail to launch kernel stage 1!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if(result != CUDA_SUCCESS)
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU cudaMainGjkEpa fail to launch kernel stage 1!!!\n");
 #endif
 
@@ -648,12 +649,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexConvexGjkEpaGpu(
 
 		result = mCudaContext->launchKernel(kernelFunction_stage2, numBlocks_stage2, 1, 1, WARP_SIZE, numWarpsPerBlock_stage2, 1, 0,
 			mStream, kernelParams_stage2, sizeof(kernelParams_stage2), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cudaMainGjkEpa fail to launch kernel stage 3!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if(result != CUDA_SUCCESS)
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU cudaMainGjkEpa error in kernel stage 3!!!\n");
 #endif
 
@@ -671,7 +672,7 @@ void PxgGpuNarrowphaseCore::testSDKConvexConvexGjkEpaGpu(
 
 		PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
 
-		CUfunction kernelFunctionFinishContacts = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::FINISH_CONTACTS_KERNEL);
+		hipFunction_t kernelFunctionFinishContacts = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::FINISH_CONTACTS_KERNEL);
 
 		PxCudaKernelParam kernelParamsFinishContacts[] =
 		{
@@ -703,12 +704,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexConvexGjkEpaGpu(
 		result = mCudaContext->launchKernel(kernelFunctionFinishContacts, numBlocksFinishContacts, 1, 1, WARP_SIZE, numWarpsPerBlockFinishContacts,
 			1, 0, mStream, kernelParamsFinishContacts, sizeof(kernelParamsFinishContacts), 0, PX_FL);
 
-		if(result != CUDA_SUCCESS)
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU kernelFunctionFinishContacts fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if(result != CUDA_SUCCESS)
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU kernelFunctionFinishContacts fail to launch kernel stage!!!\n");
 #endif
 	}
@@ -744,10 +745,10 @@ void PxgGpuNarrowphaseCore::testSDKConvexPlaneGjkEpaGpu(
 	PxU32* touchFoundFlags = reinterpret_cast<PxU32*>(gpuManagers.mTempRunsumArray.getDevicePtr() + sizeof(PxU32) * numTests);
 	PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
 
-	CUresult result;
+	hipError_t result;
 
 	{
-		CUfunction convexPlaneKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_PLANE_KERNEL_MAIN);
+		hipFunction_t convexPlaneKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_PLANE_KERNEL_MAIN);
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -778,12 +779,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexPlaneGjkEpaGpu(
 		const PxU32 numBlocks = (numTests + (numWarpsPerBlock - 1)) / numWarpsPerBlock;
 		//Each thread do one collision detection
 		result = mCudaContext->launchKernel(convexPlaneKernelFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, mStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexPlaneNphase_Kernel fail to launch !!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexPlaneNphase_Kernel error!!!\n");
 #endif
 	}
@@ -819,9 +820,9 @@ void PxgGpuNarrowphaseCore::testSDKConvexCorePlaneGjkEpaGpu(
 	PxU32* touchFoundFlags = reinterpret_cast<PxU32*>(gpuManagers.mTempRunsumArray.getDevicePtr() + sizeof(PxU32) * numTests);
 	PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
 
-	CUresult result;
+	hipError_t result;
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEXCORE_PLANE_KERNEL_MAIN);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEXCORE_PLANE_KERNEL_MAIN);
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -850,12 +851,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexCorePlaneGjkEpaGpu(
 		const PxU32 numTestsPerBlock = numThreadsPerBlock / numThreadsPerTest;
 		const PxU32 numBlocks = (numTests + (numTestsPerBlock - 1)) / numTestsPerBlock;
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexCorePlaneNphase_Kernel fail to launch!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexCorePlaneNphase_Kernel error!!!\n");
 #endif
 	}
@@ -889,9 +890,9 @@ void PxgGpuNarrowphaseCore::testSDKConvexCoreConvexGjkEpaGpu(
 	PxU32* touchFoundFlags = reinterpret_cast<PxU32*>(gpuManagers.mTempRunsumArray.getDevicePtr() + sizeof(PxU32) * numTests);
 	PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
 
-	CUresult result;
+	hipError_t result;
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEXCORE_CONVEX_KERNEL_MAIN);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEXCORE_CONVEX_KERNEL_MAIN);
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -919,12 +920,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexCoreConvexGjkEpaGpu(
 		const PxU32 numTestsPerBlock = numThreadsPerBlock / numThreadsPerTest;
 		const PxU32 numBlocks = (numTests + (numTestsPerBlock - 1)) / numTestsPerBlock;
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexCoreConvexNphase_Kernel fail to launch!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexCoreConvexNphase_Kernel error!!!\n");
 #endif
 	}
@@ -958,7 +959,7 @@ void PxgGpuNarrowphaseCore::testSDKConvexCoreTrimeshGjkEpaGpu(
 	PxU32* touchFoundFlags = reinterpret_cast<PxU32*>(gpuManagers.mTempRunsumArray.getDevicePtr() + sizeof(PxU32) * numTests);
 	PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
 
-	CUresult result;
+	hipError_t result;
 	{
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -985,14 +986,14 @@ void PxgGpuNarrowphaseCore::testSDKConvexCoreTrimeshGjkEpaGpu(
 		const PxU32 blockWarpCount = 4;
 		const PxU32 blockTests = blockWarpCount;
 		const PxU32 numBlocks = (numTests + (blockTests - 1)) / blockTests;
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEXCORE_TRIMESH_KERNEL32_MAIN);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEXCORE_TRIMESH_KERNEL32_MAIN);
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, warpThreadCount, blockWarpCount, 1, 0, mStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexCoreTrimeshNphase_Kernel fail to launch!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexCoreTrimeshNphase_Kernel error!!!\n");
 #endif
 	}
@@ -1014,8 +1015,8 @@ void PxgGpuNarrowphaseCore::testSDKConvexCoreTetmeshGjkEpaGpu(
 	const PxgContactManagerInput* cmInputs = reinterpret_cast<const PxgContactManagerInput*>(gpuManagers.mContactManagerInputData.getDevicePtr());
 	PxgShape* gpuShapes = reinterpret_cast<PxgShape*>(mGpuShapesManager.mGpuShapesBuffer.getDevicePtr());
 	PxgSimulationCore* simulationCore = mNphaseImplContext->getSimulationCore();
-	CUdeviceptr softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
-	CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+	hipDeviceptr_t softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
+	hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 	PxsCachedTransform* transformCache = reinterpret_cast<PxsCachedTransform*>(mGpuTransformCache.getDevicePtr());
 	const PxReal* contactDistance = reinterpret_cast<PxReal*>(mGpuContactDistance.getDevicePtr());
 	const PxReal* restDistanced = reinterpret_cast<PxReal*>(gpuManagers.mRestDistances.getDevicePtr());
@@ -1023,13 +1024,13 @@ void PxgGpuNarrowphaseCore::testSDKConvexCoreTetmeshGjkEpaGpu(
 	PxgSoftBodyCore* softBodyCore = mGpuContext->mGpuSoftBodyCore;
 	PxgFEMContactWriter writer(softBodyCore);
 
-	CUstream softbodyStream = softBodyCore->getStream();
+	hipStream_t softbodyStream = softBodyCore->getStream();
 
-	CUdeviceptr totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
-	CUdeviceptr prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
+	hipDeviceptr_t totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
+	hipDeviceptr_t prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
 	mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), softbodyStream);
 
-	CUresult result;
+	hipError_t result;
 	{
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -1047,27 +1048,27 @@ void PxgGpuNarrowphaseCore::testSDKConvexCoreTetmeshGjkEpaGpu(
 		const PxU32 blockWarpCount = 4;
 		const PxU32 blockTests = blockWarpCount;
 		const PxU32 numBlocks = (numTests + (blockTests - 1)) / blockTests;
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEXCORE_TETMESH_KERNEL32_MAIN);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEXCORE_TETMESH_KERNEL32_MAIN);
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, warpThreadCount, blockWarpCount, 1, 0, softbodyStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexCoreTetmeshNphase_Kernel fail to launch!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexCoreTetmeshNphase_Kernel error!!!\n");
 #endif
 	}
 	{
-		CUdeviceptr contactsd = softBodyCore->getRigidContacts().getDevicePtr();
-		CUdeviceptr barycentricsd = softBodyCore->getRigidBarycentrics().getDevicePtr();
-		CUdeviceptr contactInfosd = softBodyCore->getRigidContactInfos().getDevicePtr();
+		hipDeviceptr_t contactsd = softBodyCore->getRigidContacts().getDevicePtr();
+		hipDeviceptr_t barycentricsd = softBodyCore->getRigidBarycentrics().getDevicePtr();
+		hipDeviceptr_t contactInfosd = softBodyCore->getRigidContactInfos().getDevicePtr();
 
 		softbodyRigidContactApplyCollisionToSimMeshMapping(
 			contactsd,
 			barycentricsd,
 			contactInfosd,
-			CUdeviceptr(NULL),
+			hipDeviceptr_t(NULL),
 			totalNumCountsd,
 			prevNumCountsd
 		);
@@ -1105,20 +1106,20 @@ void PxgGpuNarrowphaseCore::testSDKConvexCoreClothmeshGjkEpaGpu(
 	PxgCudaPagedLinearAllocator<PxgHeapMemoryAllocator>& stackAlloc = femClothCore->getStackAllocator();
 	stackAlloc.mMutex.lock();
 
-	CUstream femClothStream = femClothCore->getStream();
+	hipStream_t femClothStream = femClothCore->getStream();
 
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(256, stackSizeBytes));
-	CUdeviceptr stackSizeNeededOnDevice = femClothCore->mStackSizeNeededOnDevice.getDevicePtr();
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t stackSizeNeededOnDevice = femClothCore->mStackSizeNeededOnDevice.getDevicePtr();
 
 	//initialize gpu variables
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, femClothStream);
 
-	CUdeviceptr femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
+	hipDeviceptr_t femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
 
-	CUresult result;
+	hipError_t result;
 
 	// fem cloth midphase kernel
 	{
@@ -1141,26 +1142,26 @@ void PxgGpuNarrowphaseCore::testSDKConvexCoreClothmeshGjkEpaGpu(
 		//each warp deals with one test
 		PxU32 numWarpsPerBlock = MIDPHASE_WARPS_PER_BLOCK;
 		PxU32 numBlocks = (numTests + numWarpsPerBlock - 1) / numWarpsPerBlock;
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_PRIMITIVES);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_PRIMITIVES);
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseGeneratePairsLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(femClothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseGeneratePairsLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numPairs;
 		mCudaContext->memcpyDtoH(&numPairs, gpuMidphasePairsNumOnDevice, sizeof(PxU32));
 #endif
 	}
 
-	CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
-	CUdeviceptr filterPairs = simulationCore->getRigidClothFilters();
+	hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+	hipDeviceptr_t filterPairs = simulationCore->getRigidClothFilters();
 	const PxU32 nbFilterPairs = simulationCore->getNbRigidClothFilters();
 	PxgFEMContactWriter writer(femClothCore);
 
@@ -1187,15 +1188,15 @@ void PxgGpuNarrowphaseCore::testSDKConvexCoreClothmeshGjkEpaGpu(
 		//each thread deals with one test
 		const PxU32 numBlocks = 32;
 		const PxU32 blockThreadCount = 512;
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEXCORE_CLOTHMESH_KERNEL32_MAIN);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEXCORE_CLOTHMESH_KERNEL32_MAIN);
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, blockThreadCount, 1, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexCoreClothmeshNphase_Kernel fail to launch!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexCoreClothmeshNphase_Kernel error!!!\n");
 #endif
 	}
@@ -1218,7 +1219,7 @@ void PxgGpuNarrowphaseCore::testSDKTriMeshPlaneGpu(PxgGpuContactManagers& gpuMan
 	PxsContactManagerOutput* cmOutputs = reinterpret_cast<PxsContactManagerOutput*>(gpuManagers.mContactManagerOutputData.getDevicePtr());
 	PxgPersistentContactMultiManifold* cmPersistentMultiManifolds = reinterpret_cast<PxgPersistentContactMultiManifold*>(gpuManagers.mPersistentContactManifolds.getDevicePtr());
 
-	CUdeviceptr gpuShapes = mGpuShapesManager.mGpuShapesBuffer.getDevicePtr();
+	hipDeviceptr_t gpuShapes = mGpuShapesManager.mGpuShapesBuffer.getDevicePtr();
 	PxsCachedTransform* transformCache = reinterpret_cast<PxsCachedTransform*>(mGpuTransformCache.getDevicePtr());
 	PxReal*	contactDistance = reinterpret_cast<PxReal*>(mGpuContactDistance.getDevicePtr());
 	PX_ASSERT(transformCache);
@@ -1227,12 +1228,12 @@ void PxgGpuNarrowphaseCore::testSDKTriMeshPlaneGpu(PxgGpuContactManagers& gpuMan
 	PxU32* touchFoundFlags = reinterpret_cast<PxU32*>(gpuManagers.mTempRunsumArray.getDevicePtr() + sizeof(PxU32) * numTests);
 	PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
 
-	CUresult result;
+	hipError_t result;
 
 	const PxReal clusterBias = 1e-3f*toleranceLength;
 
 	{
-		CUfunction triMeshPlaneKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::TRIMESH_PLANE_CORE);
+		hipFunction_t triMeshPlaneKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::TRIMESH_PLANE_CORE);
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -1262,12 +1263,12 @@ void PxgGpuNarrowphaseCore::testSDKTriMeshPlaneGpu(PxgGpuContactManagers& gpuMan
 		const PxU32 numBlocks = numTests;
 		//Each thread do one collision detection
 		result = mCudaContext->launchKernel(triMeshPlaneKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU trimeshPlaneNarrowphase fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU trimeshPlaneNarrowphase error in kernel!!!\n");
 #endif
 
@@ -1317,10 +1318,10 @@ void PxgGpuNarrowphaseCore::testSDKTriMeshHeightfieldGpu(
 	PxU32* touchFoundFlags = reinterpret_cast<PxU32*>(gpuManagers.mTempRunsumArray.getDevicePtr() + sizeof(PxU32) * numTests);
 	PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
 
-	CUresult result;
+	hipError_t result;
 
 	{
-		CUfunction trimeshKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::TRIMESH_HEIGHTFIELD_CORE);
+		hipFunction_t trimeshKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::TRIMESH_HEIGHTFIELD_CORE);
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -1348,12 +1349,12 @@ void PxgGpuNarrowphaseCore::testSDKTriMeshHeightfieldGpu(
 		const PxU32 numBlocks = numTests;
 		//Each thread do one collision detection
 		result = mCudaContext->launchKernel(trimeshKernelFunction, numBlocks, 1, 1, 1024, 1, 1, 0, mStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU triangleTriangleCollision fail to launch !!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU triangleTriangleCollision error!!!\n");
 #endif
 	}
@@ -1382,14 +1383,14 @@ void PxgGpuNarrowphaseCore::testSDKTriMeshTriMeshGpu(PxgGpuContactManagers& gpuM
 
 	PxU32* touchLostFlags = reinterpret_cast<PxU32*>(gpuManagers.mTempRunsumArray.getDevicePtr());
 	PxU32* touchFoundFlags = reinterpret_cast<PxU32*>(gpuManagers.mTempRunsumArray.getDevicePtr() + sizeof(PxU32) * numTests);
-	CUresult result;
+	hipError_t result;
 
 	mIntermStackAlloc.mMutex.lock();
 
-	CUdeviceptr gpuIntermOverlap = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, numTests * sizeof(PxU8)));
+	hipDeviceptr_t gpuIntermOverlap = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, numTests * sizeof(PxU8)));
 
 	{
-		CUfunction tritriOverlapKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::TRIMESH_TRIMESH_OVERLAP);
+		hipFunction_t tritriOverlapKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::TRIMESH_TRIMESH_OVERLAP);
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -1408,19 +1409,19 @@ void PxgGpuNarrowphaseCore::testSDKTriMeshTriMeshGpu(PxgGpuContactManagers& gpuM
 		const PxU32 numBlocks = (numTests + numWarpPerBlocks -1) / numWarpPerBlocks;
 		//Each thread do one collision detection
 		result = mCudaContext->launchKernel(tritriOverlapKernelFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpPerBlocks, 1, 0, mStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU triangleTriangleOverlaps fail to launch !!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU triangleTriangleOverlaps error!!!\n");
 #endif
 	}
 
 	{
 		PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
-		CUfunction tritriKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::TRIMESH_TRIMESH_CORE);
+		hipFunction_t tritriKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::TRIMESH_TRIMESH_CORE);
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -1449,12 +1450,12 @@ void PxgGpuNarrowphaseCore::testSDKTriMeshTriMeshGpu(PxgGpuContactManagers& gpuM
 		const PxU32 numBlocks = numTests;
 		//Each thread do one collision detection
 		result = mCudaContext->launchKernel(tritriKernelFunction, numBlocks, 1, 1, 1024, 1, 1, 0, mStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU triangleTriangleCollision fail to launch !!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU triangleTriangleCollision error!!!\n");
 #endif
 	}
@@ -1467,7 +1468,7 @@ void PxgGpuNarrowphaseCore::testSDKTriMeshTriMeshGpu(PxgGpuContactManagers& gpuM
 }
 
 static void fetchLostFoundPatchData(PxgGpuContactManagers& gpuContactManagers, PxPinnedArray<PxsContactManagerOutputCounts>& lostFoundPairsOutputData, 
-	PxPinnedArray<PxsContactManager*>& lostFoundPairsCms, PxCudaContext* cudaContext, CUstream stream, PxU32& touchChangeOffset, PxU32& patchChangeOffset)
+	PxPinnedArray<PxsContactManager*>& lostFoundPairsCms, PxCudaContext* cudaContext, hipStream_t stream, PxU32& touchChangeOffset, PxU32& patchChangeOffset)
 {
 	if (gpuContactManagers.mLostAndTotalReportedPairsCountPinned->x)
 	{
@@ -1516,7 +1517,7 @@ static void fetchLostFoundPatchData(PxgGpuContactManagers& gpuContactManagers, P
 	}
 }
 
-CUstream PxgGpuNarrowphaseCore::getStream()
+hipStream_t PxgGpuNarrowphaseCore::getStream()
 {
 	return mStream;
 }
@@ -1622,8 +1623,8 @@ void PxgGpuNarrowphaseCore::fetchNarrowPhaseResults(
 			PX_PROFILE_ZONE("GpuNarrowPhase.Synchronize", 0);
 			
 			// it looks like we're only syncing here because of the overflow messages? is it ok to skip this sync if we don't run this block because there are no pairs?
-			CUresult result = mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			hipError_t result = mCudaContext->streamSynchronize(mStream);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "Synchronizing GPU Narrowphase failed! %d\n", result);
 		}	
 
@@ -1733,8 +1734,8 @@ void PxgGpuNarrowphaseCore::fetchNarrowPhaseResults(
 		{
 			PX_PROFILE_ZONE("GpuNarrowPhase.Synchronize", 0);
 
-			CUresult result =  mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			hipError_t result =  mCudaContext->streamSynchronize(mStream);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "Fetching GPU Narrowphase failed! %d\n", result);
 		}
 		
@@ -1776,11 +1777,11 @@ void PxgGpuNarrowphaseCore::fetchNarrowPhaseResults(
 		mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mRestDistances.allocateCopyOldDataAsync((numTests + nbFallbackPairs) * sizeof(PxReal), mCudaContext, mSolverStream, PX_FL);
 		mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mTorsionalProperties.allocateCopyOldDataAsync((numTests + nbFallbackPairs) * sizeof(PxsTorsionalFrictionData), mCudaContext, mSolverStream, PX_FL);
 
-		CUdeviceptr cvxInputDeviceptr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mContactManagerInputData.getDevicePtr();
-		CUdeviceptr cvxDeviceptr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mContactManagerOutputData.getDevicePtr();
-		CUdeviceptr cvxShapePtr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mShapeInteractions.getDevicePtr();
-		CUdeviceptr cvxRestPtr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mRestDistances.getDevicePtr();
-		CUdeviceptr cvxTorsionalPtr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mTorsionalProperties.getDevicePtr();
+		hipDeviceptr_t cvxInputDeviceptr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mContactManagerInputData.getDevicePtr();
+		hipDeviceptr_t cvxDeviceptr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mContactManagerOutputData.getDevicePtr();
+		hipDeviceptr_t cvxShapePtr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mShapeInteractions.getDevicePtr();
+		hipDeviceptr_t cvxRestPtr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mRestDistances.getDevicePtr();
+		hipDeviceptr_t cvxTorsionalPtr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mTorsionalProperties.getDevicePtr();
 
 		//KS - we need to synchronize here with mSolverStream because we may have just allocated more memory and triggered a D2D memcpy.
 		//This data needs to be read on mStream using a DtoH copy
@@ -1870,7 +1871,7 @@ void PxgGpuNarrowphaseCore::fetchNarrowPhaseResults(
 
 #if PXG_CONTACT_VALIDATION
 	result = mCudaContext->streamSynchronize(mStream);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 #endif
 	mCudaContext->streamFlush(mSolverStream);
@@ -1907,28 +1908,28 @@ void PxgGpuNarrowphaseCore::testSDKSphereTriMeshSATGpu(PxgGpuContactManagers& gp
 	const PxReal* contactDistance = reinterpret_cast<PxReal*>(mGpuContactDistance.getDevicePtr());
 	PX_ASSERT(transformCache);
 
-	CUresult result;
+	hipError_t result;
 
 	mIntermStackAlloc.mMutex.lock();
 
-	CUdeviceptr gpuIntermSphereMeshPair = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, numTests * sizeof(ConvexMeshPair)));
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
-	CUdeviceptr gpuMidphasePairsNumOnDevicePadded = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
-	CUdeviceptr gpuStackShift = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
+	hipDeviceptr_t gpuIntermSphereMeshPair = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, numTests * sizeof(ConvexMeshPair)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevicePadded = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuStackShift = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
 
 
 	// Core arrays pointers
-	CUdeviceptr sphereTriNIGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr sphereTriContactsGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr sphereTriMaxDepthGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t sphereTriNIGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t sphereTriContactsGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t sphereTriMaxDepthGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
 	//This is for post processing
-	CUdeviceptr sphereTriIntermDataGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr orderedSphereTriIntermDataGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr sphereTriSecondPassPairsGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void*)));
-	CUdeviceptr gpuSecondPassPairsNum = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t sphereTriIntermDataGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t orderedSphereTriIntermDataGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t sphereTriSecondPassPairsGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void*)));
+	hipDeviceptr_t gpuSecondPassPairsNum = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 	
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
 
 
 	//initialize gpu variables
@@ -1939,8 +1940,8 @@ void PxgGpuNarrowphaseCore::testSDKSphereTriMeshSATGpu(PxgGpuContactManagers& gp
 	mCudaContext->memsetD32Async(gpuSecondPassPairsNum, 0, 1, mStream);
 
 	//Temp contact buffers
-	CUdeviceptr gpuTempContactStack = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
-	CUdeviceptr gpuTempContactIndex = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
+	hipDeviceptr_t gpuTempContactStack = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t gpuTempContactIndex = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
 	mCudaContext->memsetD32Async(gpuTempContactIndex, 0, 1, mStream);
 
 	// Convex-Trimesh Midphase kernel
@@ -1948,7 +1949,7 @@ void PxgGpuNarrowphaseCore::testSDKSphereTriMeshSATGpu(PxgGpuContactManagers& gp
 		PxU32 numWarpsPerBlock = MIDPHASE_WARPS_PER_BLOCK;
 		PxU32 numBlocks = (numTests + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_MIDPHASE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_MIDPHASE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -1973,12 +1974,12 @@ void PxgGpuNarrowphaseCore::testSDKSphereTriMeshSATGpu(PxgGpuContactManagers& gp
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexTrimeshMidphase fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convex/sphereTrimeshMidphase kernel fail!!!\n");
 #endif
 
@@ -1990,7 +1991,7 @@ void PxgGpuNarrowphaseCore::testSDKSphereTriMeshSATGpu(PxgGpuContactManagers& gp
 		const PxU32 numThreadsPerBlock = 64;
 		PxU32 numBlocks = (numTests + numThreadsPerBlock - 1) / numThreadsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SPHERE_TRIMESH_CORE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SPHERE_TRIMESH_CORE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2024,17 +2025,17 @@ void PxgGpuNarrowphaseCore::testSDKSphereTriMeshSATGpu(PxgGpuContactManagers& gp
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sphereTrimeshCore fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sphereTrimeshCore kernel fail!!!\n");
 #endif
 	}
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_SORT_TRIANGLES);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_SORT_TRIANGLES);
 		PxU32 numWarpsPerBlock = NP_TRIMESH_WARPS_PER_BLOCK;
 		PxU32 numBlocks = (numTests + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
@@ -2047,12 +2048,12 @@ void PxgGpuNarrowphaseCore::testSDKSphereTriMeshSATGpu(PxgGpuContactManagers& gp
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, NP_TRIMESH_WARPS_PER_BLOCK, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortTriangles fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortTriangles kernel fail!!!\n");
 #endif
 	}
@@ -2064,7 +2065,7 @@ void PxgGpuNarrowphaseCore::testSDKSphereTriMeshSATGpu(PxgGpuContactManagers& gp
 		PxU32 numWarpsPerBlock = NP_TRIMESH_WARPS_PER_BLOCK;
 		PxU32 numBlocks = (numTests*coreGridMultiplier + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_POST_PROCESS);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_POST_PROCESS);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2081,12 +2082,12 @@ void PxgGpuNarrowphaseCore::testSDKSphereTriMeshSATGpu(PxgGpuContactManagers& gp
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE*numWarpsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sphereTrimeshPostProcess fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sphereTrimeshPostProcess kernel fail!!!\n");
 #endif
 	}
@@ -2097,7 +2098,7 @@ void PxgGpuNarrowphaseCore::testSDKSphereTriMeshSATGpu(PxgGpuContactManagers& gp
 		PxU32 numThreadGroupsPerBlock = numWarpsPerBlock;
 		PxU32 numBlocks = (numTests + numThreadGroupsPerBlock - 1) / numThreadGroupsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_CORRELATE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_CORRELATE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2115,12 +2116,12 @@ void PxgGpuNarrowphaseCore::testSDKSphereTriMeshSATGpu(PxgGpuContactManagers& gp
 		};
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sphereTrimeshCorrelate fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sphereTrimeshCorrelate kernel fail!!!\n");
 #endif
 	}
@@ -2138,7 +2139,7 @@ void PxgGpuNarrowphaseCore::testSDKSphereTriMeshSATGpu(PxgGpuContactManagers& gp
 		PxsMaterialData* materials = reinterpret_cast<PxsMaterialData*>(mGpuMaterialManager.mGpuMaterialBuffer.getDevicePtr());
 		PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_FINISHCONTACTS);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_FINISHCONTACTS);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2167,12 +2168,12 @@ void PxgGpuNarrowphaseCore::testSDKSphereTriMeshSATGpu(PxgGpuContactManagers& gp
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE*numWarpsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexTrimesh finishContacts fail to launch kernel!!\n");
 	
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexTrimesh finishContacts kernel fail!!!\n");
 #endif
 	}
@@ -2211,29 +2212,29 @@ void PxgGpuNarrowphaseCore::testSDKSphereHeightfieldGpu(PxgGpuContactManagers& g
 	const PxReal* contactDistance = reinterpret_cast<PxReal*>(mGpuContactDistance.getDevicePtr());
 	PX_ASSERT(transformCache);
 
-	CUresult result;
+	hipError_t result;
 
 	mIntermStackAlloc.mMutex.lock();
 
 	// TODO avoroshilov: manage the stack mem
-	CUdeviceptr gpuIntermCvxMeshPair = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, numTests * sizeof(ConvexMeshPair)));
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
-	CUdeviceptr gpuMidphasePairsNumOnDevicePadded = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
-	CUdeviceptr gpuStackShift = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
+	hipDeviceptr_t gpuIntermCvxMeshPair = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, numTests * sizeof(ConvexMeshPair)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevicePadded = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuStackShift = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
 
 	// Core arrays pointers
-	CUdeviceptr sphereTriNIGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr sphereTriContactsGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr sphereTriMaxDepthGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t sphereTriNIGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t sphereTriContactsGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t sphereTriMaxDepthGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
 
 	//This is for post processing
-	CUdeviceptr sphereTriIntermDataGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr orderedSphereTriIntermDataGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr sphereTriSecondPassPairsGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void*)));
-	CUdeviceptr gpuSecondPassPairsNum = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t sphereTriIntermDataGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t orderedSphereTriIntermDataGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t sphereTriSecondPassPairsGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void*)));
+	hipDeviceptr_t gpuSecondPassPairsNum = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
 
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, mStream);
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevicePadded, 0, 1, mStream);
@@ -2241,8 +2242,8 @@ void PxgGpuNarrowphaseCore::testSDKSphereHeightfieldGpu(PxgGpuContactManagers& g
 	mCudaContext->memsetD32Async(gpuSecondPassPairsNum, 0, 1, mStream);
 
 	//Temp contact buffers
-	CUdeviceptr gpuTempContactStack = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
-	CUdeviceptr gpuTempContactIndex = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
+	hipDeviceptr_t gpuTempContactStack = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t gpuTempContactIndex = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
 	mCudaContext->memsetD32Async(gpuTempContactIndex, 0, 1, mStream);
 
 
@@ -2251,7 +2252,7 @@ void PxgGpuNarrowphaseCore::testSDKSphereHeightfieldGpu(PxgGpuContactManagers& g
 		PxU32 numWarpsPerBlock = MIDPHASE_WARPS_PER_BLOCK;
 		PxU32 numBlocks = (numTests + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_HEIGHTFIELD_MIDPHASE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_HEIGHTFIELD_MIDPHASE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2278,12 +2279,12 @@ void PxgGpuNarrowphaseCore::testSDKSphereHeightfieldGpu(PxgGpuContactManagers& g
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sphere(convex)HeightFieldMidphase fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sphere(convex)HeightFieldMidphase kernel fail!!!\n");
 #endif
 	}
@@ -2293,7 +2294,7 @@ void PxgGpuNarrowphaseCore::testSDKSphereHeightfieldGpu(PxgGpuContactManagers& g
 		const PxU32 numThreadsPerBlock = 64;
 		PxU32 numBlocks = (numTests + numThreadsPerBlock - 1) / numThreadsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SPHERE_HEIGHTFIELD_CORE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SPHERE_HEIGHTFIELD_CORE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2324,18 +2325,18 @@ void PxgGpuNarrowphaseCore::testSDKSphereHeightfieldGpu(PxgGpuContactManagers& g
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexHeightfieldCore fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexHeightfieldCore kernel fail!!!\n");
 #endif
 	}
 
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_SORT_TRIANGLES);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_SORT_TRIANGLES);
 		PxU32 numWarpsPerBlock = NP_TRIMESH_WARPS_PER_BLOCK;
 		PxU32 numBlocks = (numTests + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
@@ -2348,12 +2349,12 @@ void PxgGpuNarrowphaseCore::testSDKSphereHeightfieldGpu(PxgGpuContactManagers& g
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, NP_TRIMESH_WARPS_PER_BLOCK, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortTriangles fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortTriangles kernel fail!!!\n");
 #endif
 	}
@@ -2365,7 +2366,7 @@ void PxgGpuNarrowphaseCore::testSDKSphereHeightfieldGpu(PxgGpuContactManagers& g
 		PxU32 numWarpsPerBlock = NP_TRIMESH_WARPS_PER_BLOCK;
 		PxU32 numBlocks = (numTests*coreGridMultiplier + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_HEIGHTFIELD_POST_PROCESS);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_HEIGHTFIELD_POST_PROCESS);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2382,12 +2383,12 @@ void PxgGpuNarrowphaseCore::testSDKSphereHeightfieldGpu(PxgGpuContactManagers& g
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE*numWarpsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexTrimeshPostProcess fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexTrimeshPostProcess kernel fail!!!\n");
 #endif
 	}
@@ -2397,7 +2398,7 @@ void PxgGpuNarrowphaseCore::testSDKSphereHeightfieldGpu(PxgGpuContactManagers& g
 		PxU32 numThreadGroupsPerBlock = numWarpsPerBlock;
 		PxU32 numBlocks = (numTests + numThreadGroupsPerBlock - 1) / numThreadGroupsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_CORRELATE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_CORRELATE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2415,12 +2416,12 @@ void PxgGpuNarrowphaseCore::testSDKSphereHeightfieldGpu(PxgGpuContactManagers& g
 		};
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexHeightfieldCorrelate fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexHeightfieldCorrelate kernel fail!!!\n");
 #endif
 	}
@@ -2438,7 +2439,7 @@ void PxgGpuNarrowphaseCore::testSDKSphereHeightfieldGpu(PxgGpuContactManagers& g
 		PxsMaterialData* materials = reinterpret_cast<PxsMaterialData*>(mGpuMaterialManager.mGpuMaterialBuffer.getDevicePtr());
 		PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_FINISHCONTACTS);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_FINISHCONTACTS);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2469,12 +2470,12 @@ void PxgGpuNarrowphaseCore::testSDKSphereHeightfieldGpu(PxgGpuContactManagers& g
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE*numWarpsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexHeightfield finishContacts fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexHeightfield finishContacts kernel fail!!!\n");
 #endif
 
@@ -2514,28 +2515,28 @@ void PxgGpuNarrowphaseCore::testSDKConvexTriMeshSATGpu(PxgGpuContactManagers& gp
 	const PxReal* contactDistance = reinterpret_cast<PxReal*>(mGpuContactDistance.getDevicePtr());
 	PX_ASSERT(transformCache);
 
-	CUresult result;
+	hipError_t result;
 
 	mIntermStackAlloc.mMutex.lock();
 
-	CUdeviceptr gpuIntermCvxMeshPair = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, numTests * sizeof(ConvexMeshPair)));
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
-	CUdeviceptr gpuMidphasePairsNumOnDevicePadded = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
-	CUdeviceptr gpuStackShift = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
+	hipDeviceptr_t gpuIntermCvxMeshPair = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, numTests * sizeof(ConvexMeshPair)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevicePadded = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuStackShift = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
 	
 
 	// Core arrays pointers
-	CUdeviceptr cvxTriNIGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr cvxTriContactsGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr cvxTriMaxDepthGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t cvxTriNIGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t cvxTriContactsGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t cvxTriMaxDepthGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
 	//This is for post processing
-	CUdeviceptr cvxTriIntermDataGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr orderedCvxTriIntermDataGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr cvxTriSecondPassPairsGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void*)));
-	CUdeviceptr gpuSecondPassPairsNum = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t cvxTriIntermDataGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t orderedCvxTriIntermDataGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t cvxTriSecondPassPairsGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void*)));
+	hipDeviceptr_t gpuSecondPassPairsNum = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
 
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, mStream);
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevicePadded, 0, 1, mStream);
@@ -2543,8 +2544,8 @@ void PxgGpuNarrowphaseCore::testSDKConvexTriMeshSATGpu(PxgGpuContactManagers& gp
 	mCudaContext->memsetD32Async(gpuSecondPassPairsNum, 0, 1, mStream);
 
 	//Temp contact buffers
-	CUdeviceptr gpuTempContactStack = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
-	CUdeviceptr gpuTempContactIndex = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
+	hipDeviceptr_t gpuTempContactStack = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t gpuTempContactIndex = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
 	mCudaContext->memsetD32Async(gpuTempContactIndex, 0, 1, mStream);
 
 	// Convex-Trimesh Midphase kernel
@@ -2552,7 +2553,7 @@ void PxgGpuNarrowphaseCore::testSDKConvexTriMeshSATGpu(PxgGpuContactManagers& gp
 		PxU32 numWarpsPerBlock = MIDPHASE_WARPS_PER_BLOCK;
 		PxU32 numBlocks = (numTests + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_MIDPHASE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_MIDPHASE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2577,12 +2578,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexTriMeshSATGpu(PxgGpuContactManagers& gp
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if(result != CUDA_SUCCESS)
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexTrimeshMidphase fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexTrimeshMidphase kernel fail!!!\n");
 #endif
 
@@ -2597,7 +2598,7 @@ void PxgGpuNarrowphaseCore::testSDKConvexTriMeshSATGpu(PxgGpuContactManagers& gp
 		PxU32 numWarpsPerBlock = NP_TRIMESH_WARPS_PER_BLOCK;
 		PxU32 numBlocks = PxMax(2048u, (numTests*coreGridMultiplier + numWarpsPerBlock - 1) / numWarpsPerBlock);
 			
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_CORE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_CORE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2630,18 +2631,18 @@ void PxgGpuNarrowphaseCore::testSDKConvexTriMeshSATGpu(PxgGpuContactManagers& gp
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if(result != CUDA_SUCCESS)
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexTrimeshCore fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexTrimeshCore kernel fail!!!\n");
 #endif
 	}
 
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_SORT_TRIANGLES);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_SORT_TRIANGLES);
 		PxU32 numWarpsPerBlock = NP_TRIMESH_WARPS_PER_BLOCK;
 		PxU32 numBlocks = (numTests + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
@@ -2654,12 +2655,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexTriMeshSATGpu(PxgGpuContactManagers& gp
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, NP_TRIMESH_WARPS_PER_BLOCK, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortTriangles fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortTriangles kernel fail!!!\n");
 #endif
 	}
@@ -2671,7 +2672,7 @@ void PxgGpuNarrowphaseCore::testSDKConvexTriMeshSATGpu(PxgGpuContactManagers& gp
 		PxU32 numWarpsPerBlock = NP_TRIMESH_WARPS_PER_BLOCK;
 		PxU32 numBlocks = PxMax(8192u, (numTests*coreGridMultiplier + numWarpsPerBlock - 1) / numWarpsPerBlock);
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_POST_PROCESS);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_POST_PROCESS);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2688,12 +2689,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexTriMeshSATGpu(PxgGpuContactManagers& gp
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE*numWarpsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexTrimeshPostProcess fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexTrimeshPostProcess kernel fail!!!\n");
 #endif
 	}
@@ -2704,7 +2705,7 @@ void PxgGpuNarrowphaseCore::testSDKConvexTriMeshSATGpu(PxgGpuContactManagers& gp
 		PxU32 numThreadGroupsPerBlock = numWarpsPerBlock;
 		PxU32 numBlocks = (numTests + numThreadGroupsPerBlock - 1) / numThreadGroupsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_CORRELATE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_CORRELATE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2722,12 +2723,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexTriMeshSATGpu(PxgGpuContactManagers& gp
 		};  
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		if(result != CUDA_SUCCESS)
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexTrimeshCorrelate fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexTrimeshCorrelate kernel fail!!!\n");
 #endif
 	}
@@ -2745,7 +2746,7 @@ void PxgGpuNarrowphaseCore::testSDKConvexTriMeshSATGpu(PxgGpuContactManagers& gp
 		PxsMaterialData* materials = reinterpret_cast<PxsMaterialData*>( mGpuMaterialManager.mGpuMaterialBuffer.getDevicePtr());
 		PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_FINISHCONTACTS);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_FINISHCONTACTS);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2774,12 +2775,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexTriMeshSATGpu(PxgGpuContactManagers& gp
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE*numWarpsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if(result != CUDA_SUCCESS)
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexTrimesh finishContacts fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexTrimesh finishContacts kernel fail!!!\n");
 #endif
 	}
@@ -2818,37 +2819,37 @@ void PxgGpuNarrowphaseCore::testSDKConvexHeightfieldGpu(PxgGpuContactManagers& g
 	const PxReal* contactDistance = reinterpret_cast<PxReal*>(mGpuContactDistance.getDevicePtr());
 	PX_ASSERT(transformCache);
 
-	CUresult result;
+	hipError_t result;
 
 	mIntermStackAlloc.mMutex.lock();
 
 	// TODO avoroshilov: manage the stack mem
-	CUdeviceptr gpuIntermCvxMeshPair = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, numTests * sizeof(ConvexMeshPair)));
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
-	CUdeviceptr gpuMidphasePairsNumOnDevicePadded = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
-	CUdeviceptr gpuStackShift = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
+	hipDeviceptr_t gpuIntermCvxMeshPair = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, numTests * sizeof(ConvexMeshPair)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevicePadded = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuStackShift = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
 
 	// Core arrays pointers
-	CUdeviceptr cvxTriNIGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr cvxTriContactsGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr cvxTriMaxDepthGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t cvxTriNIGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t cvxTriContactsGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t cvxTriMaxDepthGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
 
 	//This is for post processing
-	CUdeviceptr cvxTriIntermDataGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr orderedCvxTriIntermDataGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
-	CUdeviceptr cvxTriSecondPassPairsGPU = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(void*)));
-	CUdeviceptr gpuSecondPassPairsNum = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t cvxTriIntermDataGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t orderedCvxTriIntermDataGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void *)));
+	hipDeviceptr_t cvxTriSecondPassPairsGPU = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(void*)));
+	hipDeviceptr_t gpuSecondPassPairsNum = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
 
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, mStream);
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevicePadded, 0, 1, mStream);
 	mCudaContext->memsetD32Async(gpuStackShift, 0, 1, mStream);
 	mCudaContext->memsetD32Async(gpuSecondPassPairsNum, 0, 1, mStream);
 
-	CUdeviceptr gpuTempContactStack = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
-	CUdeviceptr gpuTempContactIndex = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
+	hipDeviceptr_t gpuTempContactStack = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t gpuTempContactIndex = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, sizeof(PxU32)));
 	mCudaContext->memsetD32Async(gpuTempContactIndex, 0, 1, mStream);
 
 
@@ -2857,7 +2858,7 @@ void PxgGpuNarrowphaseCore::testSDKConvexHeightfieldGpu(PxgGpuContactManagers& g
 		PxU32 numWarpsPerBlock = MIDPHASE_WARPS_PER_BLOCK;
 		PxU32 numBlocks = (numTests + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_HEIGHTFIELD_MIDPHASE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_HEIGHTFIELD_MIDPHASE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2884,12 +2885,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexHeightfieldGpu(PxgGpuContactManagers& g
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexHeightFieldMidphase fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexHeightFieldMidphase kernel fail!!!\n");
 #endif
 	}
@@ -2901,7 +2902,7 @@ void PxgGpuNarrowphaseCore::testSDKConvexHeightfieldGpu(PxgGpuContactManagers& g
 		PxU32 numWarpsPerBlock = NP_TRIMESH_WARPS_PER_BLOCK;
 		PxU32 numBlocks = (numTests*coreGridMultiplier + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_HEIGHTFIELD_CORE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_HEIGHTFIELD_CORE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2932,18 +2933,18 @@ void PxgGpuNarrowphaseCore::testSDKConvexHeightfieldGpu(PxgGpuContactManagers& g
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexHeightfieldCore fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexHeightfieldCore kernel fail!!!\n");
 #endif
 	}
 
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_SORT_TRIANGLES);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_SORT_TRIANGLES);
 		PxU32 numWarpsPerBlock = NP_TRIMESH_WARPS_PER_BLOCK;
 		PxU32 numBlocks = (numTests + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
@@ -2956,12 +2957,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexHeightfieldGpu(PxgGpuContactManagers& g
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, NP_TRIMESH_WARPS_PER_BLOCK, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortTriangles fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortTriangles kernel fail!!!\n");
 #endif
 	}
@@ -2973,7 +2974,7 @@ void PxgGpuNarrowphaseCore::testSDKConvexHeightfieldGpu(PxgGpuContactManagers& g
 		PxU32 numWarpsPerBlock = NP_TRIMESH_WARPS_PER_BLOCK;
 		PxU32 numBlocks = (numTests*coreGridMultiplier + numWarpsPerBlock - 1) / numWarpsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_HEIGHTFIELD_POST_PROCESS);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_HEIGHTFIELD_POST_PROCESS);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -2990,12 +2991,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexHeightfieldGpu(PxgGpuContactManagers& g
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE*numWarpsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexTrimeshPostProcess fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU convexTrimeshPostProcess kernel fail!!!\n");
 #endif
 	}
@@ -3005,7 +3006,7 @@ void PxgGpuNarrowphaseCore::testSDKConvexHeightfieldGpu(PxgGpuContactManagers& g
 		PxU32 numThreadGroupsPerBlock = numWarpsPerBlock;
 		PxU32 numBlocks = (numTests + numThreadGroupsPerBlock - 1) / numThreadGroupsPerBlock;
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_CORRELATE);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_CORRELATE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -3023,12 +3024,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexHeightfieldGpu(PxgGpuContactManagers& g
 		};
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexHeightfieldCorrelate fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexHeightfieldCorrelate kernel fail!!!\n");
 #endif
 	}
@@ -3046,7 +3047,7 @@ void PxgGpuNarrowphaseCore::testSDKConvexHeightfieldGpu(PxgGpuContactManagers& g
 		PxsMaterialData* materials = reinterpret_cast<PxsMaterialData*>(mGpuMaterialManager.mGpuMaterialBuffer.getDevicePtr());
 		PxgDevicePointer<PxgPatchAndContactCounters> patchAndContactCountersD = mPatchAndContactCountersOnDevice.getTypedDevicePtr();
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_FINISHCONTACTS);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONVEX_TRIMESH_FINISHCONTACTS);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -3077,12 +3078,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexHeightfieldGpu(PxgGpuContactManagers& g
 
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, WARP_SIZE*numWarpsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexHeightfield finishContacts fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU convexHeightfield finishContacts kernel fail!!!\n");
 #endif
 
@@ -3143,13 +3144,13 @@ void PxgGpuNarrowphaseCore::testSDKParticleSystemGpu(PxgGpuContactManagers& gpuM
 	PxU32* totalPairsd = reinterpret_cast<PxU32*>(particleCore->getTempHistogramCount().getDevicePtr());
 
 	//Get the particle stream!
-	CUstream particleStream = particleCore->getStream();
+	hipStream_t particleStream = particleCore->getStream();
 
 	// Simulation particles
 	{
-		CUresult result;
+		hipError_t result;
 		{
-			CUfunction firstPassFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_PRIMITIVES_BOUND_FIRST);
+			hipFunction_t firstPassFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_PRIMITIVES_BOUND_FIRST);
 			PxCudaKernelParam kernelParams_stage[] =
 			{
 				PX_CUDA_KERNEL_PARAM(numTests),
@@ -3164,23 +3165,23 @@ void PxgGpuNarrowphaseCore::testSDKParticleSystemGpu(PxgGpuContactManagers& gpuM
 			};
 
 			result = mCudaContext->launchKernel(firstPassFunction, PxgParticleSystemKernelGridDim::BOUNDCELLUPDATE, 1, 1, PxgParticleSystemKernelBlockDim::BOUNDCELLUPDATE, 1, 1, 0, /*mStream*/particleStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_primitivesBoundFirstPassLaunch fail to launch!!\n");
 
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 #if GPU_NP_DEBUG
 			result = mCudaContext->streamSynchronize(particleStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_primitivesBoundFirstPassLaunch fail!!!\n");
 
 			//Dma back the bound
 			PxArray<PxU32> offsets;
 			offsets.reserve(5000);
 			offsets.forceSize_Unsafe(5000);
-			mCudaContext->memcpyDtoH(offsets.begin(), reinterpret_cast<CUdeviceptr>(tempCellsHistogramd), sizeof(PxU32) * 2625);
+			mCudaContext->memcpyDtoH(offsets.begin(), reinterpret_cast<hipDeviceptr_t>(tempCellsHistogramd), sizeof(PxU32) * 2625);
 
 			PxU32 blockOffset[32];
-			mCudaContext->memcpyDtoH(blockOffset, reinterpret_cast<CUdeviceptr>(tempBlockCellsHistogramd), sizeof(PxU32) * 32);
+			mCudaContext->memcpyDtoH(blockOffset, reinterpret_cast<hipDeviceptr_t>(tempBlockCellsHistogramd), sizeof(PxU32) * 32);
 
 			int bob = 0;
 			PX_UNUSED(bob);
@@ -3188,7 +3189,7 @@ void PxgGpuNarrowphaseCore::testSDKParticleSystemGpu(PxgGpuContactManagers& gpuM
 		}
 
 		{
-			CUfunction secondPassFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_PRIMITIVES_BOUND_SECOND);
+			hipFunction_t secondPassFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_PRIMITIVES_BOUND_SECOND);
 			PxCudaKernelParam kernelParams_stage[] =
 			{
 				PX_CUDA_KERNEL_PARAM(numTests),
@@ -3198,22 +3199,22 @@ void PxgGpuNarrowphaseCore::testSDKParticleSystemGpu(PxgGpuContactManagers& gpuM
 			};
 
 			result = mCudaContext->launchKernel(secondPassFunction, PxgParticleSystemKernelGridDim::BOUNDCELLUPDATE, 1, 1, PxgParticleSystemKernelBlockDim::BOUNDCELLUPDATE, 1, 1, 0, /*mStream*/particleStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_primitivesBoundSecondPassLaunch fail to launch!!\n");
 #if GPU_NP_DEBUG
 			result = mCudaContext->streamSynchronize(particleStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_primitivesBoundSecondPassLaunch fail!!!\n");
 
 			//Dma back the bound
 			PxArray<PxU32> offsets;
 			offsets.reserve(5000);
 			offsets.forceSize_Unsafe(5000);
-			mCudaContext->memcpyDtoH(offsets.begin(), reinterpret_cast<CUdeviceptr>(tempCellsHistogramd), sizeof(PxU32) * 2625);
+			mCudaContext->memcpyDtoH(offsets.begin(), reinterpret_cast<hipDeviceptr_t>(tempCellsHistogramd), sizeof(PxU32) * 2625);
 
 
 			PxU32 totalNumPairs;
-			mCudaContext->memcpyDtoH(&totalNumPairs, reinterpret_cast<CUdeviceptr>(totalPairsd), sizeof(PxU32));
+			mCudaContext->memcpyDtoH(&totalNumPairs, reinterpret_cast<hipDeviceptr_t>(totalPairsd), sizeof(PxU32));
 
 			int bob = 0;
 			PX_UNUSED(bob);
@@ -3221,9 +3222,9 @@ void PxgGpuNarrowphaseCore::testSDKParticleSystemGpu(PxgGpuContactManagers& gpuM
 		}
 
 		{
-			CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+			hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
-			CUfunction psCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_PRIMITIVES_COLLISION);
+			hipFunction_t psCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_PRIMITIVES_COLLISION);
 
 			PxgParticleContactWriter writer;
 			initParticleContactWriter(writer, particleCore);
@@ -3250,23 +3251,23 @@ void PxgGpuNarrowphaseCore::testSDKParticleSystemGpu(PxgGpuContactManagers& gpuM
 			//Each thread do one cell collision detection
 			// blockIdx.z == 0 for regular particles, 1 for diffuse particles
 			result = mCudaContext->launchKernel(psCollisionKernelFunction, PxgParticleSystemKernelGridDim::PS_COLLISION, 1, 1, PxgParticleSystemKernelBlockDim::PS_COLLISION, 1, 1, 0, /*mStream*/particleStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU particlePrimitivesCollisionLaunch fail to launch!!\n");
 
 #if GPU_NP_DEBUG
 			result = mCudaContext->streamSynchronize(particleStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU particlePrimitivesCollisionLaunch fail!!!\n");
 
 #if GPU_NP_DEBUG_VERBOSE
 			PxU32 numContacts;
-			mCudaContext->memcpyDtoH(&numContacts, reinterpret_cast<CUdeviceptr>(writer.numTotalContacts), sizeof(PxU32));
+			mCudaContext->memcpyDtoH(&numContacts, reinterpret_cast<hipDeviceptr_t>(writer.numTotalContacts), sizeof(PxU32));
 			if (numContacts > 0)
 			{
 				printf("Particle numContacts %i\n", numContacts);
 
 				PxgParticlePrimitiveContact temp[1];
-				mCudaContext->memcpyDtoH(temp, reinterpret_cast<CUdeviceptr>(writer.particleContacts), sizeof(PxgParticlePrimitiveContact) * 1);
+				mCudaContext->memcpyDtoH(temp, reinterpret_cast<hipDeviceptr_t>(writer.particleContacts), sizeof(PxgParticlePrimitiveContact) * 1);
 				printf("Particle first contact: particleId: %llu, rigidId: %u\n", temp[0].particleId, PxU32(temp[0].rigidId >> 32));
 			}
 #endif
@@ -3274,9 +3275,9 @@ void PxgGpuNarrowphaseCore::testSDKParticleSystemGpu(PxgGpuContactManagers& gpuM
 		}
 
 		{
-			CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+			hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 		
-			CUfunction psCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_PRIMITIVES_DIFFUSE_COLLISION);
+			hipFunction_t psCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_PRIMITIVES_DIFFUSE_COLLISION);
 
 			PxCudaKernelParam kernelParams_stage[] =
 			{
@@ -3299,12 +3300,12 @@ void PxgGpuNarrowphaseCore::testSDKParticleSystemGpu(PxgGpuContactManagers& gpuM
 			//Each thread do one cell collision detection
 			// blockIdx.z == 0 for regular particles, 1 for diffuse particles
 			result = mCudaContext->launchKernel(psCollisionKernelFunction, PxgParticleSystemKernelGridDim::PS_COLLISION, 1, 1, PxgParticleSystemKernelBlockDim::PS_COLLISION, 1, 1, 0, /*mStream*/particleStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU particlePrimitivesDiffuseCollisionLaunch fail to launch!!\n");
 
 #if GPU_NP_DEBUG
 			result = mCudaContext->streamSynchronize(particleStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU particlePrimitivesCollisionLaunch fail!!!\n");
 #endif
 		}
@@ -3337,35 +3338,35 @@ void PxgGpuNarrowphaseCore::testSDKParticleSoftbody(PxgGpuContactManagers& gpuMa
 	PxBounds3 * boundsd = reinterpret_cast<PxBounds3*>(mGpuContext->mGpuBp->getBoundsBuffer().getDevicePtr());
 
 	//contact gen is done at soft body stream
-	CUstream softbodyStream = softBodyCore->getStream();
+	hipStream_t softbodyStream = softBodyCore->getStream();
 
 	PxgCudaPagedLinearAllocator<PxgHeapMemoryAllocator>& stackAlloc = softBodyCore->getStackAllocator();
 	stackAlloc.mMutex.lock();
 
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(256, stackSizeBytes));
 
-	CUdeviceptr stackSizeNeededOnDevice = softBodyCore->mStackSizeNeededOnDevice.getDevicePtr();
+	hipDeviceptr_t stackSizeNeededOnDevice = softBodyCore->mStackSizeNeededOnDevice.getDevicePtr();
 
 	//OK. If we sync the soft bodies and particles here, we don't get crashes!
 	synchronizeStreams(mCudaContext, particleCore->getStream(), softbodyStream);
 
 	PxgParticleSystem* particleSystemsd = reinterpret_cast<PxgParticleSystem*>(particleCore->getParticleSystemBuffer().getDevicePtr());
 
-	CUresult result;
+	hipError_t result;
 		
-	CUdeviceptr pairs = simulationCore->getSoftBodyParticleFilters();
+	hipDeviceptr_t pairs = simulationCore->getSoftBodyParticleFilters();
 	const PxU32 nbPairs = simulationCore->getNbSoftBodyParticleFilters();
 
 	//initialize gpu variables
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, softbodyStream);
 
-	CUdeviceptr softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
+	hipDeviceptr_t softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
 
 	{
 		PX_PROFILE_ZONE("PxgGpuNarrowphaseCore.testSDKParticleSoftbody.midphase", 0);
-		CUfunction sbMidphaseKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_PS_MIDPHASE); //sb_psMidphaseGeneratePairsLaunch
+		hipFunction_t sbMidphaseKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_PS_MIDPHASE); //sb_psMidphaseGeneratePairsLaunch
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -3388,12 +3389,12 @@ void PxgGpuNarrowphaseCore::testSDKParticleSoftbody(PxgGpuContactManagers& gpuMa
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(sbMidphaseKernelFunction, 1024, numTests, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, softbodyStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_psMidphaseGeneratePairsLaunch fail to launch!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(softbodyStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU particlePrimitivesCollisionLaunch fail!!!\n");
 
 		PxU32 numPairs;
@@ -3421,7 +3422,7 @@ void PxgGpuNarrowphaseCore::testSDKParticleSoftbody(PxgGpuContactManagers& gpuMa
 
 		PxgFEMContactWriter writer(softBodyCore, true);
 
-		CUfunction sbCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_PS_CG); //sb_psContactGenLaunch
+		hipFunction_t sbCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_PS_CG); //sb_psContactGenLaunch
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -3446,16 +3447,16 @@ void PxgGpuNarrowphaseCore::testSDKParticleSoftbody(PxgGpuContactManagers& gpuMa
 		//each thread deal with one test. 
 		result = mCudaContext->launchKernel(sbCollisionKernelFunction, numBlocks, 1, 1, 256, 1, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_psContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 		result = mCudaContext->streamSynchronize(softbodyStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_psContactGenLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numContacts;
 		mCudaContext->memcpyDtoH(&numContacts, totalNumCountsd, sizeof(PxU32));
@@ -3466,7 +3467,7 @@ void PxgGpuNarrowphaseCore::testSDKParticleSoftbody(PxgGpuContactManagers& gpuMa
 			PxArray<float4> normalPen(numContacts);
 			PxArray<float4> barcentric(numContacts);
 
-			CUdeviceptr normalPensd = softBodyCore->getParticleNormalPens().getDevicePtr();
+			hipDeviceptr_t normalPensd = softBodyCore->getParticleNormalPens().getDevicePtr();
 
 			mCudaContext->memcpyDtoH(points.begin(), contactsd, sizeof(float4) * numContacts);
 			mCudaContext->memcpyDtoH(normalPen.begin(), normalPensd, sizeof(float4) * numContacts);
@@ -3511,7 +3512,7 @@ void PxgGpuNarrowphaseCore::testSDKParticleSoftbody(PxgGpuContactManagers& gpuMa
 			contactsd,
 			barycentricsd,
 			contactInfosd,
-			CUdeviceptr(NULL),
+			hipDeviceptr_t(NULL),
 			totalNumCountsd,
 			prevNumCountsd
 		);
@@ -3548,19 +3549,19 @@ void PxgGpuNarrowphaseCore::testSDKParticleFemCloth(PxgGpuContactManagers& gpuMa
 	PxBounds3 * boundsd = reinterpret_cast<PxBounds3*>(mGpuContext->mGpuBp->getBoundsBuffer().getDevicePtr());
 
 	
-	CUstream clothStream = clothCore->getStream();
+	hipStream_t clothStream = clothCore->getStream();
 
 	PxgCudaPagedLinearAllocator<PxgHeapMemoryAllocator>& stackAlloc = clothCore->getStackAllocator();
 	stackAlloc.mMutex.lock();
 
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(256, stackSizeBytes));
 
-	CUdeviceptr stackSizeNeededOnDevice = clothCore->mStackSizeNeededOnDevice.getDevicePtr();
+	hipDeviceptr_t stackSizeNeededOnDevice = clothCore->mStackSizeNeededOnDevice.getDevicePtr();
 	
-	CUdeviceptr clothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
+	hipDeviceptr_t clothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
 
 
 	PxgParticleSystem* particleSystemsd = reinterpret_cast<PxgParticleSystem*>(particleCore->getParticleSystemBuffer().getDevicePtr());
@@ -3569,14 +3570,14 @@ void PxgGpuNarrowphaseCore::testSDKParticleFemCloth(PxgGpuContactManagers& gpuMa
 	//OK. If we sync the cloth and particles here, we don't get crashes!
 	synchronizeStreams(mCudaContext, particleCore->getStream(), clothStream);
 
-	CUresult result;
+	hipError_t result;
 
 	//initialize gpu variables
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, clothStream);
 
 		
 	{
-		CUfunction clothMidphaseKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_PS_MIDPHASE);
+		hipFunction_t clothMidphaseKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_PS_MIDPHASE);
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -3599,12 +3600,12 @@ void PxgGpuNarrowphaseCore::testSDKParticleFemCloth(PxgGpuContactManagers& gpuMa
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(clothMidphaseKernelFunction, 1024, numTests, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, clothStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_psMidphaseGeneratePairsLaunch fail to launch!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(clothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_psMidphaseGeneratePairsLaunch fail!!!\n");
 
 		PxU32 numPairs;
@@ -3619,15 +3620,15 @@ void PxgGpuNarrowphaseCore::testSDKParticleFemCloth(PxgGpuContactManagers& gpuMa
 #endif
 	}
 
-	CUdeviceptr totalNumCountsd = clothCore->getParticleContactCount().getDevicePtr();
-	CUdeviceptr prevNumCountsd = clothCore->getPrevParticleContactCount().getDevicePtr();
+	hipDeviceptr_t totalNumCountsd = clothCore->getParticleContactCount().getDevicePtr();
+	hipDeviceptr_t prevNumCountsd = clothCore->getPrevParticleContactCount().getDevicePtr();
 
 	{
 		mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), clothStream);
 
 		PxgFEMContactWriter writer(clothCore, true);
 
-		CUfunction clothCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_PS_CG);
+		hipFunction_t clothCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_PS_CG);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -3650,24 +3651,24 @@ void PxgGpuNarrowphaseCore::testSDKParticleFemCloth(PxgGpuContactManagers& gpuMa
 		//each thread deal with one test. 
 		result = mCudaContext->launchKernel(clothCollisionKernelFunction, numBlocks, 1, 1, 256, 1, 1, 0, clothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_psContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 		result = mCudaContext->streamSynchronize(clothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_psContactGenLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numContacts;
 		mCudaContext->memcpyDtoH(&numContacts, totalNumCountsd, sizeof(PxU32));
 
 		if (numContacts > 0)
 		{
-			CUdeviceptr contactsd = clothCore->getParticleContacts().getDevicePtr();
-			CUdeviceptr normalPensd = clothCore->getParticleNormalPens().getDevicePtr();
+			hipDeviceptr_t contactsd = clothCore->getParticleContacts().getDevicePtr();
+			hipDeviceptr_t normalPensd = clothCore->getParticleNormalPens().getDevicePtr();
 
 			drawContacts(*renderOutput, contactsd, normalPensd, numContacts);
 		}
@@ -3706,17 +3707,17 @@ void PxgGpuNarrowphaseCore::testSDKConvexParticle(PxgGpuContactManagers& gpuMana
 	PxU32* tempBlockCellsHistogramd = reinterpret_cast<PxU32*>(particleCore->getTempBlockCellsHistogram().getDevicePtr());
 	PxU32* totalPairsd = reinterpret_cast<PxU32*>(particleCore->getTempHistogramCount().getDevicePtr());
 
-	CUstream particleStream = particleCore->getStream();
+	hipStream_t particleStream = particleCore->getStream();
 
 	//mCudaContext->memsetD32Async(totalContactCountsd, 0, 1, mStream);
 
 	const PxU32 maxContacts = particleCore->mMaxContacts;
 
 
-	CUresult result;
+	hipError_t result;
 	{
 
-		CUfunction firstPassFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_PRIMITIVES_BOUND_FIRST);
+		hipFunction_t firstPassFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_PRIMITIVES_BOUND_FIRST);
 		PxCudaKernelParam kernelParams_stage[] =
 		{
 			PX_CUDA_KERNEL_PARAM(numTests),
@@ -3731,17 +3732,17 @@ void PxgGpuNarrowphaseCore::testSDKConvexParticle(PxgGpuContactManagers& gpuMana
 		};
 
 		result = mCudaContext->launchKernel(firstPassFunction, PxgParticleSystemKernelGridDim::BOUNDCELLUPDATE, 1, 1, PxgParticleSystemKernelBlockDim::BOUNDCELLUPDATE, 1, 1, 0, /*mStream*/particleStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_primitivesBoundFirstPassLaunch fail to launch!!\n");
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(particleStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_primitivesBoundFirstPassLaunch fail!!!\n");
 #endif
 	}
 
 	{
-		CUfunction secondPassFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_PRIMITIVES_BOUND_SECOND);
+		hipFunction_t secondPassFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_PRIMITIVES_BOUND_SECOND);
 		PxCudaKernelParam kernelParams_stage[] =
 		{
 			PX_CUDA_KERNEL_PARAM(numTests),
@@ -3751,30 +3752,30 @@ void PxgGpuNarrowphaseCore::testSDKConvexParticle(PxgGpuContactManagers& gpuMana
 		};
 
 		result = mCudaContext->launchKernel(secondPassFunction, PxgParticleSystemKernelGridDim::BOUNDCELLUPDATE, 1, 1, PxgParticleSystemKernelBlockDim::BOUNDCELLUPDATE, 1, 1, 0, /*mStream*/particleStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_primitivesBoundSecondPassLaunch fail to launch!!\n");
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(particleStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_primitivesBoundSecondPassLaunch fail!!!\n");
 #endif
 	}
 
 	{
 		PxgParticlePrimitiveContact* contactsd = reinterpret_cast<PxgParticlePrimitiveContact*>(particleCore->getParticleContacts().getDevicePtr());
-		CUdeviceptr totalContactCountsd = particleCore->getParticleContactCount().getDevicePtr();
-		CUdeviceptr contactSortedByParticled = particleCore->getContactSortedByParticle().getDevicePtr();
-		CUdeviceptr tempContactByParticleBitd = particleCore->getTempContactByParticle().getDevicePtr();
-		CUdeviceptr contactRemapSortedByParticled = particleCore->getContactRemapSortedByParticle().getDevicePtr();
-		CUdeviceptr contactByRigidd = particleCore->getContactByRigid().getDevicePtr();
-		CUdeviceptr tempContactByRigidBitd = particleCore->getTempContactByRigid().getDevicePtr();
-		CUdeviceptr contactRemapSortedByRigidd = particleCore->getContactRemapSortedByRigid().getDevicePtr();
-		CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+		hipDeviceptr_t totalContactCountsd = particleCore->getParticleContactCount().getDevicePtr();
+		hipDeviceptr_t contactSortedByParticled = particleCore->getContactSortedByParticle().getDevicePtr();
+		hipDeviceptr_t tempContactByParticleBitd = particleCore->getTempContactByParticle().getDevicePtr();
+		hipDeviceptr_t contactRemapSortedByParticled = particleCore->getContactRemapSortedByParticle().getDevicePtr();
+		hipDeviceptr_t contactByRigidd = particleCore->getContactByRigid().getDevicePtr();
+		hipDeviceptr_t tempContactByRigidBitd = particleCore->getTempContactByRigid().getDevicePtr();
+		hipDeviceptr_t contactRemapSortedByRigidd = particleCore->getContactRemapSortedByRigid().getDevicePtr();
+		hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
-		//CUdeviceptr pairs = simulationCore->getRigidParticleFilters();
+		//hipDeviceptr_t pairs = simulationCore->getRigidParticleFilters();
 		//const PxU32 nbPairs = simulationCore->getNbRigidParticleFilters();
 
-		CUfunction psCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_CONVEX_COLLISION);
+		hipFunction_t psCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_CONVEX_COLLISION);
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -3808,20 +3809,20 @@ void PxgGpuNarrowphaseCore::testSDKConvexParticle(PxgGpuContactManagers& gpuMana
 		PxU32 numWarpPerBlock = PxgParticleSystemKernelBlockDim::PS_COLLISION / 32;
 		//Each warp do one cell collision detection
 		result = mCudaContext->launchKernel(psCollisionKernelFunction, PxgParticleSystemKernelGridDim::PS_COLLISION, 1, 1, 32, numWarpPerBlock, 1, 0, /*mStream*/particleStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_convexCollisionLaunch fail to launch!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(particleStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_convexCollisionLaunch fail!!!\n");
 
 #endif
 	}
 
 	{
-		CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
-		CUfunction psCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_CONVEX_DIFFUSE_COLLISION);
+		hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+		hipFunction_t psCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_CONVEX_DIFFUSE_COLLISION);
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -3844,12 +3845,12 @@ void PxgGpuNarrowphaseCore::testSDKConvexParticle(PxgGpuContactManagers& gpuMana
 		PxU32 numWarpPerBlock = PxgParticleSystemKernelBlockDim::PS_COLLISION / 32;
 		//Each warp do one cell collision detection
 		result = mCudaContext->launchKernel(psCollisionKernelFunction, PxgParticleSystemKernelGridDim::PS_COLLISION, 1, 1, 32, numWarpPerBlock, 1, 0, /*mStream*/particleStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_convexDiffuseCollisionLaunch fail to launch!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(particleStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_convexDiffuseCollisionLaunch fail!!!\n");
 
 #endif
@@ -3873,19 +3874,19 @@ void PxgGpuNarrowphaseCore::testSDKParticleSdfTriMesh(PxgGpuContactManagers& gpu
 	const PxReal* restDistanced = reinterpret_cast<PxReal*>(gpuManagers.mRestDistances.getDevicePtr());
 	PX_ASSERT(transformCache);
 
-	CUdeviceptr particleSystemsd = particleCore->getParticleSystemBuffer().getDevicePtr();
-	CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+	hipDeviceptr_t particleSystemsd = particleCore->getParticleSystemBuffer().getDevicePtr();
+	hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
-	CUstream particleStream = particleCore->getStream();
+	hipStream_t particleStream = particleCore->getStream();
 
-	CUresult result;
+	hipError_t result;
 
 	PxgParticleContactWriter writer;
 	initParticleContactWriter(writer, particleCore);
 
 	// Particle-Sdf-Trimesh Midphase and contact gen kernel
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_SDF_TRIMESH_COLLISION);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_SDF_TRIMESH_COLLISION);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -3904,16 +3905,16 @@ void PxgGpuNarrowphaseCore::testSDKParticleSdfTriMesh(PxgGpuContactManagers& gpu
 		result = mCudaContext->launchKernel(kernelFunction, 
 			numTests, 2, 1, 1024, 1, 1, 0, /*mStream*/particleStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_sdfMeshCollisonLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 		result = mCudaContext->streamSynchronize(particleStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_sdfMeshCollisonLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 #endif
 
 	}
@@ -3937,19 +3938,19 @@ void PxgGpuNarrowphaseCore::testSDKParticleTriMesh(PxgGpuContactManagers& gpuMan
 	const PxReal* restDistanced = reinterpret_cast<PxReal*>(gpuManagers.mRestDistances.getDevicePtr());
 	PX_ASSERT(transformCache);
 
-	CUdeviceptr particleSystemsd = particleCore->getParticleSystemBuffer().getDevicePtr();
-	CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+	hipDeviceptr_t particleSystemsd = particleCore->getParticleSystemBuffer().getDevicePtr();
+	hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
-	CUstream particleStream = particleCore->getStream();
+	hipStream_t particleStream = particleCore->getStream();
 
-	CUresult result;
+	hipError_t result;
 
 	PxgParticleContactWriter writer;
 	initParticleContactWriter(writer, particleCore);
 
 	// Particle-Trimesh Midphase and contact gen kernel
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_TRIMESH_COLLISION);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_TRIMESH_COLLISION);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -3968,16 +3969,16 @@ void PxgGpuNarrowphaseCore::testSDKParticleTriMesh(PxgGpuContactManagers& gpuMan
 		//each 32 blocks deal with one test. Each block has PS_MIDPHASE_COLLISION_WAPRS_PER_BLOCK warps 
 		result = mCudaContext->launchKernel(kernelFunction, PxgParticleSystemKernelGridDim::PS_MESH_COLLISION, numTests, 2, WARP_SIZE, PS_MIDPHASE_COLLISION_WAPRS_PER_BLOCK, 1, 0, /*mStream*/particleStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_meshCollisonLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 		result = mCudaContext->streamSynchronize(particleStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_meshCollisonLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 #endif
 
 	}
@@ -3998,19 +3999,19 @@ void PxgGpuNarrowphaseCore::syncNotRigidWithNp()
 	for(PxU32 i = 0; i < numParticleCores; ++i)
 	{
 		PxgParticleSystemCore* particleCore = particleCores[i];
-		CUstream particleStream = particleCore->getStream();
+		hipStream_t particleStream = particleCore->getStream();
 		synchronizeStreams(mCudaContext, mStream, particleStream, mParticleEvent);
 	}
 	
 	if (softbodyCore)
 	{
-		CUstream softbodyStream = softbodyCore->getStream();
+		hipStream_t softbodyStream = softbodyCore->getStream();
 		synchronizeStreams(mCudaContext, mStream, softbodyStream, mSoftbodyEvent);
 	}
 
 	if (femClothCore)
 	{
-		CUstream femClothStream = femClothCore->getStream();
+		hipStream_t femClothStream = femClothCore->getStream();
 		synchronizeStreams(mCudaContext, mStream, femClothStream, mFemClothEvent);
 	}
 }
@@ -4034,19 +4035,19 @@ void PxgGpuNarrowphaseCore::testSDKParticleHeightfield(PxgGpuContactManagers& gp
 	const PxReal* restDistanced = reinterpret_cast<PxReal*>(gpuManagers.mRestDistances.getDevicePtr());
 	PX_ASSERT(transformCache);
 
-	CUdeviceptr particleSystemsd = particleCore->getParticleSystemBuffer().getDevicePtr();
-	CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+	hipDeviceptr_t particleSystemsd = particleCore->getParticleSystemBuffer().getDevicePtr();
+	hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
-	CUstream particleStream = particleCore->getStream();
+	hipStream_t particleStream = particleCore->getStream();
 
-	CUresult result;
+	hipError_t result;
 
 	PxgParticleContactWriter writer;
 	initParticleContactWriter(writer, particleCore);
 
 	// Particle-Trimesh Midphase and contact gen kernel
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_HEIGHTFIELD_COLLISION);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_HEIGHTFIELD_COLLISION);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -4066,16 +4067,16 @@ void PxgGpuNarrowphaseCore::testSDKParticleHeightfield(PxgGpuContactManagers& gp
 		// blockIdx.z == 0 for regular particles, 1 for diffuse particles
 		result = mCudaContext->launchKernel(kernelFunction, PxgParticleSystemKernelGridDim::PS_HEIGHTFIELD_COLLISION, numTests, 2, PxgParticleSystemKernelBlockDim::PS_HEIGHTFIELD_COLLISION, 1, 1, 0, /*mStream*/particleStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_heightfieldCollisonLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 		result = mCudaContext->streamSynchronize(particleStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_heightfieldCollisonLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 #endif
 	}
@@ -4092,13 +4093,13 @@ void PxgGpuNarrowphaseCore::softbodyRigidContactApplyCollisionToSimMeshMapping(
 {
 	PxgSimulationCore* simulationCore = mNphaseImplContext->getSimulationCore();
 	PxgSoftBodyCore* softBodyCore = mGpuContext->mGpuSoftBodyCore;
-	CUdeviceptr softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
+	hipDeviceptr_t softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
 	const PxU32 maxNumContacts = softBodyCore->mMaxContacts;
 	
-	CUstream softbodyStream = softBodyCore->getStream();
-	CUresult result;
+	hipStream_t softbodyStream = softBodyCore->getStream();
+	hipError_t result;
 
-	CUfunction sbContactRemapKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_RCS_CONTACT_REMAP_TO_SIM);
+	hipFunction_t sbContactRemapKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_RCS_CONTACT_REMAP_TO_SIM);
 
 	PxCudaKernelParam kernelParams[] =
 	{
@@ -4118,16 +4119,16 @@ void PxgGpuNarrowphaseCore::softbodyRigidContactApplyCollisionToSimMeshMapping(
 	//each warp deal with one test. 
 	result = mCudaContext->launchKernel(sbContactRemapKernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-	if (result != CUDA_SUCCESS)
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_rcs_contact_remap_to_simLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 	result = mCudaContext->streamSynchronize(softbodyStream);
-	if (result != CUDA_SUCCESS)
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_rcs_contact_remap_to_simLaunch kernel fail!!!\n");
 
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 #endif
 }
 
@@ -4160,26 +4161,26 @@ void PxgGpuNarrowphaseCore::testSDKSoftbody(PxgGpuContactManagers& gpuManagers, 
 	PxgCudaPagedLinearAllocator<PxgHeapMemoryAllocator>& stackAlloc = softBodyCore->getStackAllocator();
 	stackAlloc.mMutex.lock();
 
-	CUstream softbodyStream = softBodyCore->getStream();
+	hipStream_t softbodyStream = softBodyCore->getStream();
 
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 	
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(256, stackSizeBytes));
 
-	CUdeviceptr stackSizeNeededOnDevice = softBodyCore->mStackSizeNeededOnDevice.getDevicePtr();
+	hipDeviceptr_t stackSizeNeededOnDevice = softBodyCore->mStackSizeNeededOnDevice.getDevicePtr();
 
 	//initialize gpu variables
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, softbodyStream);
 
 
-	CUdeviceptr softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
+	hipDeviceptr_t softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
 
-	CUresult result;
+	hipError_t result;
 
 	// soft body midphasekernel
 	{
-		CUfunction sbMidphasekernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_MIDPHASE_PRIMITIVES);
+		hipFunction_t sbMidphasekernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_MIDPHASE_PRIMITIVES);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -4201,16 +4202,16 @@ void PxgGpuNarrowphaseCore::testSDKSoftbody(PxgGpuContactManagers& gpuManagers, 
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(sbMidphasekernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_midphaseGeneratePairsLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 		result = mCudaContext->streamSynchronize(softbodyStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_midphaseGeneratePairsLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 #if GPU_NP_VISUALIZATION
 
@@ -4232,20 +4233,20 @@ void PxgGpuNarrowphaseCore::testSDKSoftbody(PxgGpuContactManagers& gpuManagers, 
 	}	
 
 	{
-		CUdeviceptr totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
-		CUdeviceptr prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
+		hipDeviceptr_t totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
+		hipDeviceptr_t prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
 		mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), softbodyStream);
-		CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+		hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
 		//PxU32 preNumContacts;
 		//mCudaContext->memcpyDtoH(&preNumContacts, totalNumCountsd, sizeof(PxU32));
 
-		CUdeviceptr pairs = simulationCore->getRigidSoftBodyFilters();
+		hipDeviceptr_t pairs = simulationCore->getRigidSoftBodyFilters();
 		const PxU32 nbPairs = simulationCore->getNbRigidSoftBodyFilters();
 
 		PxgFEMContactWriter writer(softBodyCore);
 
-		CUfunction sbCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_PRIMITIVES_CG);
+		hipFunction_t sbCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_PRIMITIVES_CG);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -4271,16 +4272,16 @@ void PxgGpuNarrowphaseCore::testSDKSoftbody(PxgGpuContactManagers& gpuManagers, 
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(sbCollisionKernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_primitiveContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 		result = mCudaContext->streamSynchronize(softbodyStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_primitiveContactGenLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 #if GPU_NP_VISUALIZATION
 		PxU32 numContacts;
@@ -4334,17 +4335,17 @@ void PxgGpuNarrowphaseCore::testSDKSoftbody(PxgGpuContactManagers& gpuManagers, 
 	}
 
 	{
-		CUdeviceptr contactsd = softBodyCore->getRigidContacts().getDevicePtr();
-		CUdeviceptr barycentricsd = softBodyCore->getRigidBarycentrics().getDevicePtr();
-		CUdeviceptr contactInfosd = softBodyCore->getRigidContactInfos().getDevicePtr();
-		CUdeviceptr totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
-		CUdeviceptr prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
+		hipDeviceptr_t contactsd = softBodyCore->getRigidContacts().getDevicePtr();
+		hipDeviceptr_t barycentricsd = softBodyCore->getRigidBarycentrics().getDevicePtr();
+		hipDeviceptr_t contactInfosd = softBodyCore->getRigidContactInfos().getDevicePtr();
+		hipDeviceptr_t totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
+		hipDeviceptr_t prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
 
 		softbodyRigidContactApplyCollisionToSimMeshMapping(
 			contactsd,
 			barycentricsd,
 			contactInfosd,
-			CUdeviceptr(NULL),
+			hipDeviceptr_t(NULL),
 			totalNumCountsd,
 			prevNumCountsd
 		);
@@ -4382,7 +4383,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodies(PxgGpuContactManagers& gpuManagers
 
 	PxgSimulationCore* simulationCore = mNphaseImplContext->getSimulationCore();
 	PxgSoftBodyCore* softBodyCore = mGpuContext->mGpuSoftBodyCore; 
-	CUstream softbodyStream = softBodyCore->getStream();
+	hipStream_t softbodyStream = softBodyCore->getStream();
 
 	PxgDevicePointer<PxgSoftBody> softBodiesd = simulationCore->getSoftBodyBuffer().getTypedDevicePtr();
 
@@ -4398,11 +4399,11 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodies(PxgGpuContactManagers& gpuManagers
 
 	PxgSoftBodyContactWriter writer(softBodyCore);
 
-	CUresult result;
+	hipError_t result;
 
 	// soft body first midphase kernel(each output is the index to a bound in one tree and tetrahedron index in other tree)
 	{
-		CUfunction sbsbMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SB_MIDPHASE);
+		hipFunction_t sbsbMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SB_MIDPHASE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -4421,15 +4422,15 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodies(PxgGpuContactManagers& gpuManagers
 		//blockIdx.y deal with one test. 
 		result = mCudaContext->launchKernel(sbsbMidphaseFirstkernelFunction, numBlocks, numTests, 2, WARP_SIZE, numWarpsPerBlock, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_sbMidphaseGeneratePairsLaunch fail to launch kernel!!\n");
 #if GPU_NP_DEBUG
 
 		result = mCudaContext->streamSynchronize(softbodyStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_sbMidphaseGeneratePairsLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 #if GPU_NP_VISUALIZATION
 		PxU32 numContacts;
@@ -4481,7 +4482,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodies(PxgGpuContactManagers& gpuManagers
 	
 	{
 
-		CUfunction sbContactRemapKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SS_CONTACT_REMAP_TO_SIM);
+		hipFunction_t sbContactRemapKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SS_CONTACT_REMAP_TO_SIM);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -4500,16 +4501,16 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodies(PxgGpuContactManagers& gpuManagers
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(sbContactRemapKernelFunction, numBlocks, 2, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_ss_contact_remap_to_simLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 		result = mCudaContext->streamSynchronize(softbodyStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_ss_contact_remap_to_simLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 #endif
 	}
 }
@@ -4544,18 +4545,18 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyCloth(PxgGpuContactManagers& gpuManag
 	PxgFEMClothCore* femClothCore = mGpuContext->mGpuFEMClothCore;
 
 
-	CUstream softbodyStream = softBodyCore->getStream();
+	hipStream_t softbodyStream = softBodyCore->getStream();
 	//OK. If we sync the soft bodies and particles here, we don't get crashes!
 	synchronizeStreams(mCudaContext, femClothCore->getStream(), softbodyStream);
 
 	PxgCudaPagedLinearAllocator<PxgHeapMemoryAllocator>& stackAlloc = softBodyCore->getStackAllocator();
 	stackAlloc.mMutex.lock();
 
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(256, stackSizeBytes));
-	CUdeviceptr stackSizeNeededOnDevice = softBodyCore->mStackSizeNeededOnDevice.getDevicePtr();
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t stackSizeNeededOnDevice = softBodyCore->mStackSizeNeededOnDevice.getDevicePtr();
 
 	//initialize gpu variables
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, softbodyStream);
@@ -4569,14 +4570,14 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyCloth(PxgGpuContactManagers& gpuManag
 	PxgDevicePointer<PxU32> totalNumCountsd = softBodyCore->getClothVsSoftBodyContactCount().getTypedDevicePtr();
 	PxgDevicePointer<PxU32> prevNumCountsd = softBodyCore->getPrevClothVsSoftBodyContactCount().getTypedDevicePtr();
 
-	CUdeviceptr pairs = simulationCore->getClothSoftBodyFilters();
+	hipDeviceptr_t pairs = simulationCore->getClothSoftBodyFilters();
 	const PxU32 nbPairs = simulationCore->getNbClothSoftBodyFilters();
 
 	mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), softbodyStream);
 
 	const PxReal nbCollisionPairUpdatesPerTimestep = static_cast<PxReal>(simulationCore->getMaxNbCollisionPairUpdatesPerTimestep());
 
-	CUresult result;
+	hipError_t result;
 
 	PxgSoftBodyContactWriter writer(softBodyCore, femClothCore);
 
@@ -4588,7 +4589,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyCloth(PxgGpuContactManagers& gpuManag
 	{
 		// soft body midphase kernel(each output is the index to a bound in one tree and tetrahedron index in other tree)
 		{
-			CUfunction sbmeshMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_CLOTH_MIDPHASE);
+			hipFunction_t sbmeshMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_CLOTH_MIDPHASE);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -4611,16 +4612,16 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyCloth(PxgGpuContactManagers& gpuManag
 			//each warp deal with one test. 
 			result = mCudaContext->launchKernel(sbmeshMidphaseFirstkernelFunction, numBlocks, numTests, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_clothMidphaseGeneratePairsLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 			result = mCudaContext->streamSynchronize(softbodyStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_clothMidphaseGeneratePairsLaunch kernel fail!!!\n");
 
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			PxU32 numPairs;
 			mCudaContext->memcpyDtoH(&numPairs, gpuMidphasePairsNumOnDevice, sizeof(PxU32));
@@ -4633,7 +4634,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyCloth(PxgGpuContactManagers& gpuManag
 
 				//Dma back the bound
 				PxBounds3 bounds[3];
-				mCudaContext->memcpyDtoH(bounds, (CUdeviceptr)boundsd, sizeof(PxBounds3) * 3);
+				mCudaContext->memcpyDtoH(bounds, (hipDeviceptr_t)boundsd, sizeof(PxBounds3) * 3);
 
 				const PxVec3 min = bounds[1].minimum;
 				const PxVec3 max = bounds[1].maximum;
@@ -4674,7 +4675,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyCloth(PxgGpuContactManagers& gpuManag
 		}
 
 		{
-			CUfunction sbClothContactGenkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_CLOTH_CG);
+			hipFunction_t sbClothContactGenkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_CLOTH_CG);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -4699,22 +4700,22 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyCloth(PxgGpuContactManagers& gpuManag
 			//each warp deal with one test. 
 			result = mCudaContext->launchKernel(sbClothContactGenkernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_clothContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 			result = mCudaContext->streamSynchronize(softbodyStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_clothContactGenLaunch kernel fail!!!\n");
 
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			if (0)
 			{
 				PxU32 numContacts;
 				mCudaContext->memcpyDtoH(&numContacts, totalNumCountsd, sizeof(PxU32));
-				CUdeviceptr normalPensd = softBodyCore->getClothVsSoftBodyNormalPens().getDevicePtr();
+				hipDeviceptr_t normalPensd = softBodyCore->getClothVsSoftBodyNormalPens().getDevicePtr();
 				drawContacts(*renderOutput, contactsd, normalPensd, numContacts);
 			}
 #endif
@@ -4733,7 +4734,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyCloth(PxgGpuContactManagers& gpuManag
 
 		//generate vert contacts
 		{
-			CUfunction sbClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_CLOTH_VERT_MIDPHASE);
+			hipFunction_t sbClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_CLOTH_VERT_MIDPHASE);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -4756,12 +4757,12 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyCloth(PxgGpuContactManagers& gpuManag
 			//each warp deal with one test. 
 			result = mCudaContext->launchKernel(sbClothMidphaseFirstkernelFunction, numBlocks, numTests, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_clothVertMidphaseGeneratePairsLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 			result = mCudaContext->streamSynchronize(softbodyStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_clothVertMidphaseGeneratePairsLaunch kernel fail!!!\n");
 
 			PxU32 numPairs;
@@ -4776,7 +4777,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyCloth(PxgGpuContactManagers& gpuManag
 		}
 
 		{
-			CUfunction sbClothVertContactGenKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_CLOTH_VERT_CG);
+			hipFunction_t sbClothVertContactGenKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_CLOTH_VERT_CG);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -4800,22 +4801,22 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyCloth(PxgGpuContactManagers& gpuManag
 			//each thread deal with one test. 
 			result = mCudaContext->launchKernel(sbClothVertContactGenKernelFunction, numBlocks, 1, 1, 256, 1, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_clothVertContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 			result = mCudaContext->streamSynchronize(softbodyStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_clothVertContactGenLaunch kernel fail!!!\n");
 
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			if (0)
 			{
 				PxU32 numContacts;
 				mCudaContext->memcpyDtoH(&numContacts, totalNumCountsd, sizeof(PxU32));
 
-				CUdeviceptr normalPensd = softBodyCore->getClothVsSoftBodyNormalPens().getDevicePtr();
+				hipDeviceptr_t normalPensd = softBodyCore->getClothVsSoftBodyNormalPens().getDevicePtr();
 				drawContacts(*renderOutput, contactsd, normalPensd, numContacts);
 			}
 
@@ -4832,7 +4833,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyCloth(PxgGpuContactManagers& gpuManag
 			contactsd,
 			barycentricsd1,
 			contactInfosd,
-			CUdeviceptr(NULL),
+			hipDeviceptr_t(NULL),
 			totalNumCountsd,
 			prevNumCountsd
 		);
@@ -4865,33 +4866,33 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodySdfTrimesh(PxgGpuContactManagers& gpu
 	const PxReal* restDistanced = reinterpret_cast<PxReal*>(gpuManagers.mRestDistances.getDevicePtr());
 	PX_ASSERT(transformCached);
 
-	CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+	hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
 	PxgSimulationCore* simulationCore = mNphaseImplContext->getSimulationCore();
 	PxgSoftBodyCore* softBodyCore = mGpuContext->mGpuSoftBodyCore;
 
-	CUstream softbodyStream = softBodyCore->getStream();
+	hipStream_t softbodyStream = softBodyCore->getStream();
 
 	//initialize gpu variables
-	CUdeviceptr softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
+	hipDeviceptr_t softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
 
 	PxgFEMContactWriter writer(softBodyCore);
 
-	CUresult result;
+	hipError_t result;
 
 
 	{
-		CUdeviceptr totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
-		CUdeviceptr prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
+		hipDeviceptr_t totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
+		hipDeviceptr_t prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
 		mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), softbodyStream);
 	}
 
-	CUdeviceptr filterPairs = simulationCore->getRigidSoftBodyFilters();
+	hipDeviceptr_t filterPairs = simulationCore->getRigidSoftBodyFilters();
 	const PxU32 nbFilterPairs = simulationCore->getNbRigidSoftBodyFilters();
 
 	// soft body first midphase kernel(each output is the index to a bound in one tree and tetrahedron index in other tree)
 	{
-		CUfunction sbmeshMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SDF_MESH_MIDPHASE);
+		hipFunction_t sbmeshMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SDF_MESH_MIDPHASE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -4915,16 +4916,16 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodySdfTrimesh(PxgGpuContactManagers& gpu
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(sbmeshMidphaseFirstkernelFunction, numBlocks, 1, 1, 1024, 1, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_sdfMeshMidphaseGeneratePairsLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG && 0
 
 		result = mCudaContext->streamSynchronize(softbodyStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_midphaseGeneratePairsLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numPairs;
 		mCudaContext->memcpyDtoH(&numPairs, gpuMidphasePairsNumOnDevice, sizeof(PxU32));
@@ -4937,7 +4938,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodySdfTrimesh(PxgGpuContactManagers& gpu
 
 			//Dma back the bound
 			PxBounds3 bounds[3];
-			mCudaContext->memcpyDtoH(bounds, (CUdeviceptr)boundsd, sizeof(PxBounds3) * 3);
+			mCudaContext->memcpyDtoH(bounds, (hipDeviceptr_t)boundsd, sizeof(PxBounds3) * 3);
 
 			const PxVec3 min = bounds[1].minimum;
 			const PxVec3 max = bounds[1].maximum;
@@ -4987,7 +4988,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodySdfTrimesh(PxgGpuContactManagers& gpu
 			contactsd,
 			barycentricsd,
 			contactInfosd,
-			CUdeviceptr(NULL),
+			hipDeviceptr_t(NULL),
 			totalNumCountsd,
 			prevNumCountsd
 		);
@@ -5023,25 +5024,25 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyTrimesh(PxgGpuContactManagers& gpuMan
 	PxgCudaPagedLinearAllocator<PxgHeapMemoryAllocator>& stackAlloc = softBodyCore->getStackAllocator();
 	stackAlloc.mMutex.lock();
 
-	CUstream softbodyStream = softBodyCore->getStream();
+	hipStream_t softbodyStream = softBodyCore->getStream();
 
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(256, stackSizeBytes));
-	CUdeviceptr stackSizeNeededOnDevice = softBodyCore->mStackSizeNeededOnDevice.getDevicePtr();
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t stackSizeNeededOnDevice = softBodyCore->mStackSizeNeededOnDevice.getDevicePtr();
 
 	//initialize gpu variables
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, softbodyStream);
 	
-	CUdeviceptr softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
+	hipDeviceptr_t softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
 	
 
-	CUresult result;
+	hipError_t result;
 
 	// soft body first midphase kernel(each output is the index to a bound in one tree and tetrahedron index in other tree)
 	{
-		CUfunction sbmeshMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_MESH_MIDPHASE);
+		hipFunction_t sbmeshMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_MESH_MIDPHASE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -5062,16 +5063,16 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyTrimesh(PxgGpuContactManagers& gpuMan
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(sbmeshMidphaseFirstkernelFunction, numBlocks, numTests, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_meshMidphaseGeneratePairsLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 		result = mCudaContext->streamSynchronize(softbodyStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_midphaseGeneratePairsLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numPairs;
 		mCudaContext->memcpyDtoH(&numPairs, gpuMidphasePairsNumOnDevice, sizeof(PxU32));
@@ -5084,7 +5085,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyTrimesh(PxgGpuContactManagers& gpuMan
 
 			//Dma back the bound
 			PxBounds3 bounds[3];
-			mCudaContext->memcpyDtoH(bounds, (CUdeviceptr)boundsd, sizeof(PxBounds3) * 3);
+			mCudaContext->memcpyDtoH(bounds, (hipDeviceptr_t)boundsd, sizeof(PxBounds3) * 3);
 
 			const PxVec3 min = bounds[1].minimum;
 			const PxVec3 max = bounds[1].maximum;
@@ -5124,17 +5125,17 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyTrimesh(PxgGpuContactManagers& gpuMan
 	}
 
 	{
-		CUdeviceptr totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
-		CUdeviceptr prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
+		hipDeviceptr_t totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
+		hipDeviceptr_t prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
 		mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), softbodyStream);
-		CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+		hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
-		CUdeviceptr pairs = simulationCore->getRigidSoftBodyFilters();
+		hipDeviceptr_t pairs = simulationCore->getRigidSoftBodyFilters();
 		const PxU32 nbPairs = simulationCore->getNbRigidSoftBodyFilters();
 
 		PxgFEMContactWriter writer(softBodyCore);
 
-		CUfunction sbmeshContactGenkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_MESH_CG);
+		hipFunction_t sbmeshContactGenkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_MESH_CG);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -5160,16 +5161,16 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyTrimesh(PxgGpuContactManagers& gpuMan
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(sbmeshContactGenkernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_meshContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 		result = mCudaContext->streamSynchronize(softbodyStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_meshContactGenLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numContacts;
 		mCudaContext->memcpyDtoH(&numContacts, totalNumCountsd, sizeof(PxU32));
@@ -5182,8 +5183,8 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyTrimesh(PxgGpuContactManagers& gpuMan
 			PxArray<float4> points(numContacts);
 			PxArray<float4> normalPen(numContacts);
 
-			CUdeviceptr contactsd = softBodyCore->getRigidContacts().getDevicePtr();
-			CUdeviceptr normalPensd = softBodyCore->getRigidNormalPens().getDevicePtr();
+			hipDeviceptr_t contactsd = softBodyCore->getRigidContacts().getDevicePtr();
+			hipDeviceptr_t normalPensd = softBodyCore->getRigidNormalPens().getDevicePtr();
 
 			mCudaContext->memcpyDtoH(points.begin(), contactsd, sizeof(float4) * numContacts);
 			mCudaContext->memcpyDtoH(normalPen.begin(), normalPensd, sizeof(float4) * numContacts);
@@ -5196,7 +5197,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyTrimesh(PxgGpuContactManagers& gpuMan
 
 			const PxU32 softBodyByteSize = 37632;
 			PxU8 meshData[softBodyByteSize];
-			mCudaContext->memcpyDtoH(meshData, (CUdeviceptr)tSoftBody.mTetMeshData, sizeof(PxU8) * softBodyByteSize);
+			mCudaContext->memcpyDtoH(meshData, (hipDeviceptr_t)tSoftBody.mTetMeshData, sizeof(PxU8) * softBodyByteSize);
 
 			float4 * tetmeshVerts;
 			uint4 * tetmeshTetIndices;
@@ -5286,17 +5287,17 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyTrimesh(PxgGpuContactManagers& gpuMan
 	}
 
 	{
-		CUdeviceptr contactsd = softBodyCore->getRigidContacts().getDevicePtr();
-		CUdeviceptr barycentricsd = softBodyCore->getRigidBarycentrics().getDevicePtr();
-		CUdeviceptr contactInfosd = softBodyCore->getRigidContactInfos().getDevicePtr();
-		CUdeviceptr totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
-		CUdeviceptr prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
+		hipDeviceptr_t contactsd = softBodyCore->getRigidContacts().getDevicePtr();
+		hipDeviceptr_t barycentricsd = softBodyCore->getRigidBarycentrics().getDevicePtr();
+		hipDeviceptr_t contactInfosd = softBodyCore->getRigidContactInfos().getDevicePtr();
+		hipDeviceptr_t totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
+		hipDeviceptr_t prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
 
 		softbodyRigidContactApplyCollisionToSimMeshMapping(
 			contactsd,
 			barycentricsd,
 			contactInfosd,
-			CUdeviceptr(NULL),
+			hipDeviceptr_t(NULL),
 			totalNumCountsd,
 			prevNumCountsd
 		);
@@ -5330,25 +5331,25 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyHeightfield(PxgGpuContactManagers& gp
 	PxgCudaPagedLinearAllocator<PxgHeapMemoryAllocator>& stackAlloc = softbodyCore->getStackAllocator();
 	stackAlloc.mMutex.lock();
 
-	CUstream softbodyStream = softbodyCore->getStream();
+	hipStream_t softbodyStream = softbodyCore->getStream();
 
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(256, stackSizeBytes));
-	CUdeviceptr stackSizeNeededOnDevice = softbodyCore->mStackSizeNeededOnDevice.getDevicePtr();
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t stackSizeNeededOnDevice = softbodyCore->mStackSizeNeededOnDevice.getDevicePtr();
 
 	//initialize gpu variables
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, softbodyStream);
 
-	CUdeviceptr softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
+	hipDeviceptr_t softBodiesd = simulationCore->getSoftBodyBuffer().getDevicePtr();
 	
 
-	CUresult result;
+	hipError_t result;
 
 	// soft body first midphase kernel(each output is the index to a bound in one tree and tetrahedron index in other tree)
 	{
-		CUfunction sbHFMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_HF_MIDPHASE);
+		hipFunction_t sbHFMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_HF_MIDPHASE);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -5369,16 +5370,16 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyHeightfield(PxgGpuContactManagers& gp
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(sbHFMidphaseFirstkernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_meshMidphaseGeneratePairsLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 		result = mCudaContext->streamSynchronize(softbodyStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_midphaseGeneratePairsLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numPairs;
 		mCudaContext->memcpyDtoH(&numPairs, gpuMidphasePairsNumOnDevice, sizeof(PxU32));
@@ -5394,7 +5395,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyHeightfield(PxgGpuContactManagers& gp
 
 			//Dma back the bound
 			PxBounds3 bounds[3];
-			mCudaContext->memcpyDtoH(bounds, (CUdeviceptr)boundsd, sizeof(PxBounds3) * 3);
+			mCudaContext->memcpyDtoH(bounds, (hipDeviceptr_t)boundsd, sizeof(PxBounds3) * 3);
 
 			const PxVec3 min = bounds[1].minimum;
 			const PxVec3 max = bounds[1].maximum;
@@ -5435,19 +5436,19 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyHeightfield(PxgGpuContactManagers& gp
 	}
 
 	PxgSoftBodyCore* softBodyCore = mGpuContext->mGpuSoftBodyCore;
-	CUdeviceptr contactsd = softBodyCore->getRigidContacts().getDevicePtr();
-	CUdeviceptr contactInfosd = softBodyCore->getRigidContactInfos().getDevicePtr();
-	CUdeviceptr barycentricsd = softBodyCore->getRigidBarycentrics().getDevicePtr();
-	CUdeviceptr totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
-	CUdeviceptr prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
+	hipDeviceptr_t contactsd = softBodyCore->getRigidContacts().getDevicePtr();
+	hipDeviceptr_t contactInfosd = softBodyCore->getRigidContactInfos().getDevicePtr();
+	hipDeviceptr_t barycentricsd = softBodyCore->getRigidBarycentrics().getDevicePtr();
+	hipDeviceptr_t totalNumCountsd = softBodyCore->getRigidContactCount().getDevicePtr();
+	hipDeviceptr_t prevNumCountsd = softBodyCore->getPrevRigidContactCount().getDevicePtr();
 	mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), softbodyStream);
 
 	{
-		CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+		hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 		
 		PxgFEMContactWriter writer(softBodyCore);
 
-		CUfunction sbHFContactGenkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_HF_CG);
+		hipFunction_t sbHFContactGenkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_HF_CG);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -5471,16 +5472,16 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyHeightfield(PxgGpuContactManagers& gp
 		//each 64 warps deal with one cm
 		result = mCudaContext->launchKernel(sbHFContactGenkernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, softbodyStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_heightfieldContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 		result = mCudaContext->streamSynchronize(softbodyStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_heightfieldContactGenLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numContacts;
 		mCudaContext->memcpyDtoH(&numContacts, totalNumCountsd, sizeof(PxU32));
@@ -5490,7 +5491,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyHeightfield(PxgGpuContactManagers& gp
 			PxArray<float4> points(numContacts);
 			PxArray<float4> normalPen(numContacts);
 
-			CUdeviceptr normalPensd = softBodyCore->getRigidNormalPens().getDevicePtr();
+			hipDeviceptr_t normalPensd = softBodyCore->getRigidNormalPens().getDevicePtr();
 
 			mCudaContext->memcpyDtoH(points.begin(), contactsd, sizeof(float4) * numContacts);
 			mCudaContext->memcpyDtoH(normalPen.begin(), normalPensd, sizeof(float4) * numContacts);
@@ -5503,7 +5504,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyHeightfield(PxgGpuContactManagers& gp
 
 			const PxU32 softBodyByteSize = 37632;
 			PxU8 meshData[softBodyByteSize];
-			mCudaContext->memcpyDtoH(meshData, (CUdeviceptr)tSoftBody.mTetMeshData, sizeof(PxU8) * softBodyByteSize);
+			mCudaContext->memcpyDtoH(meshData, (hipDeviceptr_t)tSoftBody.mTetMeshData, sizeof(PxU8) * softBodyByteSize);
 
 			float4 * tetmeshVerts;
 			uint4 * tetmeshTetIndices;
@@ -5595,7 +5596,7 @@ void PxgGpuNarrowphaseCore::testSDKSoftbodyHeightfield(PxgGpuContactManagers& gp
 			contactsd,
 			barycentricsd,
 			contactInfosd,
-			CUdeviceptr(NULL),
+			hipDeviceptr_t(NULL),
 			totalNumCountsd,
 			prevNumCountsd
 		);
@@ -5631,23 +5632,23 @@ void PxgGpuNarrowphaseCore::testSDKFemClothSphere(PxgGpuContactManagers& gpuMana
 	PxgCudaPagedLinearAllocator<PxgHeapMemoryAllocator>& stackAlloc = femClothCore->getStackAllocator();
 	stackAlloc.mMutex.lock();
 
-	CUstream femClothStream = femClothCore->getStream();
+	hipStream_t femClothStream = femClothCore->getStream();
 
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(256, stackSizeBytes));
-	CUdeviceptr stackSizeNeededOnDevice = femClothCore->mStackSizeNeededOnDevice.getDevicePtr();
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t stackSizeNeededOnDevice = femClothCore->mStackSizeNeededOnDevice.getDevicePtr();
 
 	//initialize gpu variables
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, femClothStream);
 
-	CUdeviceptr femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
+	hipDeviceptr_t femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
 
-	CUresult result;
+	hipError_t result;
 	if (1)	// fem cloth first midphase kernel(each output is the index to a bound in one tree and tetrahedron index in other tree)
 	{
-		CUfunction femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_PRIMITIVES);
+		hipFunction_t femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_PRIMITIVES);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -5669,15 +5670,15 @@ void PxgGpuNarrowphaseCore::testSDKFemClothSphere(PxgGpuContactManagers& gpuMana
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(femClothMidphaseFirstkernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseGeneratePairsLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(femClothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseGeneratePairsLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numPairs;
 		mCudaContext->memcpyDtoH(&numPairs, gpuMidphasePairsNumOnDevice, sizeof(PxU32));
@@ -5693,7 +5694,7 @@ void PxgGpuNarrowphaseCore::testSDKFemClothSphere(PxgGpuContactManagers& gpuMana
 
 			//Dma back the bound
 			PxBounds3 bounds[3];
-			mCudaContext->memcpyDtoH(bounds, (CUdeviceptr)boundsd, sizeof(PxBounds3) * 3);
+			mCudaContext->memcpyDtoH(bounds, (hipDeviceptr_t)boundsd, sizeof(PxBounds3) * 3);
 
 			const PxVec3 min = bounds[1].minimum;
 			const PxVec3 max = bounds[1].maximum;
@@ -5733,20 +5734,20 @@ void PxgGpuNarrowphaseCore::testSDKFemClothSphere(PxgGpuContactManagers& gpuMana
 #endif
 	}
 
-	CUdeviceptr totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
-	CUdeviceptr prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
+	hipDeviceptr_t totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
+	hipDeviceptr_t prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
 	mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), femClothStream);
 
-	CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+	hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
-	CUdeviceptr pairs = simulationCore->getRigidClothFilters();
+	hipDeviceptr_t pairs = simulationCore->getRigidClothFilters();
 	const PxU32 nbPairs = simulationCore->getNbRigidClothFilters();
 
 	PxgFEMContactWriter writer(femClothCore);
 
 	if (1)	//contact gen
 	{
-		CUfunction fcTriangleCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_SPHERE_CG);
+		hipFunction_t fcTriangleCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_SPHERE_CG);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -5772,19 +5773,19 @@ void PxgGpuNarrowphaseCore::testSDKFemClothSphere(PxgGpuContactManagers& gpuMana
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(fcTriangleCollisionKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_SphereContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(femClothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_SphereContactGenLaunch kernel fail!!!\n");
 #endif
 	}
 
 	if (0) // cloth vertex vs. sphere contact gen.
 	{
-		CUfunction fcVertCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_VERT_SPHERE_CG);
+		hipFunction_t fcVertCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_VERT_SPHERE_CG);
 
 		PxCudaKernelParam vertKernelParams[] =
 		{
@@ -5809,12 +5810,12 @@ void PxgGpuNarrowphaseCore::testSDKFemClothSphere(PxgGpuContactManagers& gpuMana
 
 		//each thread deal with a vert
 		result = mCudaContext->launchKernel(fcVertCollisionKernelFunction, numVertBlocks, 1, 1, numThreadsPerWarp, numWarpPerBlock, 1, 0, femClothStream, vertKernelParams, sizeof(vertKernelParams), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_SphereContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(femClothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_SphereContactGenLaunch kernel fail!!!\n");
 
 		femClothCore->drawContacts(*renderOutput);
@@ -5833,8 +5834,8 @@ void PxgGpuNarrowphaseCore::testSDKFemClothPlane(PxgGpuContactManagers& gpuManag
 
 	const PxgContactManagerInput* cmInputs = reinterpret_cast<const PxgContactManagerInput*>(gpuManagers.mContactManagerInputData.getDevicePtr());
 	PX_ASSERT(cmInputs);
-	CUdeviceptr gpuShapes = mGpuShapesManager.mGpuShapesBuffer.getDevicePtr();
-	CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+	hipDeviceptr_t gpuShapes = mGpuShapesManager.mGpuShapesBuffer.getDevicePtr();
+	hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
 	const PxsCachedTransform* transformCached = reinterpret_cast<PxsCachedTransform*>(mGpuTransformCache.getDevicePtr());
 	const PxReal* contactDistanced = reinterpret_cast<PxReal*>(mGpuContactDistance.getDevicePtr());
@@ -5845,23 +5846,23 @@ void PxgGpuNarrowphaseCore::testSDKFemClothPlane(PxgGpuContactManagers& gpuManag
 
 	PxgFEMClothCore* femClothCore = mGpuContext->mGpuFEMClothCore;
 
-	CUstream femClothStream = femClothCore->getStream();
+	hipStream_t femClothStream = femClothCore->getStream();
 
-	CUdeviceptr femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
+	hipDeviceptr_t femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
 
-	CUresult result;
+	hipError_t result;
 
 	{
-		CUdeviceptr totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
-		CUdeviceptr prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
+		hipDeviceptr_t totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
+		hipDeviceptr_t prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
 		mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), femClothStream);
 
-		CUdeviceptr pairs = simulationCore->getRigidClothFilters();
+		hipDeviceptr_t pairs = simulationCore->getRigidClothFilters();
 		const PxU32 nbPairs = simulationCore->getNbRigidClothFilters();
 
 		PxgFEMContactWriter writer(femClothCore);
 
-		CUfunction fcVertCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_PLANE_VERTEX_CG);
+		hipFunction_t fcVertCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_PLANE_VERTEX_CG);
 		PxCudaKernelParam vertKernelParams[] =
 		{
 			PX_CUDA_KERNEL_PARAM(numTests),
@@ -5884,15 +5885,15 @@ void PxgGpuNarrowphaseCore::testSDKFemClothPlane(PxgGpuContactManagers& gpuManag
 
 		//each thread deal with a vert
 		result = mCudaContext->launchKernel(fcVertCollisionKernelFunction, numVertBlocks, 1, 1, numThreadsPerWarp, numWarpPerBlock, 1, 0, femClothStream, vertKernelParams, sizeof(vertKernelParams), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_planeVertContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(femClothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_planeVertContactGenLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		//PxU32 numContacts;
 		//mCudaContext->memcpyDtoH(&numContacts, totalNumCountsd, sizeof(PxU32));
@@ -5934,24 +5935,24 @@ void PxgGpuNarrowphaseCore::testSDKFemClothBox(PxgGpuContactManagers& gpuManager
 	PxgCudaPagedLinearAllocator<PxgHeapMemoryAllocator>& stackAlloc = femClothCore->getStackAllocator();
 	stackAlloc.mMutex.lock();
 
-	CUstream femClothStream = femClothCore->getStream();
+	hipStream_t femClothStream = femClothCore->getStream();
 
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(256, stackSizeBytes));
-	CUdeviceptr stackSizeNeededOnDevice = femClothCore->mStackSizeNeededOnDevice.getDevicePtr();
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t stackSizeNeededOnDevice = femClothCore->mStackSizeNeededOnDevice.getDevicePtr();
 
 	//initialize gpu variables
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, femClothStream);
 
-	CUdeviceptr femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
+	hipDeviceptr_t femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
 
-	CUresult result;
+	hipError_t result;
 
 	// fem cloth first midphase kernel(each output is the index to a bound in one tree and tetrahedron index in other tree)
 	{
-		CUfunction femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_PRIMITIVES);
+		hipFunction_t femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_PRIMITIVES);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -5973,15 +5974,15 @@ void PxgGpuNarrowphaseCore::testSDKFemClothBox(PxgGpuContactManagers& gpuManager
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(femClothMidphaseFirstkernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseGeneratePairsLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(femClothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseGeneratePairsLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numPairs;
 		mCudaContext->memcpyDtoH(&numPairs, gpuMidphasePairsNumOnDevice, sizeof(PxU32));
@@ -5991,15 +5992,15 @@ void PxgGpuNarrowphaseCore::testSDKFemClothBox(PxgGpuContactManagers& gpuManager
 	//contact gen
 	if (1)
 	{
-		CUdeviceptr totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
-		CUdeviceptr prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
+		hipDeviceptr_t totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
+		hipDeviceptr_t prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
 		mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), femClothStream);
 
-		CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+		hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
-		CUdeviceptr pairs = simulationCore->getRigidClothFilters();
+		hipDeviceptr_t pairs = simulationCore->getRigidClothFilters();
 		const PxU32 nbPairs = simulationCore->getNbRigidClothFilters();
-		CUfunction fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_BOX_TRIANGLE_CG);
+		hipFunction_t fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_BOX_TRIANGLE_CG);
 
 		PxgFEMContactWriter writer(femClothCore);
 
@@ -6027,15 +6028,15 @@ void PxgGpuNarrowphaseCore::testSDKFemClothBox(PxgGpuContactManagers& gpuManager
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(fcCollisionKernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_boxTriangleContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(femClothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_boxTriangleContactGenLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numContacts;
 		mCudaContext->memcpyDtoH(&numContacts, totalNumCountsd, sizeof(PxU32));
@@ -6057,8 +6058,8 @@ void PxgGpuNarrowphaseCore::testSDKFemClothBox(PxgGpuContactManagers& gpuManager
 			PxArray<float4> points(numContacts);
 			PxArray<float4> normalPen(numContacts);
 
-			CUdeviceptr contactsd = femClothCore->getRigidContacts().getDevicePtr();
-			CUdeviceptr normalPensd = femClothCore->getRigidNormalPens().getDevicePtr();
+			hipDeviceptr_t contactsd = femClothCore->getRigidContacts().getDevicePtr();
+			hipDeviceptr_t normalPensd = femClothCore->getRigidNormalPens().getDevicePtr();
 
 			mCudaContext->memcpyDtoH(points.begin(), contactsd, sizeof(float4) * numContacts);
 			mCudaContext->memcpyDtoH(normalPen.begin(), normalPensd, sizeof(float4) * numContacts);
@@ -6087,18 +6088,18 @@ void PxgGpuNarrowphaseCore::testSDKFemClothBox(PxgGpuContactManagers& gpuManager
 
 	if (1)
 	{
-		CUdeviceptr totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
-		CUdeviceptr prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
+		hipDeviceptr_t totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
+		hipDeviceptr_t prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
 		mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), femClothStream);
 
-		CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+		hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
-		CUdeviceptr pairs = simulationCore->getRigidClothFilters();
+		hipDeviceptr_t pairs = simulationCore->getRigidClothFilters();
 		const PxU32 nbPairs = simulationCore->getNbRigidClothFilters();
 
 		PxgFEMContactWriter writer(femClothCore);
 
-		CUfunction fcBoxVertCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_BOX_VERTEX_COLLISION);
+		hipFunction_t fcBoxVertCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_BOX_VERTEX_COLLISION);
 		PxCudaKernelParam vertKernelParams[] =
 		{
 			PX_CUDA_KERNEL_PARAM(numTests),
@@ -6121,12 +6122,12 @@ void PxgGpuNarrowphaseCore::testSDKFemClothBox(PxgGpuContactManagers& gpuManager
 
 		//each thread deal with a vert
 		result = mCudaContext->launchKernel(fcBoxVertCollisionKernelFunction, numVertBlocks, 1, 1, numThreadsPerWarp, numWarpPerBlock, 1, 0, femClothStream, vertKernelParams, sizeof(vertKernelParams), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_boxVertexContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(femClothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_boxVertexContactGenLaunch kernel fail!!!\n");
 
 		PxU32 numContacts;
@@ -6171,24 +6172,24 @@ void PxgGpuNarrowphaseCore::testSDKFemClothConvexes(PxgGpuContactManagers& gpuMa
 	PxgCudaPagedLinearAllocator<PxgHeapMemoryAllocator>& stackAlloc = femClothCore->getStackAllocator();
 	stackAlloc.mMutex.lock();
 
-	CUstream femClothStream = femClothCore->getStream();
+	hipStream_t femClothStream = femClothCore->getStream();
 
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(256, stackSizeBytes));
-	CUdeviceptr stackSizeNeededOnDevice = femClothCore->mStackSizeNeededOnDevice.getDevicePtr();
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t stackSizeNeededOnDevice = femClothCore->mStackSizeNeededOnDevice.getDevicePtr();
 
 	// initialize gpu variables
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, femClothStream);
 
-	CUdeviceptr femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
-	CUresult result;
+	hipDeviceptr_t femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
+	hipError_t result;
 
 #if 1 // cloth triangle vs. convex rigid
 
 	{
-		CUfunction femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_PRIMITIVES);
+		hipFunction_t femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_PRIMITIVES);
 		PxCudaKernelParam kernelParams[] =
 		{
 			PX_CUDA_KERNEL_PARAM(numTests),
@@ -6209,15 +6210,15 @@ void PxgGpuNarrowphaseCore::testSDKFemClothConvexes(PxgGpuContactManagers& gpuMa
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(femClothMidphaseFirstkernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseGeneratePairsLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(femClothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseGeneratePairsLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numPairs;
 		mCudaContext->memcpyDtoH(&numPairs, gpuMidphasePairsNumOnDevice, sizeof(PxU32));
@@ -6229,7 +6230,7 @@ void PxgGpuNarrowphaseCore::testSDKFemClothConvexes(PxgGpuContactManagers& gpuMa
 
 			// Dma back the bound
 			PxBounds3 bounds[3];
-			mCudaContext->memcpyDtoH(bounds, (CUdeviceptr)boundsd, sizeof(PxBounds3) * 3);
+			mCudaContext->memcpyDtoH(bounds, (hipDeviceptr_t)boundsd, sizeof(PxBounds3) * 3);
 
 			const PxVec3 min = bounds[1].minimum;
 			const PxVec3 max = bounds[1].maximum;
@@ -6259,18 +6260,18 @@ void PxgGpuNarrowphaseCore::testSDKFemClothConvexes(PxgGpuContactManagers& gpuMa
 
 	//! contact gen
 	{
-		CUdeviceptr totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
-		CUdeviceptr prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
+		hipDeviceptr_t totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
+		hipDeviceptr_t prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
 		mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), femClothStream);
 
-		CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+		hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
-		CUdeviceptr pairs = simulationCore->getRigidClothFilters();
+		hipDeviceptr_t pairs = simulationCore->getRigidClothFilters();
 		const PxU32 nbPairs = simulationCore->getNbRigidClothFilters();
 
 		PxgFEMContactWriter writer(femClothCore);
 
-		CUfunction fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_CONVEX_CG);
+		hipFunction_t fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_CONVEX_CG);
 		PxCudaKernelParam kernelParams[] =
 		{
 			PX_CUDA_KERNEL_PARAM(toleranceLength),
@@ -6295,23 +6296,23 @@ void PxgGpuNarrowphaseCore::testSDKFemClothConvexes(PxgGpuContactManagers& gpuMa
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(fcCollisionKernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_convexContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(femClothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_convexContactGenLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numContacts;
 		mCudaContext->memcpyDtoH(&numContacts, totalNumCountsd, sizeof(PxU32));
 
 		if (numContacts)
 		{
-			CUdeviceptr contactsd = femClothCore->getRigidContacts().getDevicePtr();
-			CUdeviceptr normalPensd = femClothCore->getRigidNormalPens().getDevicePtr();
+			hipDeviceptr_t contactsd = femClothCore->getRigidContacts().getDevicePtr();
+			hipDeviceptr_t normalPensd = femClothCore->getRigidNormalPens().getDevicePtr();
 
 			drawContacts(*renderOutput, contactsd, normalPensd, numContacts);
 		}
@@ -6325,7 +6326,7 @@ void PxgGpuNarrowphaseCore::testSDKFemClothConvexes(PxgGpuContactManagers& gpuMa
 	{
 		mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, femClothStream);
 
-		CUfunction femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_VERTEX_PRIMS);
+		hipFunction_t femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_VERTEX_PRIMS);
 		PxCudaKernelParam kernelParams[] =
 		{
 			PX_CUDA_KERNEL_PARAM(numTests),
@@ -6345,15 +6346,15 @@ void PxgGpuNarrowphaseCore::testSDKFemClothConvexes(PxgGpuContactManagers& gpuMa
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(femClothMidphaseFirstkernelFunction, numBlocks, numTests, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseGenerateVertexPairsLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(femClothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseGeneratePairsLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		PxU32 numPairs;
 		mCudaContext->memcpyDtoH(&numPairs, gpuMidphasePairsNumOnDevice, sizeof(PxU32));
@@ -6369,7 +6370,7 @@ void PxgGpuNarrowphaseCore::testSDKFemClothConvexes(PxgGpuContactManagers& gpuMa
 
 			//Dma back the bound
 			PxBounds3 bounds[3];
-			mCudaContext->memcpyDtoH(bounds, (CUdeviceptr)boundsd, sizeof(PxBounds3) * 3);
+			mCudaContext->memcpyDtoH(bounds, (hipDeviceptr_t)boundsd, sizeof(PxBounds3) * 3);
 
 			const PxVec3 min = bounds[1].minimum;
 			const PxVec3 max = bounds[1].maximum;
@@ -6411,18 +6412,18 @@ void PxgGpuNarrowphaseCore::testSDKFemClothConvexes(PxgGpuContactManagers& gpuMa
 	
 	//! contact gen		
 	{
-		CUdeviceptr totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
-		CUdeviceptr prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
+		hipDeviceptr_t totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
+		hipDeviceptr_t prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
 		mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), femClothStream);
 
-		CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+		hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
-		CUdeviceptr pairs = simulationCore->getRigidClothFilters();
+		hipDeviceptr_t pairs = simulationCore->getRigidClothFilters();
 		const PxU32 nbPairs = simulationCore->getNbRigidClothFilters();
 
 		PxgFEMContactWriter writer(femClothCore);
 
-		CUfunction fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_CONVEX_VERTEX_COLLISION);
+		hipFunction_t fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_CONVEX_VERTEX_COLLISION);
 		PxCudaKernelParam kernelParams[] =
 		{
 			PX_CUDA_KERNEL_PARAM(toleranceLength),
@@ -6447,15 +6448,15 @@ void PxgGpuNarrowphaseCore::testSDKFemClothConvexes(PxgGpuContactManagers& gpuMa
 		//each warp deal with one test. 
 		result = mCudaContext->launchKernel(fcCollisionKernelFunction, numBlocks, 1, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_convexVertexContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(femClothStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_convexVertexContactGenLaunch kernel fail!!!\n");
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		/*PxU32 numContacts;
 		mCudaContext->memcpyDtoH(&numContacts, totalNumCountsd, sizeof(PxU32));
@@ -6499,23 +6500,23 @@ void PxgGpuNarrowphaseCore::testSDKFemClothSdfTrimesh(PxgGpuContactManagers& gpu
 
 	PxgSimulationCore* simulationCore = mNphaseImplContext->getSimulationCore();
 	PxgFEMClothCore* femClothCore = mGpuContext->mGpuFEMClothCore;	
-	CUstream femClothStream = femClothCore->getStream();
+	hipStream_t femClothStream = femClothCore->getStream();
 
-	CUdeviceptr femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
+	hipDeviceptr_t femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
 
-	CUdeviceptr totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
-	CUdeviceptr prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
+	hipDeviceptr_t totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
+	hipDeviceptr_t prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
 
 	mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), femClothStream);
 
-	CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+	hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 
-	CUdeviceptr pairs = simulationCore->getRigidClothFilters();
+	hipDeviceptr_t pairs = simulationCore->getRigidClothFilters();
 	const PxU32 nbPairs = simulationCore->getNbRigidClothFilters();
 
 	PxgFEMContactWriter writer(femClothCore);
 
-	CUfunction fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_SDF_MESH_CG);
+	hipFunction_t fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_SDF_MESH_CG);
 	PxCudaKernelParam kernelParams[] =
 	{
 		PX_CUDA_KERNEL_PARAM(numTests),
@@ -6538,7 +6539,7 @@ void PxgGpuNarrowphaseCore::testSDKFemClothSdfTrimesh(PxgGpuContactManagers& gpu
 	//each warp deal with one test. 
 	PxCUresult result = mCudaContext->launchKernel(fcCollisionKernelFunction, numBlocks, 1, 1, 1024, 1, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-	if (result != CUDA_SUCCESS)
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_sdfMeshContactGenLaunch fail to launch kernel!!\n");	
 }
 
@@ -6568,26 +6569,26 @@ void PxgGpuNarrowphaseCore::testSDKFemClothTrimesh(PxgGpuContactManagers& gpuMan
 	PxgCudaPagedLinearAllocator<PxgHeapMemoryAllocator>& stackAlloc = femClothCore->getStackAllocator();
 	stackAlloc.mMutex.lock();
 
-	CUstream femClothStream = femClothCore->getStream();
+	hipStream_t femClothStream = femClothCore->getStream();
 
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 
 	const PxU32 stackSizeBytes = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(256, stackSizeBytes));
-	CUdeviceptr stackSizeNeededOnDevice = femClothCore->mStackSizeNeededOnDevice.getDevicePtr();
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(256, stackSizeBytes));
+	hipDeviceptr_t stackSizeNeededOnDevice = femClothCore->mStackSizeNeededOnDevice.getDevicePtr();
 
 	//initialize gpu variables
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, femClothStream);
 
-	CUdeviceptr femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
+	hipDeviceptr_t femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
 
-	CUresult result;
+	hipError_t result;
 
 	// fem cloth first midphase kernel(each output is the index to a bound in one tree and tetrahedron index in other tree)
 	if (1)
 	{
 		{
-			CUfunction femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MESH_MIDPHASE);
+			hipFunction_t femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MESH_MIDPHASE);
 			PxCudaKernelParam kernelParams[] =
 			{
 				PX_CUDA_KERNEL_PARAM(toleranceLength),
@@ -6607,15 +6608,15 @@ void PxgGpuNarrowphaseCore::testSDKFemClothTrimesh(PxgGpuContactManagers& gpuMan
 			//each warp deal with one test. 
 			result = mCudaContext->launchKernel(femClothMidphaseFirstkernelFunction, numBlocks, numTests, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_meshMidphaseGeneratePairsLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 			result = mCudaContext->streamSynchronize(femClothStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseGeneratePairsLaunch kernel fail!!!\n");
 
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			PxU32 numPairs;
 			mCudaContext->memcpyDtoH(&numPairs, gpuMidphasePairsNumOnDevice, sizeof(PxU32));
@@ -6631,7 +6632,7 @@ void PxgGpuNarrowphaseCore::testSDKFemClothTrimesh(PxgGpuContactManagers& gpuMan
 
 				//Dma back the bound
 				PxBounds3 bounds[3];
-				mCudaContext->memcpyDtoH(bounds, (CUdeviceptr)boundsd, sizeof(PxBounds3) * 3);
+				mCudaContext->memcpyDtoH(bounds, (hipDeviceptr_t)boundsd, sizeof(PxBounds3) * 3);
 
 				const PxVec3 min = bounds[1].minimum;
 				const PxVec3 max = bounds[1].maximum;
@@ -6665,19 +6666,19 @@ void PxgGpuNarrowphaseCore::testSDKFemClothTrimesh(PxgGpuContactManagers& gpuMan
 		//contact gen
 		if (1)
 		{
-			CUdeviceptr totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
-			CUdeviceptr prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
+			hipDeviceptr_t totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
+			hipDeviceptr_t prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
 
 			mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), femClothStream);
 
-			CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+			hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 			
-			CUdeviceptr pairs = simulationCore->getRigidClothFilters();
+			hipDeviceptr_t pairs = simulationCore->getRigidClothFilters();
 			const PxU32 nbPairs = simulationCore->getNbRigidClothFilters();
 
 			PxgFEMContactWriter writer(femClothCore);
 
-			CUfunction fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MESH_CG);
+			hipFunction_t fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MESH_CG);
 			PxCudaKernelParam kernelParams[] =
 			{
 				PX_CUDA_KERNEL_PARAM(toleranceLength),
@@ -6702,15 +6703,15 @@ void PxgGpuNarrowphaseCore::testSDKFemClothTrimesh(PxgGpuContactManagers& gpuMan
 			PxU32 numBlocks = 2048;
 			result = mCudaContext->launchKernel(fcCollisionKernelFunction, numBlocks, 1, 1, 128, 1, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_meshContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 			result = mCudaContext->streamSynchronize(femClothStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_meshContactGenLaunch kernel fail!!!\n");
 
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			/*PxU32 numContacts;
 			mCudaContext->memcpyDtoH(&numContacts, totalNumCountsd, sizeof(PxU32));
@@ -6732,7 +6733,7 @@ void PxgGpuNarrowphaseCore::testSDKFemClothTrimesh(PxgGpuContactManagers& gpuMan
 
 		//vertex collision
 		{
-			CUfunction femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_VERTEX_MESH);
+			hipFunction_t femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_VERTEX_MESH);
 			PxCudaKernelParam kernelParams[] =
 			{
 				PX_CUDA_KERNEL_PARAM(numTests),
@@ -6753,15 +6754,15 @@ void PxgGpuNarrowphaseCore::testSDKFemClothTrimesh(PxgGpuContactManagers& gpuMan
 			//each warp deal with one test. 
 			result = mCudaContext->launchKernel(femClothMidphaseFirstkernelFunction, numBlocks, numTests, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseVertexMeshLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 			result = mCudaContext->streamSynchronize(femClothStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseVertexMeshLaunch kernel fail!!!\n");
 
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			PxU32 numPairs;
 			mCudaContext->memcpyDtoH(&numPairs, gpuMidphasePairsNumOnDevice, sizeof(PxU32));
@@ -6777,7 +6778,7 @@ void PxgGpuNarrowphaseCore::testSDKFemClothTrimesh(PxgGpuContactManagers& gpuMan
 
 				//Dma back the bound
 				PxBounds3 bounds[3];
-				mCudaContext->memcpyDtoH(bounds, (CUdeviceptr)boundsd, sizeof(PxBounds3) * 3);
+				mCudaContext->memcpyDtoH(bounds, (hipDeviceptr_t)boundsd, sizeof(PxBounds3) * 3);
 
 				const PxVec3 min = bounds[1].minimum;
 				const PxVec3 max = bounds[1].maximum;
@@ -6810,16 +6811,16 @@ void PxgGpuNarrowphaseCore::testSDKFemClothTrimesh(PxgGpuContactManagers& gpuMan
 
 		//contact gen
 		{
-			CUdeviceptr totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
-			CUdeviceptr prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
+			hipDeviceptr_t totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
+			hipDeviceptr_t prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
 
 			mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), femClothStream);
 
-			CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+			hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 			
 			PxgFEMContactWriter writer(femClothCore);
 
-			CUfunction fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MESH_VERTEX_CG);
+			hipFunction_t fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MESH_VERTEX_CG);
 			PxCudaKernelParam kernelParams[] =
 			{
 				PX_CUDA_KERNEL_PARAM(toleranceLength),
@@ -6842,15 +6843,15 @@ void PxgGpuNarrowphaseCore::testSDKFemClothTrimesh(PxgGpuContactManagers& gpuMan
 			//each thread deal with one test. 
 			result = mCudaContext->launchKernel(fcCollisionKernelFunction, numBlocks, 1, 1, 256, 1, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_meshVertexContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 			result = mCudaContext->streamSynchronize(femClothStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_meshVertexContactGenLaunch kernel fail!!!\n");
 
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			femClothCore->drawContacts(*renderOutput);
 
@@ -6859,8 +6860,8 @@ void PxgGpuNarrowphaseCore::testSDKFemClothTrimesh(PxgGpuContactManagers& gpuMan
 
 			if (numContacts > 0)
 			{
-				CUdeviceptr contactsd = femClothCore->getRigidContacts().getDevicePtr();
-				CUdeviceptr normalPensd = femClothCore->getRigidNormalPens().getDevicePtr();
+				hipDeviceptr_t contactsd = femClothCore->getRigidContacts().getDevicePtr();
+				hipDeviceptr_t normalPensd = femClothCore->getRigidNormalPens().getDevicePtr();
 
 				drawContacts(*renderOutput, contactsd, normalPensd, numContacts);
 			}
@@ -6897,27 +6898,27 @@ void PxgGpuNarrowphaseCore::testSDKFemClothHeightfield(PxgGpuContactManagers& gp
 	PxgCudaPagedLinearAllocator<PxgHeapMemoryAllocator>& stackAlloc = femClothCore->getStackAllocator();
 	stackAlloc.mMutex.lock();
 
-	CUstream femClothStream = femClothCore->getStream();
+	hipStream_t femClothStream = femClothCore->getStream();
 
-	CUdeviceptr gpuMidphasePairsNumOnDevice = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
+	hipDeviceptr_t gpuMidphasePairsNumOnDevice = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(sizeof(PxU32), sizeof(PxU32)));
 
 	const PxU32 stackSize = mCollisionStackSizeBytes;
-	CUdeviceptr gpuIntermStack = reinterpret_cast<CUdeviceptr>(stackAlloc.allocateAligned(256, stackSize));
-	CUdeviceptr stackSizeNeededOnDevice = femClothCore->mStackSizeNeededOnDevice.getDevicePtr();
+	hipDeviceptr_t gpuIntermStack = reinterpret_cast<hipDeviceptr_t>(stackAlloc.allocateAligned(256, stackSize));
+	hipDeviceptr_t stackSizeNeededOnDevice = femClothCore->mStackSizeNeededOnDevice.getDevicePtr();
 
 	//initialize gpu variables
 	mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, femClothStream);
 
-	CUdeviceptr femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
+	hipDeviceptr_t femClothesd = simulationCore->getFEMClothBuffer().getDevicePtr();
 
 
-	CUresult result;
+	hipError_t result;
 
 	if (1)
 	{
 		// fem cloth first midphase kernel(each output is the index to a bound in one tree and tetrahedron index in other tree)
 		{
-			CUfunction femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_HF_MIDPHASE);
+			hipFunction_t femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_HF_MIDPHASE);
 			PxCudaKernelParam kernelParams[] =
 			{
 				PX_CUDA_KERNEL_PARAM(numTests),
@@ -6937,16 +6938,16 @@ void PxgGpuNarrowphaseCore::testSDKFemClothHeightfield(PxgGpuContactManagers& gp
 			//each warp deal with one test. 
 			result = mCudaContext->launchKernel(femClothMidphaseFirstkernelFunction, numBlocks, numTests, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_heightfieldMidphaseGeneratePairsLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 			result = mCudaContext->streamSynchronize(femClothStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_heightfieldMidphaseGeneratePairsLaunch kernel fail!!!\n");
 
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			PxU32 numPairs;
 			mCudaContext->memcpyDtoH(&numPairs, gpuMidphasePairsNumOnDevice, sizeof(PxU32));
@@ -6962,7 +6963,7 @@ void PxgGpuNarrowphaseCore::testSDKFemClothHeightfield(PxgGpuContactManagers& gp
 
 				//Dma back the bound
 				PxBounds3 bounds[3];
-				mCudaContext->memcpyDtoH(bounds, (CUdeviceptr)boundsd, sizeof(PxBounds3) * 3);
+				mCudaContext->memcpyDtoH(bounds, (hipDeviceptr_t)boundsd, sizeof(PxBounds3) * 3);
 
 				const PxVec3 min = bounds[1].minimum;
 				const PxVec3 max = bounds[1].maximum;
@@ -7004,16 +7005,16 @@ void PxgGpuNarrowphaseCore::testSDKFemClothHeightfield(PxgGpuContactManagers& gp
 
 		//contact gen
 		{
-			CUdeviceptr totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
-			CUdeviceptr prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
+			hipDeviceptr_t totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
+			hipDeviceptr_t prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
 
 			mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), femClothStream);
 
-			CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+			hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 			
 			PxgFEMContactWriter writer(femClothCore);
 
-			CUfunction fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_HF_CG);
+			hipFunction_t fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_HF_CG);
 			PxCudaKernelParam kernelParams[] =
 			{
 				PX_CUDA_KERNEL_PARAM(toleranceLength),
@@ -7034,24 +7035,24 @@ void PxgGpuNarrowphaseCore::testSDKFemClothHeightfield(PxgGpuContactManagers& gp
 			PxU32 numBlocks = 2048; 
 			result = mCudaContext->launchKernel(fcCollisionKernelFunction, numBlocks, 1, 1, 128, 1, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_heightfieldContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 			result = mCudaContext->streamSynchronize(femClothStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_heightfieldContactGenLaunch kernel fail!!!\n");
 
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			PxU32 numContacts;
 			mCudaContext->memcpyDtoH(&numContacts, totalNumCountsd, sizeof(PxU32));
 
 			if (0)
 			{
-				CUdeviceptr contactsd = femClothCore->getRigidContacts().getDevicePtr();
-				CUdeviceptr normalPensd = femClothCore->getRigidNormalPens().getDevicePtr();
+				hipDeviceptr_t contactsd = femClothCore->getRigidContacts().getDevicePtr();
+				hipDeviceptr_t normalPensd = femClothCore->getRigidNormalPens().getDevicePtr();
 
 				drawContacts(*renderOutput, contactsd, normalPensd, numContacts);
 			}
@@ -7068,7 +7069,7 @@ void PxgGpuNarrowphaseCore::testSDKFemClothHeightfield(PxgGpuContactManagers& gp
 			//initialize gpu variables
 			mCudaContext->memsetD32Async(gpuMidphasePairsNumOnDevice, 0, 1, femClothStream);
 
-			CUfunction femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_VERTEX_HF);
+			hipFunction_t femClothMidphaseFirstkernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_MIDPHASE_VERTEX_HF);
 			PxCudaKernelParam kernelParams[] =
 			{
 				PX_CUDA_KERNEL_PARAM(numTests),
@@ -7088,16 +7089,16 @@ void PxgGpuNarrowphaseCore::testSDKFemClothHeightfield(PxgGpuContactManagers& gp
 			//each warp deal with one test. 
 			result = mCudaContext->launchKernel(femClothMidphaseFirstkernelFunction, numBlocks, numTests, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseVertexHeightfieldLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 			result = mCudaContext->streamSynchronize(femClothStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_midphaseGeneratePairsLaunch kernel fail!!!\n");
 
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			PxU32 numPairs;
 			mCudaContext->memcpyDtoH(&numPairs, gpuMidphasePairsNumOnDevice, sizeof(PxU32));
@@ -7113,7 +7114,7 @@ void PxgGpuNarrowphaseCore::testSDKFemClothHeightfield(PxgGpuContactManagers& gp
 
 				//Dma back the bound
 				PxBounds3 bounds[3];
-				mCudaContext->memcpyDtoH(bounds, (CUdeviceptr)boundsd, sizeof(PxBounds3) * 3);
+				mCudaContext->memcpyDtoH(bounds, (hipDeviceptr_t)boundsd, sizeof(PxBounds3) * 3);
 
 				const PxVec3 min = bounds[1].minimum;
 				const PxVec3 max = bounds[1].maximum;
@@ -7155,16 +7156,16 @@ void PxgGpuNarrowphaseCore::testSDKFemClothHeightfield(PxgGpuContactManagers& gp
 
 		//contact gen
 		{
-			CUdeviceptr totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
-			CUdeviceptr prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
+			hipDeviceptr_t totalNumCountsd = femClothCore->getRigidContactCount().getDevicePtr();
+			hipDeviceptr_t prevNumCountsd = femClothCore->getPrevRigidContactCount().getDevicePtr();
 
 			mCudaContext->memcpyDtoDAsync(prevNumCountsd, totalNumCountsd, sizeof(PxU32), femClothStream);
 
-			CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+			hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
 			
 			PxgFEMContactWriter writer(femClothCore);
 
-			CUfunction fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_HF_VERTEX_CG);
+			hipFunction_t fcCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLOTH_HF_VERTEX_CG);
 			PxCudaKernelParam kernelParams[] =
 			{
 				PX_CUDA_KERNEL_PARAM(toleranceLength),
@@ -7186,16 +7187,16 @@ void PxgGpuNarrowphaseCore::testSDKFemClothHeightfield(PxgGpuContactManagers& gp
 			//each thread deal with one test. 
 			result = mCudaContext->launchKernel(fcCollisionKernelFunction, numBlocks, 1, 1, 256, 1, 1, 0, femClothStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_heightfieldVertexContactGenLaunch fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 
 			result = mCudaContext->streamSynchronize(femClothStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU cloth_heightfieldVertexContactGenLaunch kernel fail!!!\n");
 
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 
 			PxU32 numContacts;
 			mCudaContext->memcpyDtoH(&numContacts, totalNumCountsd, sizeof(PxU32));
@@ -7204,8 +7205,8 @@ void PxgGpuNarrowphaseCore::testSDKFemClothHeightfield(PxgGpuContactManagers& gp
 
 			if (numContacts > 0)
 			{
-				CUdeviceptr contactsd = femClothCore->getRigidContacts().getDevicePtr();
-				CUdeviceptr normalPensd = femClothCore->getRigidNormalPens().getDevicePtr();
+				hipDeviceptr_t contactsd = femClothCore->getRigidContacts().getDevicePtr();
+				hipDeviceptr_t normalPensd = femClothCore->getRigidNormalPens().getDevicePtr();
 
 				drawContacts(*renderOutput, contactsd, normalPensd, numContacts);
 			}
@@ -7226,9 +7227,9 @@ void PxgGpuNarrowphaseCore::updateFrictionPatches(PxgGpuContactManagers& gpuMana
 
 	PxsContactManagerOutput* cmOutputs = reinterpret_cast<PxsContactManagerOutput*>(gpuManagers.mContactManagerOutputData.getDevicePtr());
 
-	CUresult result;
+	hipError_t result;
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::UPDATE_FRICTION_PATCHES);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::UPDATE_FRICTION_PATCHES);
 
 		PxCudaKernelParam kernelParams_stage[] =
 		{
@@ -7242,12 +7243,12 @@ void PxgGpuNarrowphaseCore::updateFrictionPatches(PxgGpuContactManagers& gpuMana
 		const PxU32 numBlocks = (count + (numThreadsPerBlock - 1)) / numThreadsPerBlock;
 		//Each thread updates one cm
 		result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams_stage, sizeof(kernelParams_stage), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU updateFrictionPatches fail to launch kernel!!\n", result);
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU updateFrictionPatches fail to launch kernel!!!\n", result);
 #endif
 	}
@@ -7326,7 +7327,7 @@ PxU32 PxgGpuNarrowphaseCore::getHeightfieldIdxByHostPtr(const HeightFieldData* h
 
 void PxgGpuNarrowphaseCore::uploadDataChunksToGpu()
 {
-	CUstream stream = mStream;
+	hipStream_t stream = mStream;
 	mGeometryManager.scheduleCopyHtoD(mCopyMan, *mCudaContext, stream);
 	mGpuShapesManager.scheduleCopyHtoD(mCopyMan, mCudaContext, stream);
 	mGpuMaterialManager.scheduleCopyHtoD(mCopyMan, mCudaContext, stream, sizeof(PxsMaterialData));
@@ -7349,7 +7350,7 @@ void PxgGpuNarrowphaseCore::uploadDataChunksToGpuBp()
 {
 	if(mGpuContext->mGpuBp)
 	{
-		CUstream stream = mGpuContext->mGpuBp->getBpStream();
+		hipStream_t stream = mGpuContext->mGpuBp->getBpStream();
 		mGpuPBDMaterialManager.scheduleCopyHtoD(mCopyManBp, mCudaContext, stream, sizeof(PxsPBDMaterialData));
 		mCopyManBp.dispatchCopy(stream, mCudaContextManager, mGpuKernelWranglerManager->getKernelWrangler());
 	}
@@ -8023,16 +8024,16 @@ void PxgGpuNarrowphaseCore::createGpuStreamsAndEvents()
 	PxScopedCudaLock lock(*mCudaContextManager);
 
 	int leastPriority, mostPriority;
-	cuCtxGetStreamPriorityRange(&leastPriority, &mostPriority);
+	hipDeviceGetStreamPriorityRange(&leastPriority, &mostPriority);
 
 	//KS - choose midpoint between least/most priority. On Volta/Turing, there are 3 priorities, so this will pick the middle priority.
 	//On devices with only 2 priorities, this will choose the lowest priority.
-	mCudaContext->streamCreateWithPriority(&mStream, CU_STREAM_NON_BLOCKING, (leastPriority+mostPriority)/2);
+	mCudaContext->streamCreateWithPriority(&mStream, hipStreamNonBlocking, (leastPriority+mostPriority)/2);
 
-	mCudaContext->eventCreate(&mParticleEvent, CU_EVENT_DISABLE_TIMING);
-	mCudaContext->eventCreate(&mSoftbodyEvent, CU_EVENT_DISABLE_TIMING);
-	mCudaContext->eventCreate(&mFemClothEvent, CU_EVENT_DISABLE_TIMING);
-	mCudaContext->eventCreate(&mDirectApiDmaEvent, CU_EVENT_DISABLE_TIMING);
+	mCudaContext->eventCreate(&mParticleEvent, hipEventDisableTiming);
+	mCudaContext->eventCreate(&mSoftbodyEvent, hipEventDisableTiming);
+	mCudaContext->eventCreate(&mFemClothEvent, hipEventDisableTiming);
+	mCudaContext->eventCreate(&mDirectApiDmaEvent, hipEventDisableTiming);
 }
 
 void PxgGpuNarrowphaseCore::releaseGpuStreamsAndEvents()
@@ -8137,7 +8138,7 @@ void PxgGpuNarrowphaseCore::appendContactManagersGpu(PxU32 nbExistingManagers, P
 			nbNewManagers * sizeof(PxsTorsionalFrictionData), mSolverStream);
 	}
 
-	//cuStreamSynchronize(mSolverStream);
+	//hipStreamSynchronize(mSolverStream);
 }
 
 void PxgGpuNarrowphaseCore::preallocateNewBuffers(PxU32 nbNewPairs)
@@ -8187,9 +8188,9 @@ void PxgGpuNarrowphaseCore::prepareTempContactManagers(PxgGpuContactManagers& gp
 	mCudaContext->memcpyHtoDAsync(gpuManagers.mRestDistances.getDevicePtr(), itR.begin(), sizeof(PxReal) * nbNewManagers, mStream);
 	mCudaContext->memcpyHtoDAsync(gpuManagers.mTorsionalProperties.getDevicePtr(), itTor.begin(), sizeof(PxsTorsionalFrictionData) * nbNewManagers, mStream);
 
-	CUfunction initializeManifolds = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::INITIALIZE_MANIFOLDS);
+	hipFunction_t initializeManifolds = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::INITIALIZE_MANIFOLDS);
 
-	CUdeviceptr devicePtr = gpuManagers.mPersistentContactManifolds.getDevicePtr();
+	hipDeviceptr_t devicePtr = gpuManagers.mPersistentContactManifolds.getDevicePtr();
 	//void* mappedPtr = getMappedDevicePtr(emptyManifold);
 	PxU32 size = sizeof(Manifold);
 
@@ -8201,9 +8202,9 @@ void PxgGpuNarrowphaseCore::prepareTempContactManagers(PxgGpuContactManagers& gp
 		PX_CUDA_KERNEL_PARAM(nbNewManagers)
 	};
 
-	CUresult result = mCudaContext->launchKernel(initializeManifolds, PxgNarrowPhaseGridDims::INITIALIZE_MANIFOLDS, 1, 1, PxgNarrowPhaseBlockDims::INITIALIZE_MANIFOLDS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+	hipError_t result = mCudaContext->launchKernel(initializeManifolds, PxgNarrowPhaseGridDims::INITIALIZE_MANIFOLDS, 1, 1, PxgNarrowPhaseBlockDims::INITIALIZE_MANIFOLDS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	PX_UNUSED(result);
 }
@@ -8504,7 +8505,7 @@ void PxgGpuNarrowphaseCore::removeLostPairs()
 }
 
 template <typename ManagementData, typename Manifold>
-void PxgGpuNarrowphaseCore::removeLostPairsGpuInternal(ManagementData& cpuBuffer, CUdeviceptr gpuBuffer,
+void PxgGpuNarrowphaseCore::removeLostPairsGpuInternal(ManagementData& cpuBuffer, hipDeviceptr_t gpuBuffer,
 	PxgContactManagers& contactManagers, PxgGpuContactManagers& gpuContactManagers, PxInt32ArrayPinned& removedIndices, PxgGpuPairManagementBuffers& pairManagementBuffers,
 	PxU16 stage5KernelID, const bool copyManifold)
 {
@@ -8529,11 +8530,11 @@ void PxgGpuNarrowphaseCore::removeLostPairsGpuInternal(ManagementData& cpuBuffer
 
 		mCudaContext->memcpyHtoDAsync(pairManagementBuffers.mRemovedIndicesArray.getDevicePtr(), removedIndices.begin(), removedIndices.size()*sizeof(PxU32), mStream);
 
-		CUfunction remove1 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::REMOVE_CONTACT_MANAGERS_1);
-		CUfunction remove2 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::REMOVE_CONTACT_MANAGERS_2);
-		CUfunction remove3 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::REMOVE_CONTACT_MANAGERS_3);
-		CUfunction remove4 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::REMOVE_CONTACT_MANAGERS_4);
-		CUfunction remove5 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(stage5KernelID);
+		hipFunction_t remove1 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::REMOVE_CONTACT_MANAGERS_1);
+		hipFunction_t remove2 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::REMOVE_CONTACT_MANAGERS_2);
+		hipFunction_t remove3 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::REMOVE_CONTACT_MANAGERS_3);
+		hipFunction_t remove4 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::REMOVE_CONTACT_MANAGERS_4);
+		hipFunction_t remove5 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(stage5KernelID);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -8541,31 +8542,31 @@ void PxgGpuNarrowphaseCore::removeLostPairsGpuInternal(ManagementData& cpuBuffer
 			PX_CUDA_KERNEL_PARAM(copyManifold)
 		};
 
-		CUresult result = mCudaContext->launchKernel(remove1, PxgNarrowPhaseGridDims::REMOVE_CONTACT_MANAGERS, 1, 1, WARP_SIZE, PxgNarrowPhaseBlockDims::REMOVE_CONTACT_MANAGERS / WARP_SIZE, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		hipError_t result = mCudaContext->launchKernel(remove1, PxgNarrowPhaseGridDims::REMOVE_CONTACT_MANAGERS, 1, 1, WARP_SIZE, PxgNarrowPhaseBlockDims::REMOVE_CONTACT_MANAGERS / WARP_SIZE, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 		result = mCudaContext->launchKernel(remove2, PxgNarrowPhaseGridDims::REMOVE_CONTACT_MANAGERS, 1, 1, WARP_SIZE, PxgNarrowPhaseBlockDims::REMOVE_CONTACT_MANAGERS / WARP_SIZE, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
 		//result = mCudaContext->streamSynchronize(mStream);
 		PX_UNUSED(result);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		result = mCudaContext->launchKernel(remove3, PxgNarrowPhaseGridDims::REMOVE_CONTACT_MANAGERS, 1, 1, WARP_SIZE, PxgNarrowPhaseBlockDims::REMOVE_CONTACT_MANAGERS / WARP_SIZE, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 		
 		//result = mCudaContext->streamSynchronize(mStream);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		result = mCudaContext->launchKernel(remove4, PxgNarrowPhaseGridDims::REMOVE_CONTACT_MANAGERS, 1, 1, WARP_SIZE, PxgNarrowPhaseBlockDims::REMOVE_CONTACT_MANAGERS / WARP_SIZE, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
 		//result = mCudaContext->streamSynchronize(mStream);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 		result = mCudaContext->launchKernel(remove5, PxgNarrowPhaseGridDims::REMOVE_CONTACT_MANAGERS, 1, 1, WARP_SIZE, PxgNarrowPhaseBlockDims::REMOVE_CONTACT_MANAGERS / WARP_SIZE, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 #if GPU_NP_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"GPU removeContactManagers fail to launch kernel stage 1!!!\n");
 #endif
 	}
@@ -8658,10 +8659,10 @@ void PxgGpuNarrowphaseCore::computeRigidsToShapes()
 	mTempGpuRigidIndiceBuf.allocate(numOfKeys * sizeof(PxNodeIndex), PX_FL);
 	mTempGpuShapeIndiceBuf.allocate(numOfKeys * sizeof(PxU32), PX_FL);
 
-	CUdeviceptr rigidIndiced = shapeManager.mGpuRigidIndiceBuffer.getDevicePtr();
-	CUdeviceptr tempRigidIndiced = shapeManager.mGpuTempRigidIndiceBuffer.getDevicePtr();
-	CUdeviceptr tempRigidIndiceBitsd = shapeManager.mGpuTempRigidBitIndiceBuffer.getDevicePtr();
-	CUdeviceptr rankd = shapeManager.mGpuShapeIndiceBuffer.getDevicePtr();
+	hipDeviceptr_t rigidIndiced = shapeManager.mGpuRigidIndiceBuffer.getDevicePtr();
+	hipDeviceptr_t tempRigidIndiced = shapeManager.mGpuTempRigidIndiceBuffer.getDevicePtr();
+	hipDeviceptr_t tempRigidIndiceBitsd = shapeManager.mGpuTempRigidBitIndiceBuffer.getDevicePtr();
+	hipDeviceptr_t rankd = shapeManager.mGpuShapeIndiceBuffer.getDevicePtr();
 
 	// always start with the state from CPU which has all the updates, and the indices are still in the right place.
 	mCudaContext->memcpyDtoDAsync(rigidIndiced, shapeManager.mGpuShapesRemapTableBuffer.getDevicePtr(), sizeof(PxNodeIndex) * totalNumShapes, mStream);
@@ -8673,7 +8674,7 @@ void PxgGpuNarrowphaseCore::computeRigidsToShapes()
 	{
 		const bool lower32Bit = true;
 		//copy the lower 32 bit to the temp contact rigid index buffer
-		CUfunction copyFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_COPY_BITS2);
+		hipFunction_t copyFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_COPY_BITS2);
 
 		PxCudaKernelParam copyKernelParams[] =
 		{
@@ -8687,23 +8688,23 @@ void PxgGpuNarrowphaseCore::computeRigidsToShapes()
 		const PxU32 numThreadsPerBlock = 256;
 		const PxU32 numBlocks = (totalNumShapes + numThreadsPerBlock - 1) / numThreadsPerBlock;
 
-		CUresult resultR = mCudaContext->launchKernel(copyFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, copyKernelParams, sizeof(copyKernelParams), 0, PX_FL);
-		if (resultR != CUDA_SUCCESS)
+		hipError_t resultR = mCudaContext->launchKernel(copyFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, copyKernelParams, sizeof(copyKernelParams), 0, PX_FL);
+		if (resultR != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radixSortCopyBits2 fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		resultR = mCudaContext->streamSynchronize(mStream);
-		if (resultR != CUDA_SUCCESS)
+		if (resultR != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radixSortCopyBits2 fail!!\n");
 #endif
 		}
 
 	//update radix sort desc(keys are the value we want to sort)
-	CUdeviceptr inputKeyd = tempRigidIndiceBitsd;
-	CUdeviceptr inputRankd = rankd;
-	CUdeviceptr outputKeyd = mTempGpuRigidIndiceBuf.getDevicePtr();
-	CUdeviceptr outputRankd = mTempGpuShapeIndiceBuf.getDevicePtr();
-	CUdeviceptr radixCountd = mRadixCountTotalBuf.getDevicePtr();
+	hipDeviceptr_t inputKeyd = tempRigidIndiceBitsd;
+	hipDeviceptr_t inputRankd = rankd;
+	hipDeviceptr_t outputKeyd = mTempGpuRigidIndiceBuf.getDevicePtr();
+	hipDeviceptr_t outputRankd = mTempGpuShapeIndiceBuf.getDevicePtr();
+	hipDeviceptr_t radixCountd = mRadixCountTotalBuf.getDevicePtr();
 
 	mRSDesc[0].inputKeys = reinterpret_cast<PxU32*>(inputKeyd);
 	mRSDesc[0].inputRanks = reinterpret_cast<PxU32*>(inputRankd);
@@ -8722,8 +8723,8 @@ void PxgGpuNarrowphaseCore::computeRigidsToShapes()
 	mCudaContext->memcpyHtoDAsync(mRadixSortDescBuf[1].getDevicePtr(), (void*)&mRSDesc[1], sizeof(PxgRadixSortDesc), mStream);
 
 	//run radix sort
-	CUfunction radixFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_MULTIBLOCK_COUNT);
-	CUfunction calculateRanksFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_CALCULATERANKS_MULTIBLOCK_COUNT);
+	hipFunction_t radixFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_MULTIBLOCK_COUNT);
+	hipFunction_t calculateRanksFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_CALCULATERANKS_MULTIBLOCK_COUNT);
 
 	//sort the lower 32 bits
 	{
@@ -8734,7 +8735,7 @@ void PxgGpuNarrowphaseCore::computeRigidsToShapes()
 		{
 			const PxU32 descIndex = i & 1;
 
-			CUdeviceptr rsDesc = mRadixSortDescBuf[descIndex].getDevicePtr();
+			hipDeviceptr_t rsDesc = mRadixSortDescBuf[descIndex].getDevicePtr();
 
 			PxCudaKernelParam radixSortKernelParams[] =
 			{
@@ -8743,20 +8744,20 @@ void PxgGpuNarrowphaseCore::computeRigidsToShapes()
 				PX_CUDA_KERNEL_PARAM(startBit)
 			};
 
-			CUresult  resultR = mCudaContext->launchKernel(radixFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
-			if (resultR != CUDA_SUCCESS)
+			hipError_t  resultR = mCudaContext->launchKernel(radixFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radix sort fail to launch kernel!!\n");
 
 			resultR = mCudaContext->launchKernel(calculateRanksFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
-			if (resultR != CUDA_SUCCESS)
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radix sort fail to launch kernel!!\n");
 
 			startBit += 4;
 		}
 
 #if GPU_NP_DEBUG
-		CUresult result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		hipError_t result = mCudaContext->streamSynchronize(mStream);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radix sort fail!!\n");
 
 	/*	PxArray<PxNodeIndex> rigidIndiceAfter;
@@ -8775,7 +8776,7 @@ void PxgGpuNarrowphaseCore::computeRigidsToShapes()
 	{
 		const bool lower32Bit = false;
 		//copy the higher 32 bit to the team contact rigid index buffer
-		CUfunction copyFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_COPY_BITS2);
+		hipFunction_t copyFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_COPY_BITS2);
 
 		PxCudaKernelParam copyKernelParams[] =
 		{
@@ -8789,13 +8790,13 @@ void PxgGpuNarrowphaseCore::computeRigidsToShapes()
 		const PxU32 numThreadsPerBlock = 256;
 		const PxU32 numBlocks = (totalNumShapes + numThreadsPerBlock - 1) / numThreadsPerBlock;
 
-		CUresult resultR = mCudaContext->launchKernel(copyFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, copyKernelParams, sizeof(copyKernelParams), 0, PX_FL);
-		if (resultR != CUDA_SUCCESS)
+		hipError_t resultR = mCudaContext->launchKernel(copyFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, copyKernelParams, sizeof(copyKernelParams), 0, PX_FL);
+		if (resultR != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radixSortCopyBits2 fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		resultR = mCudaContext->streamSynchronize(mStream);
-		if (resultR != CUDA_SUCCESS)
+		if (resultR != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radixSortCopyBits2 fail!!\n");
 #endif
 	}
@@ -8809,7 +8810,7 @@ void PxgGpuNarrowphaseCore::computeRigidsToShapes()
 		{
 			const PxU32 descIndex = i & 1;
 
-			CUdeviceptr rsDesc = mRadixSortDescBuf[descIndex].getDevicePtr();
+			hipDeviceptr_t rsDesc = mRadixSortDescBuf[descIndex].getDevicePtr();
 
 			PxCudaKernelParam radixSortKernelParams[] =
 			{
@@ -8818,20 +8819,20 @@ void PxgGpuNarrowphaseCore::computeRigidsToShapes()
 				PX_CUDA_KERNEL_PARAM(startBit)
 			};
 
-			CUresult  resultR = mCudaContext->launchKernel(radixFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
-			if (resultR != CUDA_SUCCESS)
+			hipError_t  resultR = mCudaContext->launchKernel(radixFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radix sort fail to launch kernel!!\n");
 
 			resultR = mCudaContext->launchKernel(calculateRanksFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
-			if (resultR != CUDA_SUCCESS)
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radix sort fail to launch kernel!!\n");
 
 			startBit += 4;
 		}
 
 #if GPU_NP_DEBUG
-		CUresult result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		hipError_t result = mCudaContext->streamSynchronize(mStream);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radix sort fail!!\n");
 
 		/*PxArray<PxNodeIndex> rigidIndiceAfter;
@@ -8849,7 +8850,7 @@ void PxgGpuNarrowphaseCore::computeRigidsToShapes()
 
 	{
 		//copy the original rigidId to the sorted buffer based on mContactRemapSortedByRigidBuf
-		CUfunction copyFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_COPY_VALUE2);
+		hipFunction_t copyFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_COPY_VALUE2);
 
 		PxCudaKernelParam copyKernelParams[] =
 		{
@@ -8861,13 +8862,13 @@ void PxgGpuNarrowphaseCore::computeRigidsToShapes()
 
 		const PxU32 numThreadsPerBlock = 256;
 		const PxU32 numBlocks = (totalNumShapes + numThreadsPerBlock - 1) / numThreadsPerBlock;
-		CUresult resultR = mCudaContext->launchKernel(copyFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, copyKernelParams, sizeof(copyKernelParams), 0, PX_FL);
-		if (resultR != CUDA_SUCCESS)
+		hipError_t resultR = mCudaContext->launchKernel(copyFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, copyKernelParams, sizeof(copyKernelParams), 0, PX_FL);
+		if (resultR != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radixSortCopy2 fail to launch kernel!!\n");
 
 #if GPU_NP_DEBUG
 		resultR = mCudaContext->streamSynchronize(mStream);
-		if (resultR != CUDA_SUCCESS)
+		if (resultR != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radixSortCopy2 fail!!\n");
 
 
@@ -8898,16 +8899,16 @@ void PxgGpuNarrowphaseCore::prepareGpuNarrowphase(PxsTransformCache& cache, cons
 	mPatchAndContactCountersReadback->patchesBytes = 0;
 	mPatchAndContactCountersReadback->forceAndIndiceBytes = 0;
 
-	CUresult result = mCudaContext->memsetD8Async(mPatchAndContactCountersOnDevice.getDevicePtr(), 0, 
+	hipError_t result = mCudaContext->memsetD8Async(mPatchAndContactCountersOnDevice.getDevicePtr(), 0, 
 		sizeof(PxgPatchAndContactCounters), mStream);
 
-	if(result != CUDA_SUCCESS)
+	if(result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,"prepareGpuNarrowphase GPU error! code %d \n", result);
 
 	mGpuShapesManager.mHasShapeInstanceChanged = false;
 }
 
-bool PxgGpuNarrowphaseCore::evaluateSDFDistances(PxVec4* PX_RESTRICT localGradientAndSDFConcatenated, const PxShapeGPUIndex* PX_RESTRICT shapeIndices, const PxVec4* PX_RESTRICT localSamplePointsConcatenated, const PxU32* PX_RESTRICT samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, CUevent startEvent, CUevent finishEvent)
+bool PxgGpuNarrowphaseCore::evaluateSDFDistances(PxVec4* PX_RESTRICT localGradientAndSDFConcatenated, const PxShapeGPUIndex* PX_RESTRICT shapeIndices, const PxVec4* PX_RESTRICT localSamplePointsConcatenated, const PxU32* PX_RESTRICT samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, hipEvent_t startEvent, hipEvent_t finishEvent)
 {
 	PxScopedCudaLock lock(*mCudaContextManager);
 	bool success = true;
@@ -8919,7 +8920,7 @@ bool PxgGpuNarrowphaseCore::evaluateSDFDistances(PxVec4* PX_RESTRICT localGradie
 
 	PxgShape* gpuShapes = reinterpret_cast<PxgShape*>(mGpuShapesManager.mGpuShapesBuffer.getDevicePtr());
 
-	CUfunction cuFunc = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::EVALUATE_POINT_DISTANCES_SDF);
+	hipFunction_t cuFunc = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::EVALUATE_POINT_DISTANCES_SDF);
 	PxCudaKernelParam kernelParams[] =
 	{
 		PX_CUDA_KERNEL_PARAM(gpuShapes),
@@ -8932,8 +8933,8 @@ bool PxgGpuNarrowphaseCore::evaluateSDFDistances(PxVec4* PX_RESTRICT localGradie
 
 	const PxU32 numThreadsPerBlock = 1024;
 	const PxU32 numBlocks = (maxPointCount + (numThreadsPerBlock - 1)) / numThreadsPerBlock;
-	CUresult result = mCudaContext->launchKernel(cuFunc, numBlocks, nbElements, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-	if (result != CUDA_SUCCESS)
+	hipError_t result = mCudaContext->launchKernel(cuFunc, numBlocks, nbElements, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+	if (result != hipSuccess)
 	{
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU evaluatePointDistancesSDF fail to launch !!\n");
 		success = false;
@@ -8946,13 +8947,13 @@ bool PxgGpuNarrowphaseCore::evaluateSDFDistances(PxVec4* PX_RESTRICT localGradie
 	else
 	{
 		result = mCudaContext->streamSynchronize(mStream);
-		success = (result == CUDA_SUCCESS);
+		success = (result == hipSuccess);
 	}
 
 	return success;
 }
 
-bool PxgGpuNarrowphaseCore::copyContactData(void* PX_RESTRICT data, PxU32* PX_RESTRICT numContactPairs, const PxU32 maxContactPairs, CUevent startEvent, CUevent finishEvent, PxU8* PX_RESTRICT baseContactPatches, PxU8* PX_RESTRICT baseContactPoints, PxU8* PX_RESTRICT baseContactForces)
+bool PxgGpuNarrowphaseCore::copyContactData(void* PX_RESTRICT data, PxU32* PX_RESTRICT numContactPairs, const PxU32 maxContactPairs, hipEvent_t startEvent, hipEvent_t finishEvent, PxU8* PX_RESTRICT baseContactPatches, PxU8* PX_RESTRICT baseContactPoints, PxU8* PX_RESTRICT baseContactForces)
 {
 	PxScopedCudaLock lock(*mCudaContextManager);
 	
@@ -8965,20 +8966,20 @@ bool PxgGpuNarrowphaseCore::copyContactData(void* PX_RESTRICT data, PxU32* PX_RE
 			mCudaContext->streamWaitEvent(mStream, startEvent);
 		}
 
-		CUdeviceptr numPairsd = reinterpret_cast<CUdeviceptr>(numContactPairs);
+		hipDeviceptr_t numPairsd = reinterpret_cast<hipDeviceptr_t>(numContactPairs);
 		mCudaContext->memsetD32Async(numPairsd, 0, 1, mStream);
 		//in fetchNarrowPhaseResults, we append all the contacts inform into a eConvex's list
-		CUdeviceptr cvxInputDeviceptr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mContactManagerInputData.getDevicePtr();
-		CUdeviceptr cvxDeviceptr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mContactManagerOutputData.getDevicePtr();
-		CUdeviceptr shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
-		CUdeviceptr transformCacheIdToActorTabled = mGpuShapesManager.mGpuTransformCacheIdToActorTableBuffer.getDevicePtr();
+		hipDeviceptr_t cvxInputDeviceptr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mContactManagerInputData.getDevicePtr();
+		hipDeviceptr_t cvxDeviceptr = mGpuContactManagers[GPU_BUCKET_ID::eConvex]->mContactManagers.mContactManagerOutputData.getDevicePtr();
+		hipDeviceptr_t shapeToRigidRemapTabled = mGpuShapesManager.mGpuShapesRemapTableBuffer.getDevicePtr();
+		hipDeviceptr_t transformCacheIdToActorTabled = mGpuShapesManager.mGpuTransformCacheIdToActorTableBuffer.getDevicePtr();
 
 		PxMutex::ScopedLock lock2(mIntermStackAlloc.mMutex);
 
-		CUdeviceptr gpuIntermNumPairs = reinterpret_cast<CUdeviceptr>(mIntermStackAlloc.allocateAligned(256, PxgNarrowPhaseGridDims::COMPRESS_CONTACT * sizeof(PxU32)));
+		hipDeviceptr_t gpuIntermNumPairs = reinterpret_cast<hipDeviceptr_t>(mIntermStackAlloc.allocateAligned(256, PxgNarrowPhaseGridDims::COMPRESS_CONTACT * sizeof(PxU32)));
 		mCudaContext->memsetD32Async(gpuIntermNumPairs, 0, PxgNarrowPhaseGridDims::COMPRESS_CONTACT, mStream);
 
-		CUresult result;
+		hipError_t result;
 
 		{
 			PxCudaKernelParam kernelParams_stage1[] =
@@ -8990,25 +8991,25 @@ bool PxgGpuNarrowphaseCore::copyContactData(void* PX_RESTRICT data, PxU32* PX_RE
 
 			//const PxU32 numWarpsPerBlock = PxgNarrowPhaseBlockDims::COMPRESS_CONTACT / WARP_SIZE;
 
-			CUfunction kernelFunction_stage1 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPRESS_CONTACT_STAGE_1);
+			hipFunction_t kernelFunction_stage1 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPRESS_CONTACT_STAGE_1);
 
 			result = mCudaContext->launchKernel(kernelFunction_stage1, PxgNarrowPhaseGridDims::COMPRESS_CONTACT, 1, 1, PxgNarrowPhaseBlockDims::COMPRESS_CONTACT, 1, 1, 0,
 				mStream, kernelParams_stage1, sizeof(kernelParams_stage1), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU compressContactStage1 fail to launch kernel stage 1!!\n");
 
 #if GPU_NP_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU compressContactStage1 fail to launch kernel stage 1!!!\n");
 #endif
 		}
 
 		{
-			CUdeviceptr gpuContactPatches = reinterpret_cast<CUdeviceptr>(data);
+			hipDeviceptr_t gpuContactPatches = reinterpret_cast<hipDeviceptr_t>(data);
 
-			CUdeviceptr frictionPatches = mGpuContext->mGpuSolverCore->mFrictionPatches.getDevicePtr();
+			hipDeviceptr_t frictionPatches = mGpuContext->mGpuSolverCore->mFrictionPatches.getDevicePtr();
 
 			PxCudaKernelParam kernelParams_stage2[] =
 			{
@@ -9031,17 +9032,17 @@ bool PxgGpuNarrowphaseCore::copyContactData(void* PX_RESTRICT data, PxU32* PX_RE
 
 			};
 
-			CUfunction kernelFunction_stage2 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPRESS_CONTACT_STAGE_2);
+			hipFunction_t kernelFunction_stage2 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPRESS_CONTACT_STAGE_2);
 
 			result = mCudaContext->launchKernel(kernelFunction_stage2, PxgNarrowPhaseGridDims::COMPRESS_CONTACT, 1, 1, PxgNarrowPhaseBlockDims::COMPRESS_CONTACT, 1, 1, 0,
 				mStream, kernelParams_stage2, sizeof(kernelParams_stage2), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU compressContactStage2 fail to launch kernel stage 1!!\n");
 
 #if GPU_NP_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU compressContactStage2 fail to launch kernel stage 1!!!\n");
 
 			//PxArray<PxGpuContactPair> contactPairs;
@@ -9057,18 +9058,18 @@ bool PxgGpuNarrowphaseCore::copyContactData(void* PX_RESTRICT data, PxU32* PX_RE
 			//patches.reserve(numContactPatches);
 			//patches.forceSize_Unsafe(numContactPatches);
 
-			//mCudaContext->memcpyDtoH(patches.begin(), (CUdeviceptr)pair0.contactPatches, sizeof(PxContactPatch) * numContactPatches);
+			//mCudaContext->memcpyDtoH(patches.begin(), (hipDeviceptr_t)pair0.contactPatches, sizeof(PxContactPatch) * numContactPatches);
 
 			//const PxU32 numContacts = pair0.nbContacts;
 			//PxArray<PxContact> contacts;
 			//contacts.reserve(numContacts);
 			//contacts.forceSize_Unsafe(numContacts);
-			//mCudaContext->memcpyDtoH(contacts.begin(), (CUdeviceptr)pair0.contactPoints, sizeof(PxContact) * numContacts);
+			//mCudaContext->memcpyDtoH(contacts.begin(), (hipDeviceptr_t)pair0.contactPoints, sizeof(PxContact) * numContacts);
 
 			//PxArray<PxReal> forces;
 			//forces.reserve(numContacts);
 			//forces.forceSize_Unsafe(numContacts);
-			//mCudaContext->memcpyDtoH(forces.begin(), (CUdeviceptr)pair0.contactForces, sizeof(PxReal) * numContacts);
+			//mCudaContext->memcpyDtoH(forces.begin(), (hipDeviceptr_t)pair0.contactForces, sizeof(PxReal) * numContacts);
 
 			//PxU32 uNumPairs;
 			//mCudaContext->memcpyDtoH(&uNumPairs, numPairsd, sizeof(PxU32));
@@ -9084,9 +9085,9 @@ bool PxgGpuNarrowphaseCore::copyContactData(void* PX_RESTRICT data, PxU32* PX_RE
 		else
 		{
 			result = mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyContactData: CUDA error, code %u\n", result);
-			success = (result == CUDA_SUCCESS);
+			success = (result == hipSuccess);
 		}
 
 		mIntermStackAlloc.reset();
@@ -9095,24 +9096,24 @@ bool PxgGpuNarrowphaseCore::copyContactData(void* PX_RESTRICT data, PxU32* PX_RE
 	return success;
 }
 
-void PxgGpuNarrowphaseCore::synchronizedStreams(CUstream artiStream)
+void PxgGpuNarrowphaseCore::synchronizedStreams(hipStream_t artiStream)
 {
 	PX_PROFILE_ZONE("PxgGpuNarrowphaseCore.synchronizedStreams", 0);
 
-	CUresult result = mCudaContext->eventRecord(mDirectApiDmaEvent, mStream);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	hipError_t result = mCudaContext->eventRecord(mDirectApiDmaEvent, mStream);
+	PX_ASSERT(result == hipSuccess);
 
-	if (result != CUDA_SUCCESS)
-		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams cuEventRecord failed\n");
+	if (result != hipSuccess)
+		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams hipEventRecord failed\n");
 
 	result = mCudaContext->streamWaitEvent(artiStream, mDirectApiDmaEvent);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
-	if (result != CUDA_SUCCESS)
-		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams cuStreamWaitEvent failed\n");
+	if (result != hipSuccess)
+		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "SynchronizeStreams hipStreamWaitEvent failed\n");
 }
 
-void PxgGpuNarrowphaseCore::drawContacts(PxRenderOutput& out, CUdeviceptr contactsd, CUdeviceptr normalPensd, const PxU32 numContacts)
+void PxgGpuNarrowphaseCore::drawContacts(PxRenderOutput& out, hipDeviceptr_t contactsd, hipDeviceptr_t normalPensd, const PxU32 numContacts)
 {
 	PxArray<float4> points(numContacts);
 	PxArray<float4> normalPen(numContacts);

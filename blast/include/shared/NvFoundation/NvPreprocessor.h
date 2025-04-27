@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -259,7 +260,7 @@ family shortcuts
 Assert macro
 */
 #ifndef NV_ENABLE_ASSERTS
-#if NV_DEBUG && !defined(__CUDACC__)
+#if NV_DEBUG && !defined(__HIPCC__)
 #define NV_ENABLE_ASSERTS 1
 #else
 #define NV_ENABLE_ASSERTS 0
@@ -376,7 +377,7 @@ Noinline macro
 /**
 Restrict macro
 */
-#if defined(__CUDACC__)
+#if defined(__HIPCC__)
 #define NV_RESTRICT __restrict__
 #else
 #define NV_RESTRICT __restrict
@@ -461,7 +462,7 @@ General defines
 #error NV_CHECKED must be defined when NV_DEBUG is defined
 #endif
 
-#ifdef __CUDACC__
+#ifdef __HIPCC__
 #define NV_CUDA_CALLABLE __host__ __device__
 #else
 #define NV_CUDA_CALLABLE

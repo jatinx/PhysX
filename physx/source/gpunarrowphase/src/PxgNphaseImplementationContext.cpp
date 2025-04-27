@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -455,7 +456,7 @@ PxgNphaseImplementationContext::PxgNphaseImplementationContext(
 #endif
 	{
 		mGpuDynamicContext = static_cast<PxgGpuContext*>(dynamicsContext);
-		CUstream stream = mGpuDynamicContext->getGpuSolverCore()->getStream();
+		hipStream_t stream = mGpuDynamicContext->getGpuSolverCore()->getStream();
 		mGpuNarrowphaseCore = PX_NEW(PxgGpuNarrowphaseCore)(static_cast<PxgCudaKernelWranglerManager*>(gpuKernelWrangler), context.getCudaContextManager(), gpuDynamicsConfig,
 															contactStreamBase, patchStreamBase, forceAndIndiceStreamBase, islandSim, stream, heapMemoryManager, this);
 

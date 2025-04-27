@@ -115,10 +115,10 @@ namespace physx
 						void				processLostPairs();
 
 //		PX_FORCE_INLINE	PxBitMapPinned&		getAggregatedBoundMap()				{ return mAggregatedBoundMap; }
-		PX_FORCE_INLINE	CUdeviceptr			getAggregatedBounds()				{ return mAggregatedBoundsBuf.getDevicePtr(); }
-		PX_FORCE_INLINE	CUdeviceptr			getAddedHandles()					{ return mAddedHandleBuf.getDevicePtr(); }
-		PX_FORCE_INLINE	CUdeviceptr			getRemovedHandles()					{ return mRemovedHandleBuf.getDevicePtr(); }
-		PX_FORCE_INLINE	CUdeviceptr			getChangedAABBMgrHandles()			{ return mChangedAABBMgrHandlesBuf.getDevicePtr(); }
+		PX_FORCE_INLINE	hipDeviceptr_t			getAggregatedBounds()				{ return mAggregatedBoundsBuf.getDevicePtr(); }
+		PX_FORCE_INLINE	hipDeviceptr_t			getAddedHandles()					{ return mAddedHandleBuf.getDevicePtr(); }
+		PX_FORCE_INLINE	hipDeviceptr_t			getRemovedHandles()					{ return mRemovedHandleBuf.getDevicePtr(); }
+		PX_FORCE_INLINE	hipDeviceptr_t			getChangedAABBMgrHandles()			{ return mChangedAABBMgrHandlesBuf.getDevicePtr(); }
 		PX_FORCE_INLINE	PxU32				getChangedAABBMgrHandlesWordCount()	{ return mChangedHandleMap.getWordCount(); }
 
 	private:
@@ -127,7 +127,7 @@ namespace physx
 						void				clearDirtyAggs();
 						void				resizeFoundAndLostPairs();
 						void				computeAggregateBounds();
-						void				updateDescriptor(CUstream bpStream);
+						void				updateDescriptor(hipStream_t bpStream);
 		
 		PxgCudaKernelWranglerManager*		mGpuKernelWranglerManager;
 		PxCudaContextManager*				mCudaContextManager;

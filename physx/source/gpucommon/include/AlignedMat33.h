@@ -29,7 +29,7 @@
 #ifndef PX_ALIGNED_MAT33_H
 #define PX_ALIGNED_MAT33_H
 
-#include "vector_types.h"
+#include "hip/hip_vector_types.h"
 #include "foundation/PxVec3.h"
 #include "cutil_math.h"
 #include "AlignedQuat.h"

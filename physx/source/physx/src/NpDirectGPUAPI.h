@@ -48,19 +48,19 @@ public:
 	virtual ~NpDirectGPUAPI() { }
 
 	// PxDirectGPUAPI
-	virtual bool getRigidDynamicData(void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent = NULL, CUevent finishEvent = NULL) const PX_OVERRIDE PX_FINAL;
-	virtual bool setRigidDynamicData(const void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent = NULL, CUevent finishEvent = NULL) PX_OVERRIDE PX_FINAL;
+	virtual bool getRigidDynamicData(void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) const PX_OVERRIDE PX_FINAL;
+	virtual bool setRigidDynamicData(const void* data, const PxRigidDynamicGPUIndex* gpuIndices, PxRigidDynamicGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) PX_OVERRIDE PX_FINAL;
 
-	virtual bool getArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent = NULL, CUevent finishEvent = NULL) const PX_OVERRIDE PX_FINAL;
-	virtual bool setArticulationData(const void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent = NULL, CUevent finishEvent = NULL) PX_OVERRIDE PX_FINAL;
-	virtual bool computeArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements, CUevent startEvent = NULL, CUevent finishEvent = NULL) PX_OVERRIDE PX_FINAL;
+	virtual bool getArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) const PX_OVERRIDE PX_FINAL;
+	virtual bool setArticulationData(const void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) PX_OVERRIDE PX_FINAL;
+	virtual bool computeArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) PX_OVERRIDE PX_FINAL;
 
-	virtual bool copyContactData(void* data, PxU32* numContactPairs, PxU32 maxPairs, CUevent startEvent = NULL, CUevent finishEvent = NULL) const PX_OVERRIDE PX_FINAL;
-	virtual bool evaluateSDFDistances(PxVec4* localGradientAndSDFConcatenated, const PxShapeGPUIndex* shapeIndices, const PxVec4* localSamplePointsConcatenated, const PxU32* samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, CUevent startEvent = NULL, CUevent finishEvent = NULL) const PX_OVERRIDE PX_FINAL;
+	virtual bool copyContactData(void* data, PxU32* numContactPairs, PxU32 maxPairs, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) const PX_OVERRIDE PX_FINAL;
+	virtual bool evaluateSDFDistances(PxVec4* localGradientAndSDFConcatenated, const PxShapeGPUIndex* shapeIndices, const PxVec4* localSamplePointsConcatenated, const PxU32* samplePointCountPerShape, PxU32 nbElements, PxU32 maxPointCount, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) const PX_OVERRIDE PX_FINAL;
 
 	virtual PxArticulationGPUAPIMaxCounts getArticulationGPUAPIMaxCounts()	const	PX_OVERRIDE PX_FINAL;
 
-	virtual bool getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent = NULL, CUevent finishEvent = NULL) const PX_OVERRIDE PX_FINAL;
+	virtual bool getD6JointData(void* data, const PxD6JointGPUIndex* gpuIndices, PxD6JointGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent = NULL, hipEvent_t finishEvent = NULL) const PX_OVERRIDE PX_FINAL;
 	//~PxDirectGPUAPI
 
 	NpScene& mNpScene;

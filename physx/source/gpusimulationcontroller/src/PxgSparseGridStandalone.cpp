@@ -43,7 +43,7 @@
 namespace physx
 {
 #if ENABLE_KERNEL_LAUNCH_ERROR_CHECK
-#define checkCudaError() { cudaError_t err = cudaDeviceSynchronize(); if (err != 0) printf("Cuda error file: %s, line: %i, error: %i\n", PX_FL, err); }	
+#define checkCudaError() { hipError_t err = hipDeviceSynchronize(); if (err != 0) printf("Cuda error file: %s, line: %i, error: %i\n", PX_FL, err); }	
 #else
 #define checkCudaError() { }
 #endif
@@ -53,7 +53,7 @@ namespace physx
 	void sparseGridReuseSubgrids(PxgKernelLauncher& launcher, const PxSparseGridParams& sparseGridParams,
 		const PxU32* uniqueHashkeysPerSubgridPreviousUpdate, const PxU32* numActiveSubgridsPreviousUpdate, PxU32* subgridOrderMapPreviousUpdate,
 		const PxU32* uniqueHashkeysPerSubgrid, const PxU32* numActiveSubgrids, PxU32* subgridOrderMap,
-		CUstream stream)
+		hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (sparseGridParams.maxNumSubgrids + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -66,7 +66,7 @@ namespace physx
 
 	void sparseGridAddReleasedSubgridsToUnusedStack(PxgKernelLauncher& launcher, const PxSparseGridParams& sparseGridParams,
 		const PxU32* numActiveSubgridsPreviousUpdate, const PxU32* subgridOrderMapPreviousUpdate,
-		PxU32* unusedSubgridStackSize, PxU32* unusedSubgridStack, CUstream stream)
+		PxU32* unusedSubgridStackSize, PxU32* unusedSubgridStack, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (sparseGridParams.maxNumSubgrids + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -76,7 +76,7 @@ namespace physx
 	}
 
 	void sparseGridAllocateNewSubgrids(PxgKernelLauncher& launcher, const PxSparseGridParams& sparseGridParams, const PxU32* numActiveSubgrids, PxU32* subgridOrderMap,
-		PxU32* unusedSubgridStackSize, PxU32* unusedSubgridStack, const PxU32* numActiveSubgridsPreviousUpdate, CUstream stream)
+		PxU32* unusedSubgridStackSize, PxU32* unusedSubgridStack, const PxU32* numActiveSubgridsPreviousUpdate, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (sparseGridParams.maxNumSubgrids + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -88,7 +88,7 @@ namespace physx
 
 	void sparseGridCalcSubgridHashes(PxgKernelLauncher& launcher, const PxSparseGridParams& sparseGridParams, PxU32* indices,
 		PxU32* hashkeyPerParticle, PxVec4* deviceParticlePos, const int numParticles,
-		const PxU32* phases, const PxU32 validPhaseMask, CUstream stream, const PxU32* activeIndices = NULL)
+		const PxU32* phases, const PxU32 validPhaseMask, hipStream_t stream, const PxU32* activeIndices = NULL)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (numParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -100,7 +100,7 @@ namespace physx
 
 
 	void sparseGridMarkRequiredNeighbors(PxgKernelLauncher& launcher, PxU32* outRequiredNeighborMask, PxU32* uniqueSortedHashkey, const PxSparseGridParams sparseGridParams, PxU32 neighborhoodSize,
-		PxVec4* particlePositions, const PxU32 numParticles, const PxU32* phases, const PxU32 validPhaseMask, CUstream stream, const PxU32* activeIndices = NULL)
+		PxVec4* particlePositions, const PxU32 numParticles, const PxU32* phases, const PxU32 validPhaseMask, hipStream_t stream, const PxU32* activeIndices = NULL)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (numParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -111,7 +111,7 @@ namespace physx
 	}
 
 
-	void sparseGridSortedArrayToDelta(PxgKernelLauncher& launcher, const PxU32* in, const PxU32* mask, PxU32* out, PxU32 n, CUstream stream)
+	void sparseGridSortedArrayToDelta(PxgKernelLauncher& launcher, const PxU32* in, const PxU32* mask, PxU32* out, PxU32 n, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (n + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -121,7 +121,7 @@ namespace physx
 	}
 
 	void sparseGridGetUniqueValues(PxgKernelLauncher& launcher, const PxU32* sortedData, const PxU32* indices, PxU32* uniqueValues,
-		const PxU32 n, PxU32* subgridNeighborCollector, const PxU32 uniqueValuesSize, CUstream stream)
+		const PxU32 n, PxU32* subgridNeighborCollector, const PxU32 uniqueValuesSize, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (n + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -131,7 +131,7 @@ namespace physx
 	}
 
 	void sparseGridBuildSubgridNeighbors(PxgKernelLauncher& launcher, const PxU32* uniqueSortedHashkey, const PxU32* numActiveSubgrids,
-		const PxU32 maxNumSubgrids, PxU32* subgridNeighbors, CUstream stream)
+		const PxU32 maxNumSubgrids, PxU32* subgridNeighbors, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (maxNumSubgrids + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -141,7 +141,7 @@ namespace physx
 	}
 
 
-	void sparseGridMarkSubgridEndIndicesLaunch(PxgKernelLauncher& launcher, const PxU32* sortedParticleToSubgrid, PxU32 numParticles, PxU32* subgridEndIndices, CUstream stream)
+	void sparseGridMarkSubgridEndIndicesLaunch(PxgKernelLauncher& launcher, const PxU32* sortedParticleToSubgrid, PxU32 numParticles, PxU32* subgridEndIndices, hipStream_t stream)
 	{
 		const PxU32 numThreadsPerBlock = THREADS_PER_BLOCK;
 		const PxU32 numBlocks = (numParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -201,14 +201,14 @@ namespace physx
 		}
 	}
 
-	void PxSparseGridBuilder::updateSubgridEndIndices(PxU32 numParticles, CUstream stream)
+	void PxSparseGridBuilder::updateSubgridEndIndices(PxU32 numParticles, hipStream_t stream)
 	{
 		//Hijack a buffer that is not accessed after the subgrid update with exactly the right size
 		PxU32* subgridEndIndicesBuffer = mSortedUniqueHashkeysPerSubgrid;
 		sparseGridMarkSubgridEndIndicesLaunch(*mKernelLauncher, mSortedParticleToSubgrid, numParticles, subgridEndIndicesBuffer, stream);
 	}
 
-	PxU32* PxSparseGridBuilder::updateSubgrids(PxVec4* deviceParticlePos, PxU32 numParticles, PxU32* devicePhases, CUstream stream, PxU32 validPhase, const PxU32* activeIndices)
+	PxU32* PxSparseGridBuilder::updateSubgrids(PxVec4* deviceParticlePos, PxU32 numParticles, PxU32* devicePhases, hipStream_t stream, PxU32 validPhase, const PxU32* activeIndices)
 	{
 		sparseGridCalcSubgridHashes(*mKernelLauncher, mSparseGridParams, mSortedParticleToSubgrid, mHashkeyPerParticle, deviceParticlePos, numParticles, devicePhases, validPhase, stream, activeIndices);
 		mSort.sort(mHashkeyPerParticle, 32, stream, mSortedToOriginalParticleIndex, numParticles);
@@ -242,14 +242,14 @@ namespace physx
 		return totalCountPointer;
 	}
 
-	void PxSparseGridBuilder::updateSubgridNeighbors(PxU32* totalCountPointer, CUstream stream)
+	void PxSparseGridBuilder::updateSubgridNeighbors(PxU32* totalCountPointer, hipStream_t stream)
 	{
 		sparseGridBuildSubgridNeighbors(*mKernelLauncher, mSortedUniqueHashkeysPerSubgrid, totalCountPointer, mSparseGridParams.maxNumSubgrids, mSubgridNeighborLookup, stream);
 		if (mCopySubgridsInUseToHost)
-			mKernelLauncher->getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(&mNumSubgridsInUse, CUdeviceptr(totalCountPointer), sizeof(PxU32), stream);
+			mKernelLauncher->getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(&mNumSubgridsInUse, hipDeviceptr_t(totalCountPointer), sizeof(PxU32), stream);
 	}
 
-	void PxSparseGridBuilder::updateSparseGrid(PxVec4* deviceParticlePos, const PxU32 numParticles, PxU32* devicePhases, CUstream stream, PxU32 validPhase, const PxU32* activeIndices)
+	void PxSparseGridBuilder::updateSparseGrid(PxVec4* deviceParticlePos, const PxU32 numParticles, PxU32* devicePhases, hipStream_t stream, PxU32 validPhase, const PxU32* activeIndices)
 	{
 		PxU32* totalCountPointer = updateSubgrids(deviceParticlePos, numParticles, devicePhases, stream, validPhase, activeIndices);			
 		updateSubgridNeighbors(totalCountPointer, stream);

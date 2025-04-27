@@ -65,10 +65,10 @@ void PxgCudaBuffer::allocate(const PxU64 size, const char* filename, PxI32 line)
 			
 #if MEMCHECK_SUPPORT
 		PxgCudaAllocatorCallbackBase* alloc = reinterpret_cast<PxgCudaAllocatorCallbackBase*>(mHeapMemoryAllocator->getAllocator());
-		mPtr = CUdeviceptr(alloc->mContextManager->allocDeviceBuffer<PxU8>(PxU32(mSize)));
+		mPtr = hipDeviceptr_t(alloc->mContextManager->allocDeviceBuffer<PxU8>(PxU32(mSize)));
 		PX_ASSERT(mPtr);
 #else
-		mPtr = reinterpret_cast<CUdeviceptr>(mHeapMemoryAllocator->allocate(mSize, mStatGroup, filename, line));
+		mPtr = reinterpret_cast<hipDeviceptr_t>(mHeapMemoryAllocator->allocate(mSize, mStatGroup, filename, line));
 #endif
 
 #if PX_STOMP_ALLOCATED_MEMORY
@@ -79,7 +79,7 @@ void PxgCudaBuffer::allocate(const PxU64 size, const char* filename, PxI32 line)
 			if (ccm) 
 			{
 				PxScopedCudaLock scl(*ccm);
-				CUresult result = ccm->getCudaContext()->memsetD8(mPtr, static_cast<unsigned char>(0xcd), mSize);
+				hipError_t result = ccm->getCudaContext()->memsetD8(mPtr, static_cast<unsigned char>(0xcd), mSize);
 				if (result != 0)
 					PX_ASSERT(result == 0);
 			}
@@ -93,7 +93,7 @@ void PxgCudaBuffer::allocate(const PxU64 size, const char* filename, PxI32 line)
 	}
 }
 
-void PxgCudaBuffer::allocateCopyOldDataAsync(const PxU64 size, PxCudaContext* cudaContext, CUstream stream, const char* filename, PxI32 line)
+void PxgCudaBuffer::allocateCopyOldDataAsync(const PxU64 size, PxCudaContext* cudaContext, hipStream_t stream, const char* filename, PxI32 line)
 {
 	PX_ASSERT(mHeapMemoryAllocator);
 
@@ -104,15 +104,15 @@ void PxgCudaBuffer::allocateCopyOldDataAsync(const PxU64 size, PxCudaContext* cu
 
 	if (oldSize < size)
 	{
-		CUdeviceptr oldPtr = mPtr;
+		hipDeviceptr_t oldPtr = mPtr;
 #if MEMCHECK_SUPPORT
 		PX_UNUSED(filename);
 		PX_UNUSED(line);
 		PxgCudaAllocatorCallbackBase* alloc = reinterpret_cast<PxgCudaAllocatorCallbackBase*>(mHeapMemoryAllocator->getAllocator());
-		mPtr = CUdeviceptr(alloc->mContextManager->allocDeviceBuffer<PxU8>(PxU32(mSize)));
+		mPtr = hipDeviceptr_t(alloc->mContextManager->allocDeviceBuffer<PxU8>(PxU32(mSize)));
 		PX_ASSERT(mPtr);
 #else
-		mPtr = reinterpret_cast<CUdeviceptr>(mHeapMemoryAllocator->allocate(mSize, mStatGroup, filename, line));
+		mPtr = reinterpret_cast<hipDeviceptr_t>(mHeapMemoryAllocator->allocate(mSize, mStatGroup, filename, line));
 #endif
 
 		if (oldSize > 0 && oldPtr)

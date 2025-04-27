@@ -42,7 +42,7 @@
 #pragma clang diagnostic ignored "-Wdocumentation"
 #pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
 #endif
-#include "cuda.h"
+#include "hip/hip_runtime.h"
 #if PX_LINUX && PX_CLANG
 #pragma clang diagnostic pop
 #endif
@@ -134,11 +134,11 @@ private:
 
 struct PxgMeshTextureData
 {
-	CUarray cuArray;
-	CUtexObject cuTexRef;
+	hipArray_t cuArray;
+	hipTextureObject_t cuTexRef;
 
-	CUarray cuArraySubgrids;
-	CUtexObject cuTexRefSubgrids;
+	hipArray_t cuArraySubgrids;
+	hipTextureObject_t cuTexRefSubgrids;
 };
 
 struct HullOrMeshData
@@ -190,9 +190,9 @@ public:
 
 	void							removeGeometry(PxU32 idx);
 	
-	void							scheduleCopyHtoD(PxgCopyManager& copyMan, PxCudaContext& cudaContext, CUstream stream);
-	CUdeviceptr						getGeometryDevPtrByIndex(PxU32 idx) const;
-	CUdeviceptr						getBoxHullDevPtr() const;
+	void							scheduleCopyHtoD(PxgCopyManager& copyMan, PxCudaContext& cudaContext, hipStream_t stream);
+	hipDeviceptr_t						getGeometryDevPtrByIndex(PxU32 idx) const;
+	hipDeviceptr_t						getBoxHullDevPtr() const;
 	
 	void							resetAfterMemcpyCompleted();
 	

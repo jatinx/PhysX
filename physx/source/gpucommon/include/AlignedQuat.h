@@ -30,7 +30,7 @@
 #define PX_ALIGNED_QUAT_H
 
 
-#include "vector_types.h"
+#include "hip/hip_vector_types.h"
 #include "foundation/PxVec3.h"
 #include "foundation/PxQuat.h"
 #include "cutil_math.h"

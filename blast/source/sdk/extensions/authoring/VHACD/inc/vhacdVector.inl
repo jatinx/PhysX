@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 #pragma once
 #ifndef VHACD_VECTOR_INL
 #define VHACD_VECTOR_INL

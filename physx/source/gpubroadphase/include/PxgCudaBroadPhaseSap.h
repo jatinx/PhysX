@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -95,10 +96,10 @@ class PxgCudaBroadPhaseSap : public Bp::BroadPhase
 	PX_FORCE_INLINE	PxgTypedCudaBuffer<PxBounds3>& getBoundsBuffer()			{ return mBoxFpBoundsBuf;				}
 	PX_FORCE_INLINE	PxgTypedCudaBuffer<PxReal>&	getContactDistBuffer()			{ return mBoxContactDistancesBuf;		}
 //	PX_FORCE_INLINE	PxCudaContextManager*		getCudaContextManager()			{ return mCudaContextManager;			}
-	PX_FORCE_INLINE	CUstream					getBpStream()					{ return mStream;						}
+	PX_FORCE_INLINE	hipStream_t					getBpStream()					{ return mStream;						}
 	PX_FORCE_INLINE	PxgDevicePointer<PxgBroadPhaseDesc>	getBroadPhaseDescDevicePtr() { return mBPDescBuf.getTypedDevicePtr();}
-//	PX_FORCE_INLINE	CUdeviceptr					getFoundPairsDevicePtr()		{ return mFoundPairsBuf.getDevicePtr();	}
-//	PX_FORCE_INLINE	CUdeviceptr					getLostPairsDevicePtr()			{ return mLostPairsBuf.getDevicePtr();	}
+//	PX_FORCE_INLINE	hipDeviceptr_t					getFoundPairsDevicePtr()		{ return mFoundPairsBuf.getDevicePtr();	}
+//	PX_FORCE_INLINE	hipDeviceptr_t					getLostPairsDevicePtr()			{ return mLostPairsBuf.getDevicePtr();	}
 	PX_FORCE_INLINE	PxgAABBManager*				getAABBManager()				{ return mAABBManager;					}
 
 					void						purgeDuplicateFoundPairs();
@@ -140,7 +141,7 @@ class PxgCudaBroadPhaseSap : public Bp::BroadPhase
 
 					void						updateDescriptor(PxgBroadPhaseDesc& bpDesc);
 					void						updateRadixSortDesc(PxgRadixSortDesc* rsDesc);
-					void						runRadixSort(const PxU32 numOfKeys, CUdeviceptr radixSortDescBuf);
+					void						runRadixSort(const PxU32 numOfKeys, hipDeviceptr_t radixSortDescBuf);
 
 					void						purgeDuplicates(PxPinnedArray<PxgBroadPhasePair>& pairs);
 	
@@ -241,8 +242,8 @@ class PxgCudaBroadPhaseSap : public Bp::BroadPhase
 					PxgTypedCudaBuffer<PxgRadixSortDesc>  mRadixSortDescBuf;
 					PxgTypedCudaBuffer<PxgRadixSortDesc>  mRadixSortWORDescBuf;
 	
-					CUstream					mStream;
-					CUevent						mEvent;			
+					hipStream_t					mStream;
+					hipEvent_t						mEvent;			
 	
 					PxU32*						mPinnedEvent;
 		

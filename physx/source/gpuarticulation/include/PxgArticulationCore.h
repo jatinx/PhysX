@@ -36,7 +36,7 @@
 #include "foundation/PxUserAllocated.h"
 #include "PxgCudaBuffer.h"
 #if !PX_CUDA_COMPILER
-#include <vector_types.h>
+#include <hip/hip_vector_types.h>
 #endif
 
 #include "DyFeatherstoneArticulation.h"
@@ -83,54 +83,54 @@ namespace physx
 
 		void propagateRigidBodyImpulsesAndSolveInternalConstraints(const PxReal dt, const PxReal invDt, const bool velocityIteration, const PxReal elapsedTime,
 			const PxReal biasCoefficient, PxU32* staticContactUniqueIndices, PxU32* staticJointUniqueIndices, 
-			CUdeviceptr sharedDesc, bool doFriction, bool isTGS, bool residualReportingEnabled, bool isExternalForcesEveryTgsIterationEnabled = false);
+			hipDeviceptr_t sharedDesc, bool doFriction, bool isTGS, bool residualReportingEnabled, bool isExternalForcesEveryTgsIterationEnabled = false);
 
 		//These two methods is for articulation vs soft body interation
-		void outputVelocity(CUdeviceptr sharedDesc, CUstream solverStream, bool isTGS);
-		void pushImpulse(CUstream solverStream);
+		void outputVelocity(hipDeviceptr_t sharedDesc, hipStream_t solverStream, bool isTGS);
+		void pushImpulse(hipStream_t solverStream);
 
 		void stepArticulation(const PxReal stepDt);
-		void averageDeltaV(const PxU32 nbSlabs, CUstream stream, float4* velocities, const PxU32 partitionId,
-			bool isTGS, CUdeviceptr sharedDescd);
-		void applyTgsSubstepForces(PxReal stepDt, CUstream stream);
+		void averageDeltaV(const PxU32 nbSlabs, hipStream_t stream, float4* velocities, const PxU32 partitionId,
+			bool isTGS, hipDeviceptr_t sharedDescd);
+		void applyTgsSubstepForces(PxReal stepDt, hipStream_t stream);
 		void saveVelocities();
 		void updateBodies(PxReal dt, bool integrate, bool enableDirectGPUAPI);
 		void gpuMemDMAbackArticulation(PxInt8ArrayPinned& linkAndJointAndRootStateData,
 			PxPinnedArray<PxgSolverBodySleepData>& wakeCounterPool, PxPinnedArray<Dy::ErrorAccumulator>& internalResidualPerArticulation, PxPinnedArray<Dy::ErrorAccumulator>& contactResidual);
 
-		void setSolverStream(CUstream& solverStream) { mSolverStream = &solverStream; }
+		void setSolverStream(hipStream_t& solverStream) { mSolverStream = &solverStream; }
 		
 		void setGpuContext(PxgGpuContext* context) { mGpuContext = context; }
 
 		PxgArticulationCoreDesc* getArticulationCoreDesc() { return mArticulationCoreDesc; }
 
-		CUdeviceptr getArticulationCoreDescd() { return mArticulationCoreDescd.getDevicePtr(); }
+		hipDeviceptr_t getArticulationCoreDescd() { return mArticulationCoreDescd.getDevicePtr(); }
 
-		CUdeviceptr getDeferredZ() { return mDeltaVs.getDevicePtr(); }
+		hipDeviceptr_t getDeferredZ() { return mDeltaVs.getDevicePtr(); }
 
-		CUdeviceptr getArticulationDirty() { return mSlabHasChanges.getDevicePtr(); }
+		hipDeviceptr_t getArticulationDirty() { return mSlabHasChanges.getDevicePtr(); }
 
-		CUdeviceptr getArticulationSlabMask() { return mSlabDirtyMasks.getDevicePtr(); }
+		hipDeviceptr_t getArticulationSlabMask() { return mSlabDirtyMasks.getDevicePtr(); }
 
 		PxU32 getNbActiveArticulations() const { return mNbActiveArticulation; }
 
-		CUstream getStream() { return mStream; }
+		hipStream_t getStream() { return mStream; }
 
-		CUevent getFlushArticulationDataEvent() { return mFlushArticulationDataEvent; }
+		hipEvent_t getFlushArticulationDataEvent() { return mFlushArticulationDataEvent; }
 
-		void synchronizedStreams(CUstream bpStream, CUstream npStream);
+		void synchronizedStreams(hipStream_t bpStream, hipStream_t npStream);
 
-		bool getArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent, const PxU32 maxLinks, const PxU32 maxDofs) const;
-		bool setArticulationData(const void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, CUevent startEvent, CUevent finishEvent, PxU32 maxLinks, PxU32 maxDofs, PxU32 maxFixedTendons, PxU32 maxTendonJoints, PxU32 maxSpatialTendons, PxU32 maxSpatialAttachments);
+		bool getArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIReadType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent, const PxU32 maxLinks, const PxU32 maxDofs) const;
+		bool setArticulationData(const void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIWriteType::Enum dataType, PxU32 nbElements, hipEvent_t startEvent, hipEvent_t finishEvent, PxU32 maxLinks, PxU32 maxDofs, PxU32 maxFixedTendons, PxU32 maxTendonJoints, PxU32 maxSpatialTendons, PxU32 maxSpatialAttachments);
 		bool computeArticulationData(void* data, const PxArticulationGPUIndex* gpuIndices, PxArticulationGPUAPIComputeType::Enum operation, PxU32 nbElements,
-									PxU32 maxLinks, PxU32 maxDofs, CUevent startEvent, CUevent finishEvent);
+									PxU32 maxLinks, PxU32 maxDofs, hipEvent_t startEvent, hipEvent_t finishEvent);
 
 		// needed if root transforms or joint positions are updated using direct-GPU API. needs to be called before computeUnconstrainedVelocities.
 		void updateArticulationsKinematic(bool zeroSimOutput, const PxArticulationGPUIndex* PX_RESTRICT gpuIndices=NULL, PxU32 nbElements=0);
 
-		void allocDeltaVBuffer(PxU32 nbSlabs, PxU32 nbPartitions, CUstream stream);
+		void allocDeltaVBuffer(PxU32 nbSlabs, PxU32 nbPartitions, hipStream_t stream);
 
-		void layoutDeltaVBuffer(const PxU32 nbSlabs, const PxU32 nbPartitions, CUstream stream);
+		void layoutDeltaVBuffer(const PxU32 nbSlabs, const PxU32 nbPartitions, hipStream_t stream);
 
 	private:
 		// new Direct-GPU API methods
@@ -154,10 +154,10 @@ namespace physx
 		PxgCudaKernelWranglerManager*		mGpuKernelWranglerManager;
 		PxCudaContextManager*				mCudaContextManager;
 		PxCudaContext*						mCudaContext;
-		CUstream							mStream;
-		CUstream*							mSolverStream; 
-		CUevent								mFinishEvent;
-		CUevent								mFlushArticulationDataEvent;
+		hipStream_t							mStream;
+		hipStream_t*							mSolverStream; 
+		hipEvent_t								mFinishEvent;
+		hipEvent_t								mFlushArticulationDataEvent;
 
 		PxgGpuContext*						mGpuContext;
 
@@ -183,7 +183,7 @@ namespace physx
 		PxgTypedCudaBuffer<PxU32>			mTempSelfContactHeaderBlockBuffer;
 		PxgTypedCudaBuffer<PxU32>			mTempSelfConstraintHeaderBlockBuffer;
 
-		CUevent								mComputeUnconstrainedEvent;
+		hipEvent_t								mComputeUnconstrainedEvent;
 
 		bool 								mNeedsKinematicUpdate;
 

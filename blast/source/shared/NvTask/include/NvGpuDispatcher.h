@@ -30,8 +30,8 @@
 #include "NvTaskDefine.h"
 #include "NvTask.h"
 
-/* forward decl to avoid including <cuda.h> */
-typedef struct CUstream_st* CUstream;
+/* forward decl to avoid including <hip/hip_runtime.h> */
+typedef struct ihipStream_t* hipStream_t;
 
 namespace nvidia
 {
@@ -217,7 +217,7 @@ public:
      * If your GPU does not support mapping of page locked memory (SM>=1.1),
      * this function degrades to calling CUDA copy methods.
      */
-    virtual void                launchCopyKernel(cudamanager::NvGpuCopyDesc* desc, uint32_t count, CUstream stream) = 0;
+    virtual void                launchCopyKernel(cudamanager::NvGpuCopyDesc* desc, uint32_t count, hipStream_t stream) = 0;
 
     /** \brief Query pre launch task that runs before launching gpu kernels.
      *

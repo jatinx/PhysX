@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -110,7 +111,7 @@ public:
      * _must_ have either been created on the GPU ordinal returned by
      * PxGetSuggestedCudaDeviceOrdinal() or on your graphics device.
      */
-	CUcontext*	ctx;
+	hipCtx_t*	ctx;
 
     /**
      * \brief D3D device pointer or OpenGl context handle
@@ -188,7 +189,7 @@ public:
 	* \deprecated The replacement is PxCudaHelpersExt::memsetAsync.
 	*/
 	template<typename T>
-	PX_DEPRECATED void clearDeviceBufferAsync(T* deviceBuffer, PxU32 numElements, CUstream stream, PxI32 value = 0)
+	PX_DEPRECATED void clearDeviceBufferAsync(T* deviceBuffer, PxU32 numElements, hipStream_t stream, PxI32 value = 0)
 	{
 		clearDeviceBufferAsyncInternal(deviceBuffer, numElements * sizeof(T), stream, value);
 	}
@@ -224,7 +225,7 @@ public:
 	* \deprecated Use PxCudaHelpersExt::copyDToHAsync instead.
 	*/
 	template<typename T>
-	PX_DEPRECATED void copyDToHAsync(T* hostBuffer, const T* deviceBuffer, PxU32 numElements, CUstream stream)
+	PX_DEPRECATED void copyDToHAsync(T* hostBuffer, const T* deviceBuffer, PxU32 numElements, hipStream_t stream)
 	{
 		copyDToHAsyncInternal(hostBuffer, deviceBuffer, numElements * sizeof(T), stream);
 	}
@@ -236,7 +237,7 @@ public:
 	* \deprecated Use PxCudaHelpersExt::copyHToDAsync instead.
 	*/
 	template<typename T>
-	PX_DEPRECATED void copyHToDAsync(T* deviceBuffer, const T* hostBuffer, PxU32 numElements, CUstream stream)
+	PX_DEPRECATED void copyHToDAsync(T* deviceBuffer, const T* hostBuffer, PxU32 numElements, hipStream_t stream)
 	{
 		copyHToDAsyncInternal(deviceBuffer, hostBuffer, numElements * sizeof(T), stream);
 	}
@@ -248,7 +249,7 @@ public:
 	* \deprecated Use PxCudaHelpersExt::copyDToDAsync instead.
 	*/
 	template<typename T>
-	PX_DEPRECATED void copyDToDAsync(T* dstDeviceBuffer, const T* srcDeviceBuffer, PxU32 numElements, CUstream stream)
+	PX_DEPRECATED void copyDToDAsync(T* dstDeviceBuffer, const T* srcDeviceBuffer, PxU32 numElements, hipStream_t stream)
 	{
 		copyDToDAsyncInternal(dstDeviceBuffer, srcDeviceBuffer, numElements * sizeof(T), stream);
 	}
@@ -260,7 +261,7 @@ public:
 	* \deprecated Use PxCudaHelpersExt::memsetAsync instead.
 	*/
 	template<typename T>
-	PX_DEPRECATED void memsetAsync(T* dstDeviceBuffer, const T& value, PxU32 numElements, CUstream stream)
+	PX_DEPRECATED void memsetAsync(T* dstDeviceBuffer, const T& value, PxU32 numElements, hipStream_t stream)
 	{
 		PX_COMPILE_TIME_ASSERT(sizeof(value) == sizeof(PxU32) || sizeof(value) == sizeof(PxU8));		
 
@@ -359,7 +360,7 @@ public:
 	* but the changes done in the kernel will be available on the host immediately.
 	* The cuda context will get acquired automatically
 	*/
-	virtual CUdeviceptr getMappedDevicePtr(void* pinnedHostBuffer) = 0;
+	virtual hipDeviceptr_t getMappedDevicePtr(void* pinnedHostBuffer) = 0;
 
     /**
      * \brief Acquire the CUDA context for the current thread
@@ -393,9 +394,9 @@ public:
     virtual void releaseContext() = 0;
 
 	/**
-	* \brief Return the CUcontext
+	* \brief Return the hipCtx_t
 	*/
-	virtual CUcontext getContext() = 0;
+	virtual hipCtx_t getContext() = 0;
 
 	/**
 	* \brief Return the CudaContext
@@ -433,7 +434,7 @@ public:
 	virtual int  getSharedMemPerMultiprocessor() const = 0; //!< returns total amount of shared memory available per multiprocessor in bytes
 	virtual unsigned int getMaxThreadsPerBlock() const = 0; //!< returns the maximum number of threads per block
     virtual const char *getDeviceName() const = 0; //!< returns device name retrieved from driver
-	virtual CUdevice getDevice() const = 0; //!< returns device handle retrieved from driver
+	virtual hipDevice_t getDevice() const = 0; //!< returns device handle retrieved from driver
 
 	virtual void setUsingConcurrentStreams(bool) = 0; //!< turn on/off using concurrent streams for GPU work
 	virtual bool getUsingConcurrentStreams() const = 0; //!< true if GPU work can run in concurrent streams
@@ -445,7 +446,7 @@ public:
      * \brief Get the cuda modules that have been loaded into this context on construction
      * \return Pointer to the cuda modules
      */
-	virtual CUmodule* getCuModules() = 0;
+	virtual hipModule_t* getCuModules() = 0;
 
     /**
      * \brief Release the PxCudaContextManager
@@ -472,17 +473,17 @@ protected:
 	PX_DEPRECATED virtual void freeDeviceBufferInternal(void* deviceBuffer) = 0;	
 	PX_DEPRECATED virtual void freePinnedHostBufferInternal(void* pinnedHostBuffer) = 0;	 
 
-	PX_DEPRECATED virtual void clearDeviceBufferAsyncInternal(void* deviceBuffer, PxU32 numBytes, CUstream stream, PxI32 value) = 0;
+	PX_DEPRECATED virtual void clearDeviceBufferAsyncInternal(void* deviceBuffer, PxU32 numBytes, hipStream_t stream, PxI32 value) = 0;
 	 
-	PX_DEPRECATED virtual void copyDToHAsyncInternal(void* hostBuffer, const void* deviceBuffer, PxU32 numBytes, CUstream stream) = 0;
-	PX_DEPRECATED virtual void copyHToDAsyncInternal(void* deviceBuffer, const void* hostBuffer, PxU32 numBytes, CUstream stream) = 0;
-	PX_DEPRECATED virtual void copyDToDAsyncInternal(void* dstDeviceBuffer, const void* srcDeviceBuffer, PxU32 numBytes, CUstream stream) = 0;
+	PX_DEPRECATED virtual void copyDToHAsyncInternal(void* hostBuffer, const void* deviceBuffer, PxU32 numBytes, hipStream_t stream) = 0;
+	PX_DEPRECATED virtual void copyHToDAsyncInternal(void* deviceBuffer, const void* hostBuffer, PxU32 numBytes, hipStream_t stream) = 0;
+	PX_DEPRECATED virtual void copyDToDAsyncInternal(void* dstDeviceBuffer, const void* srcDeviceBuffer, PxU32 numBytes, hipStream_t stream) = 0;
 	 
 	PX_DEPRECATED virtual void copyDToHInternal(void* hostBuffer, const void* deviceBuffer, PxU32 numBytes) = 0;
 	PX_DEPRECATED virtual void copyHToDInternal(void* deviceBuffer, const void* hostBuffer, PxU32 numBytes) = 0;
 
-	PX_DEPRECATED virtual void memsetD8AsyncInternal(void* dstDeviceBuffer, const PxU8& value, PxU32 numBytes, CUstream stream) = 0;
-	PX_DEPRECATED virtual void memsetD32AsyncInternal(void* dstDeviceBuffer, const PxU32& value, PxU32 numIntegers, CUstream stream) = 0;
+	PX_DEPRECATED virtual void memsetD8AsyncInternal(void* dstDeviceBuffer, const PxU8& value, PxU32 numBytes, hipStream_t stream) = 0;
+	PX_DEPRECATED virtual void memsetD32AsyncInternal(void* dstDeviceBuffer, const PxU32& value, PxU32 numIntegers, hipStream_t stream) = 0;
 };
 
 // These macros are deprecated. Please use the functions in extensions/PxCudaHelpersExt.h

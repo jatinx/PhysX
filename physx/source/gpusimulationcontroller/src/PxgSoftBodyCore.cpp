@@ -93,15 +93,15 @@ namespace physx
 		PxScopedCudaLock _lock(*mCudaContextManager);
 		
 		int leastPriority, mostPriority;
-		cuCtxGetStreamPriorityRange(&leastPriority, &mostPriority);
+		hipDeviceGetStreamPriorityRange(&leastPriority, &mostPriority);
 
-		mCudaContext->streamCreateWithPriority(&mStream, CU_STREAM_NON_BLOCKING, leastPriority);
+		mCudaContext->streamCreateWithPriority(&mStream, hipStreamNonBlocking, leastPriority);
 
-		mCudaContext->eventCreate(&mBoundUpdateEvent, CU_EVENT_DISABLE_TIMING);
-		mCudaContext->eventCreate(&mSolveSoftBodyEvent, CU_EVENT_DISABLE_TIMING);
-		mCudaContext->eventCreate(&mSolveSoftBodyRigidEvent, CU_EVENT_DISABLE_TIMING);
-		mCudaContext->eventCreate(&mConstraintPrepSoftBodyParticleEvent, CU_EVENT_DISABLE_TIMING);
-		mCudaContext->eventCreate(&mSolveSoftBodyParticleEvent, CU_EVENT_DISABLE_TIMING);
+		mCudaContext->eventCreate(&mBoundUpdateEvent, hipEventDisableTiming);
+		mCudaContext->eventCreate(&mSolveSoftBodyEvent, hipEventDisableTiming);
+		mCudaContext->eventCreate(&mSolveSoftBodyRigidEvent, hipEventDisableTiming);
+		mCudaContext->eventCreate(&mConstraintPrepSoftBodyParticleEvent, hipEventDisableTiming);
+		mCudaContext->eventCreate(&mSolveSoftBodyParticleEvent, hipEventDisableTiming);
 
 		const PxU32 contactSize = maxContacts * sizeof(float4);
 
@@ -144,7 +144,7 @@ namespace physx
 
 
 	void PxgSoftBodyCore::preIntegrateSystem(PxgDevicePointer<PxgSoftBody> softbodiesd, PxgDevicePointer<PxU32> activeSoftbodiesd,
-		const PxU32 nbActiveSoftBodies, const PxU32 maxVerts, const PxVec3 gravity, const PxReal dt, CUstream bpStream) 
+		const PxU32 nbActiveSoftBodies, const PxU32 maxVerts, const PxVec3 gravity, const PxReal dt, hipStream_t bpStream) 
 	{
 		{
 			const bool externalForcesEveryTgsIterationEnabled = mGpuContext->isExternalForcesEveryTgsIterationEnabled() && mGpuContext->isTGS();
@@ -158,7 +158,7 @@ namespace physx
 			
 			mCudaContext->memsetD32Async(speculativeCCDContactOffsetd, 0, totalSize / sizeof(PxU32), bpStream);
 			
-			const CUfunction GMPreIntegrateKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SIM_PREINTEGRATION);
+			const hipFunction_t GMPreIntegrateKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SIM_PREINTEGRATION);
 
 			const PxU32 numThreadsPerWarp = 32;
 			const PxU32 numWarpsPerBlock = PxgSoftBodyKernelBlockDim::SB_PREINTEGRATION / numThreadsPerWarp;
@@ -177,14 +177,14 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(externalForcesEveryTgsIterationEnabled)
 				};
 
-				CUresult result = mCudaContext->launchKernel(GMPreIntegrateKernelFunction, numBlocks, nbActiveSoftBodies, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, bpStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(GMPreIntegrateKernelFunction, numBlocks, nbActiveSoftBodies, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, bpStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(bpStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU preIntegrateSystem kernel fail!\n");
 #endif
 			}
@@ -197,7 +197,7 @@ namespace physx
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_SOLVETETRA;
 				const PxU32 numBlocks2 = (maxTetrahedrons * 4 + numThreadsPerBlock - 1) / numThreadsPerBlock;
 				//update duplicate verts in the combined partions from grid model
-				const CUfunction GMUpdateCPVertsFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_ZERO_TETMULTIPLIERS);
+				const hipFunction_t GMUpdateCPVertsFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_ZERO_TETMULTIPLIERS);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -205,13 +205,13 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(activeSoftbodiesd)
 				};
 
-				CUresult result = mCudaContext->launchKernel(GMUpdateCPVertsFunction, numBlocks2, nbActiveSoftBodies, 1, numThreadsPerBlock, 1, 1, 0, bpStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(GMUpdateCPVertsFunction, numBlocks2, nbActiveSoftBodies, 1, numThreadsPerBlock, 1, 1, 0, bpStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_gm_updateGMVertsLaunch kernel fail!\n");
 
 				/*const PxU32 totalVerts = softbodies[0].mRemapOutputSizeGM;
@@ -219,7 +219,7 @@ namespace physx
 				accumulatedBuffer.reserve(totalVerts);
 				accumulatedBuffer.forceSize_Unsafe(totalVerts);
 
-				result = mCudaContext->memcpyDtoH(accumulatedBuffer.begin(), (CUdeviceptr)softbodies[0].mGMPosition_InvMassCP[1 - mCurrentPosIndex], sizeof(float4) * totalVerts);*/
+				result = mCudaContext->memcpyDtoH(accumulatedBuffer.begin(), (hipDeviceptr_t)softbodies[0].mGMPosition_InvMassCP[1 - mCurrentPosIndex], sizeof(float4) * totalVerts);*/
 
 #endif
 			}
@@ -235,7 +235,7 @@ namespace physx
 		PX_UNUSED(softbodies);
 
 		//integrateSystems run on the broad phase stream so we don't need to have an extra event to sync in updateBounds
-		CUstream bpStream = 0;
+		hipStream_t bpStream = 0;
 		if(mGpuContext->mGpuBp)
 			bpStream = mGpuContext->mGpuBp->getBpStream();
 		PxgSimulationCore* core = mSimController->getSimulationCore();
@@ -263,7 +263,7 @@ namespace physx
 		if (mGpuContext->mGpuBp == NULL)
 			return;
 
-		CUstream bpStream = mGpuContext->mGpuBp->getBpStream();
+		hipStream_t bpStream = mGpuContext->mGpuBp->getBpStream();
 
 		PxgSimulationCore* core = mSimController->getSimulationCore();
 		PxgDevicePointer<PxgSoftBody> softBodiesd = core->getSoftBodyBuffer().getTypedDevicePtr();
@@ -271,16 +271,16 @@ namespace physx
 		PxgCudaBuffer& sbElementIndexBuffer = core->getSoftBodyElementIndexBuffer();
 		PxU32* sbElementIndexsd = reinterpret_cast<PxU32*>(sbElementIndexBuffer.getDevicePtr());
 
-		CUdeviceptr boundsd = mGpuContext->mGpuBp->getBoundsBuffer().getDevicePtr();
-		CUdeviceptr bpContactDistd = mGpuContext->mGpuBp->getContactDistBuffer().getDevicePtr();
-		CUdeviceptr npContactDistd = mGpuContext->mGpuNpCore->mGpuContactDistance.getDevicePtr();
+		hipDeviceptr_t boundsd = mGpuContext->mGpuBp->getBoundsBuffer().getDevicePtr();
+		hipDeviceptr_t bpContactDistd = mGpuContext->mGpuBp->getContactDistBuffer().getDevicePtr();
+		hipDeviceptr_t npContactDistd = mGpuContext->mGpuNpCore->mGpuContactDistance.getDevicePtr();
 		PxgDevicePointer<PxReal> speculativeCCDContactOffsetd = mSpeculativeCCDContactOffset.getTypedDevicePtr();
 
 		const PxU32 numBlocks = nbActiveSoftbodies;
 		const PxU32 numThreadsPerWarp = 32;
 		const PxU32 numWarpsPerBlock = SB_REFIT_WAPRS_PER_BLOCK;
 
-		const CUfunction refitBoundKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_REFITBOUND);
+		const hipFunction_t refitBoundKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_REFITBOUND);
 
 		{
 
@@ -296,19 +296,19 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(sbElementIndexsd)
 			};
 
-			CUresult result = mCudaContext->launchKernel(refitBoundKernelFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, bpStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(refitBoundKernelFunction, numBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, bpStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(bpStream);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU updateBound first pass kernel fail!\n");
 
 			//Dma back the bound
 			PxBounds3 bounds[3];
-			mCudaContext->memcpyDtoH(bounds, (CUdeviceptr)boundsd, sizeof(PxBounds3) * 3);
+			mCudaContext->memcpyDtoH(bounds, (hipDeviceptr_t)boundsd, sizeof(PxBounds3) * 3);
 
 #endif
 
@@ -318,20 +318,20 @@ namespace physx
 	void PxgSoftBodyCore::resetContactCounts()
 	{
 		//total contact count for selfCollision and softbody vs softbody
-		CUdeviceptr totalSSContactCountsd = mFemTotalContactCountBuffer.getDevicePtr();
-		//CUdeviceptr prevSSContactsd = mPrevFemContactCountBuffer.getDevicePtr();
+		hipDeviceptr_t totalSSContactCountsd = mFemTotalContactCountBuffer.getDevicePtr();
+		//hipDeviceptr_t prevSSContactsd = mPrevFemContactCountBuffer.getDevicePtr();
 
 		//total contact count for particle and soft body
-		CUdeviceptr totalSPContactCountsd = mParticleTotalContactCountBuffer.getDevicePtr();
-		//CUdeviceptr prevSPContactsd = mPrevSPContactCountBuffer.getDevicePtr();
+		hipDeviceptr_t totalSPContactCountsd = mParticleTotalContactCountBuffer.getDevicePtr();
+		//hipDeviceptr_t prevSPContactsd = mPrevSPContactCountBuffer.getDevicePtr();
 
 		//total contact count for rigid body and soft body
-		CUdeviceptr totalRSContactCountsd = mRigidTotalContactCountBuf.getDevicePtr();
-		//CUdeviceptr prevRSContactCountsd = mRigidPrevContactCountBuf.getDevicePtr();
+		hipDeviceptr_t totalRSContactCountsd = mRigidTotalContactCountBuf.getDevicePtr();
+		//hipDeviceptr_t prevRSContactCountsd = mRigidPrevContactCountBuf.getDevicePtr();
 
 		//total contact count for cloth vs soft body
-		CUdeviceptr totalSCContactCountsd = mSCTotalContactCountBuffer.getDevicePtr();
-		//CUdeviceptr prevSCCountCountsd = mPrevSCContactCountBuffer.getDevicePtr();
+		hipDeviceptr_t totalSCContactCountsd = mSCTotalContactCountBuffer.getDevicePtr();
+		//hipDeviceptr_t prevSCCountCountsd = mPrevSCContactCountBuffer.getDevicePtr();
 
 		mCudaContext->memsetD32Async(totalSSContactCountsd, 0, 1, mStream);
 		//mCudaContext->memsetD32Async(prevSSContactsd, 0, 1, mStream);
@@ -375,7 +375,7 @@ namespace physx
 		//This make sure refitBound kernel are finished in GPU
 		if (mGpuContext->mGpuBp == NULL)
 			return;
-		CUstream bpStream = mGpuContext->mGpuBp->getBpStream();
+		hipStream_t bpStream = mGpuContext->mGpuBp->getBpStream();
 
 		synchronizeStreams(mCudaContext, bpStream, mStream, mBoundUpdateEvent);
 
@@ -399,7 +399,7 @@ namespace physx
 		{
 			PxgSoftBodyContactWriter writer(this);
 
-			CUfunction scMidphaseFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SELFCOLLISION_MIDPHASE);
+			hipFunction_t scMidphaseFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SELFCOLLISION_MIDPHASE);
 
 			PxCudaKernelParam scMidphaseKernelParams[] =
 			{
@@ -412,13 +412,13 @@ namespace physx
 			PxU32 numWarpsPerBlock = MIDPHASE_WARPS_PER_BLOCK;
 			PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_SBMIDPHASE;
 
-			CUresult result = mCudaContext->launchKernel(scMidphaseFunction, numBlocks, nbActiveSelfCollisionSoftbodies, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, scMidphaseKernelParams, sizeof(scMidphaseKernelParams), 0, PX_FL);
-			if (result != CUDA_SUCCESS)
+			hipError_t result = mCudaContext->launchKernel(scMidphaseFunction, numBlocks, nbActiveSelfCollisionSoftbodies, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, scMidphaseKernelParams, sizeof(scMidphaseKernelParams), 0, PX_FL);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_selfCollisionMidphaseGeneratePairsLaunch fail to launch kernel!!\n");
 
 #if SB_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_selfCollisionMidphaseGeneratePairsLaunch fail!!\n");
 
 #endif
@@ -431,7 +431,7 @@ namespace physx
 			PxgDevicePointer<float4> barycentric1d = mFemContactBarycentric1Buffer.getTypedDevicePtr();
 			PxgDevicePointer<PxgFemContactInfo> contactInfosd = mFemContactInfoBuffer.getTypedDevicePtr();
 
-			CUfunction sbContactRemapKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SS_CONTACT_REMAP_TO_SIM);
+			hipFunction_t sbContactRemapKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SS_CONTACT_REMAP_TO_SIM);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -447,18 +447,18 @@ namespace physx
 			PxU32 numWarpsPerBlock = 16;
 			PxU32 numBlocks = 1024;
 			//each warp deal with one test. 
-			CUresult result = mCudaContext->launchKernel(sbContactRemapKernelFunction, numBlocks, 2, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			hipError_t result = mCudaContext->launchKernel(sbContactRemapKernelFunction, numBlocks, 2, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_ss_contact_remap_to_simLaunch fail to launch kernel!!\n");
 
 	#if SB_GPU_DEBUG
 
 			result = mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_ss_contact_remap_to_simLaunch kernel fail!!!\n");
 
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 	#endif
 		}
 	}
@@ -490,7 +490,7 @@ namespace physx
 		//total number of FEM Cloth vs soft body contacts
 		PxgDevicePointer<PxU32> totalSCContactCountsd = mSCTotalContactCountBuffer.getTypedDevicePtr();
 
-		CUfunction clampFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLAMP_MAX_VALUES);
+		hipFunction_t clampFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLAMP_MAX_VALUES);
 		{
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -500,13 +500,13 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(mMaxContacts)
 			};
 
-			CUresult resultR = mCudaContext->launchKernel(clampFunction, 1, 1, 1, 1, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			if (resultR != CUDA_SUCCESS)
+			hipError_t resultR = mCudaContext->launchKernel(clampFunction, 1, 1, 1, 1, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU clampMaxValues fail to launch kernel!!\n");
 
 #if SB_GPU_DEBUG
 			resultR = mCudaContext->streamSynchronize(mStream);
-			if (resultR != CUDA_SUCCESS)
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU clampMaxValues fail!!\n");
 #endif
 		}
@@ -532,8 +532,8 @@ namespace physx
 
 		PxgCudaBuffer* radixSortDescBuf = mRadixSortDescBuf.begin();
 
-		CUfunction radixFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_MULTIBLOCK);
-		CUfunction calculateRanksFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_CALCULATERANKS_MULTIBLOCK);
+		hipFunction_t radixFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_MULTIBLOCK);
+		hipFunction_t calculateRanksFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_CALCULATERANKS_MULTIBLOCK);
 
 		{
 			PxU32 startBit = 0;
@@ -543,7 +543,7 @@ namespace physx
 			{
 				const PxU32 descIndex = i & 1;
 
-				CUdeviceptr rsDesc = radixSortDescBuf[descIndex].getDevicePtr();
+				hipDeviceptr_t rsDesc = radixSortDescBuf[descIndex].getDevicePtr();
 
 				PxCudaKernelParam radixSortKernelParams[] =
 				{
@@ -551,20 +551,20 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(startBit)
 				};
 
-				CUresult resultR = mCudaContext->launchKernel(radixFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 2, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
-				if (resultR != CUDA_SUCCESS)
+				hipError_t resultR = mCudaContext->launchKernel(radixFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 2, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
+				if (resultR != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortSoftBodyContacts fail to launch kernel!!\n");
 
 				resultR = mCudaContext->launchKernel(calculateRanksFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 2, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
-				if (resultR != CUDA_SUCCESS)
+				if (resultR != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortSoftBodyContacts fail to launch kernel!!\n");
 
 				startBit += 4;
 
 			}
 #if SB_GPU_DEBUG
-			CUresult result = mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			hipError_t result = mCudaContext->streamSynchronize(mStream);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortSoftBodyContacts fail!!\n");
 #endif
 		}
@@ -575,7 +575,7 @@ namespace physx
 			PxgDevicePointer<PxU32> tempContactByRigidd = mTempContactByRigidBitBuf.getTypedDevicePtr();
 			PxgDevicePointer<PxU32> rankd = mContactRemapSortedByRigidBuf.getTypedDevicePtr();
 		
-			CUfunction copyFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_COPY_HIGH_32BITS);
+			hipFunction_t copyFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_COPY_HIGH_32BITS);
 		
 			PxCudaKernelParam copyKernelParams[] =
 			{
@@ -585,13 +585,13 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(totalRSContactCountsd)
 			};
 		
-			CUresult resultR = mCudaContext->launchKernel(copyFunction, 32, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, copyKernelParams, sizeof(copyKernelParams), 0, PX_FL);
-			if (resultR != CUDA_SUCCESS)
+			hipError_t resultR = mCudaContext->launchKernel(copyFunction, 32, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, copyKernelParams, sizeof(copyKernelParams), 0, PX_FL);
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radixSortCopyBits fail to launch kernel!!\n");
 		
 #if SB_GPU_DEBUG
 			resultR = mCudaContext->streamSynchronize(mStream);
-			if (resultR != CUDA_SUCCESS)
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radixSortCopyBits fail!!\n");
 #endif
 		}
@@ -605,7 +605,7 @@ namespace physx
 			{
 				const PxU32 descIndex = i & 1;
 		
-				CUdeviceptr rsDesc = radixSortDescBuf[descIndex].getDevicePtr();
+				hipDeviceptr_t rsDesc = radixSortDescBuf[descIndex].getDevicePtr();
 		
 				PxCudaKernelParam radixSortKernelParams[] =
 				{
@@ -613,12 +613,12 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(startBit)
 				};
 		
-				CUresult  resultR = mCudaContext->launchKernel(radixFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
-				if (resultR != CUDA_SUCCESS)
+				hipError_t  resultR = mCudaContext->launchKernel(radixFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
+				if (resultR != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortParticleContacts fail to launch kernel!!\n");
 		
 				resultR = mCudaContext->launchKernel(calculateRanksFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
-				if (resultR != CUDA_SUCCESS)
+				if (resultR != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortParticleContacts fail to launch kernel!!\n");
 		
 				startBit += 4;
@@ -630,7 +630,7 @@ namespace physx
 			PxgDevicePointer<PxNodeIndex> outContactByRigidd = mContactSortedByRigidBuf.getTypedDevicePtr();
 			PxgDevicePointer<PxU32> rankd = mContactRemapSortedByRigidBuf.getTypedDevicePtr();
 
-			CUfunction copyFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_COPY_VALUE);
+			hipFunction_t copyFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_COPY_VALUE);
 
 			PxCudaKernelParam copyKernelParams[] =
 			{
@@ -640,13 +640,13 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(totalRSContactCountsd)
 			};
 
-			CUresult resultR = mCudaContext->launchKernel(copyFunction, 32, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, copyKernelParams, sizeof(copyKernelParams), 0, PX_FL);
-			if (resultR != CUDA_SUCCESS)
+			hipError_t resultR = mCudaContext->launchKernel(copyFunction, 32, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, copyKernelParams, sizeof(copyKernelParams), 0, PX_FL);
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radixSortCopy fail to launch kernel!!\n");
 
 #if SB_GPU_DEBUG
 			resultR = mCudaContext->streamSynchronize(mStream);
-			if (resultR != CUDA_SUCCESS)
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radixSortCopy fail!!\n");
 #endif
 		}
@@ -661,7 +661,7 @@ namespace physx
 			PxgDevicePointer<PxU32> tempContactByParticled = mTempContactByParticleBitBuf.getTypedDevicePtr();
 			PxgDevicePointer<PxU32> rankd = mContactRemapSortedByParticleBuf.getTypedDevicePtr();
 
-			CUfunction copyFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_COPY_HIGH_32BITS);
+			hipFunction_t copyFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_COPY_HIGH_32BITS);
 
 			PxCudaKernelParam copyKernelParams[] =
 			{
@@ -671,13 +671,13 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(totalSPContactCountsd)
 			};
 
-			CUresult resultR = mCudaContext->launchKernel(copyFunction, 32, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, copyKernelParams, sizeof(copyKernelParams), 0, PX_FL);
-			if (resultR != CUDA_SUCCESS)
+			hipError_t resultR = mCudaContext->launchKernel(copyFunction, 32, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, copyKernelParams, sizeof(copyKernelParams), 0, PX_FL);
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radixSortCopyBits fail to launch kernel!!\n");
 
 #if SB_GPU_DEBUG
 			resultR = mCudaContext->streamSynchronize(mStream);
-			if (resultR != CUDA_SUCCESS)
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU radixSortCopyBits fail!!\n");
 #endif
 		}
@@ -693,7 +693,7 @@ namespace physx
 			{
 				const PxU32 descIndex = i & 1;
 
-				CUdeviceptr rsDesc = radixSortDescBuf[descIndex].getDevicePtr() + descSize;
+				hipDeviceptr_t rsDesc = radixSortDescBuf[descIndex].getDevicePtr() + descSize;
 
 				PxCudaKernelParam radixSortKernelParams[] =
 				{
@@ -701,12 +701,12 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(startBit)
 				};
 
-				CUresult  resultR = mCudaContext->launchKernel(radixFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
-				if (resultR != CUDA_SUCCESS)
+				hipError_t  resultR = mCudaContext->launchKernel(radixFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
+				if (resultR != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortParticleContacts fail to launch kernel!!\n");
 
 				resultR = mCudaContext->launchKernel(calculateRanksFunction, PxgRadixSortKernelGridDim::RADIX_SORT, 1, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
-				if (resultR != CUDA_SUCCESS)
+				if (resultR != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortParticleContacts fail to launch kernel!!\n");
 
 				startBit += 4;
@@ -724,7 +724,7 @@ namespace physx
 			PxgDevicePointer<PxgFemContactInfo> sortedInfosd = mParticleSortedContactInfoBuffer.getTypedDevicePtr();
 			PxgDevicePointer<PxU32> remapByParticleId = mContactRemapSortedByParticleBuf.getTypedDevicePtr();
 
-			CUfunction reorderFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_REORDER_PS_CONTACTS);
+			hipFunction_t reorderFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_REORDER_PS_CONTACTS);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -740,12 +740,12 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(sortedInfosd)
 			};
 
-			CUresult  resultR = mCudaContext->launchKernel(reorderFunction, PxgSoftBodyKernelGridDim::SB_REORDERCONTACTS, 1, 1, PxgSoftBodyKernelBlockDim::SB_REORDERCONTACTS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			if (resultR != CUDA_SUCCESS)
+			hipError_t  resultR = mCudaContext->launchKernel(reorderFunction, PxgSoftBodyKernelGridDim::SB_REORDERCONTACTS, 1, 1, PxgSoftBodyKernelBlockDim::SB_REORDERCONTACTS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_reorderPSContactsLaunch fail to launch kernel!!\n");
 #if SB_GPU_DEBUG
 			resultR = mCudaContext->streamSynchronize(mStream);
-			if (resultR != CUDA_SUCCESS)
+			if (resultR != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_reorderPSContactsLaunch fail!!\n");
 #endif
 		}
@@ -771,7 +771,7 @@ namespace physx
 			const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 			const PxU32 numBlocks = (maxSimTetrahedrons + numThreadsPerBlock - 1) / numThreadsPerBlock;
 
-			const CUfunction updateGMTRKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_UPDATETETRAROTATIONS);
+			const hipFunction_t updateGMTRKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_UPDATETETRAROTATIONS);
 
 			{
 
@@ -781,14 +781,14 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(activeSoftbodiesd)
 				};
 
-				CUresult result = mCudaContext->launchKernel(updateGMTRKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(updateGMTRKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_gm_updateTetraRotationsLaunch kernel fail!\n");
 #endif
 
@@ -814,7 +814,7 @@ namespace physx
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 				const PxU32 numBlocks = (maxTetrahedrons + numThreadsPerBlock - 1) / numThreadsPerBlock;
 
-				const CUfunction updateTRKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_UPDATETETRAROTATIONS);
+				const hipFunction_t updateTRKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_UPDATETETRAROTATIONS);
 
 				{
 
@@ -824,14 +824,14 @@ namespace physx
 						PX_CUDA_KERNEL_PARAM(activeSoftbodiesd)
 					};
 
-					CUresult result = mCudaContext->launchKernel(updateTRKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-					PX_ASSERT(result == CUDA_SUCCESS);
+					hipError_t result = mCudaContext->launchKernel(updateTRKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+					PX_ASSERT(result == hipSuccess);
 					PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 					result = mCudaContext->streamSynchronize(mStream);
-					PX_ASSERT(result == CUDA_SUCCESS);
-					if (result != CUDA_SUCCESS)
+					PX_ASSERT(result == hipSuccess);
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_updateTetraRotationsLaunch kernel fail!\n");
 #endif
 				}
@@ -841,7 +841,7 @@ namespace physx
 	}
 
 	void PxgSoftBodyCore::updateTetModelVerts(PxgDevicePointer<PxgSoftBody> softbodiesd, PxgDevicePointer<PxU32> activeSoftbodiesd,
-		const PxU32 nbActiveSoftbodies, CUstream updateStream) 
+		const PxU32 nbActiveSoftbodies, hipStream_t updateStream) 
 	{
 		PxgSimulationCore* core = mSimController->getSimulationCore();
 
@@ -856,7 +856,7 @@ namespace physx
 			//const PxU32 numBlocks = nbActiveSoftbodies * NUM_BLOCK_PER_SOFTBODY_SOLVE_TETRA;
 			{
 
-				const CUfunction updateTetModelKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_UPDATETETMODELVERTS);
+				const hipFunction_t updateTetModelKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_UPDATETETMODELVERTS);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -864,14 +864,14 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(activeSoftbodiesd)
 				};
 
-				CUresult result = mCudaContext->launchKernel(updateTetModelKernelFunction, numBlocks, nbActiveSoftbodies, 1, PxgSoftBodyKernelBlockDim::SB_PREINTEGRATION, 1, 1, 0, updateStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(updateTetModelKernelFunction, numBlocks, nbActiveSoftbodies, 1, PxgSoftBodyKernelBlockDim::SB_PREINTEGRATION, 1, 1, 0, updateStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(updateStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_updateTetModelVertsLaunch kernel fail!\n");
 
 #endif
@@ -881,7 +881,7 @@ namespace physx
 	}
 
 
-	void PxgSoftBodyCore::applyExternalTetraDeltaGM(const PxU32 nbActiveSoftbodies, const PxReal dt, CUstream stream)
+	void PxgSoftBodyCore::applyExternalTetraDeltaGM(const PxU32 nbActiveSoftbodies, const PxReal dt, hipStream_t stream)
 	{
 #if SB_GPU_DEBUG
 		PX_PROFILE_ZONE("PxgSoftBodyCore.applyExternalTetra", 0);
@@ -900,7 +900,7 @@ namespace physx
 
 		{
 
-			const CUfunction solveTetraKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_APPLY_EXTERNAL_DELTAS);
+			const hipFunction_t solveTetraKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_APPLY_EXTERNAL_DELTAS);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -909,14 +909,14 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(invDt)
 			};
 
-			CUresult result = mCudaContext->launchKernel(solveTetraKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(solveTetraKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_applyExternalDeltasLaunch first pass kernel fail!\n");
 #endif
 		}
@@ -948,7 +948,7 @@ namespace physx
 
 			{
 				const PxU32 numBlocks = (maxVerts + numThreadsPerBlock - 1) / numThreadsPerBlock;
-				CUfunction finalizeVelocitiesKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_FINALIZE_VELOCITIES);
+				hipFunction_t finalizeVelocitiesKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_FINALIZE_VELOCITIES);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -960,14 +960,14 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(alwaysRunVelocityAveraging)
 				};
 
-				CUresult result = mCudaContext->launchKernel(finalizeVelocitiesKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(finalizeVelocitiesKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_gm_finalizeVelocitiesLaunch kernel fail!\n");
 #endif
 			}
@@ -976,7 +976,7 @@ namespace physx
 			{
 				const PxReal resetCounter = 0.4f;
 				const PxU32 numBlocks = (nbActiveSoftbodies + numThreadsPerBlock - 1) / numThreadsPerBlock;
-				CUfunction softBodySleepingFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SLEEPING);
+				hipFunction_t softBodySleepingFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SLEEPING);
 
 				PxU32* stateChanged = core->getActiveSBStateChangedMap().getWords();
 				PxgDevicePointer<PxReal> wakeCountersGPU = core->getActiveSBWakeCountsGPU();
@@ -993,14 +993,14 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(stateChanged)
 				};
 
-				CUresult result = mCudaContext->launchKernel(softBodySleepingFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(softBodySleepingFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_sleeping kernel fail!\n");
 #endif
 
@@ -1008,7 +1008,7 @@ namespace physx
 				mCudaContext->memcpyDtoHAsync(wakeCountersCPU, wakeCountersGPU.mPtr, totalSoftBodies * sizeof(PxReal), mStream);
 			}
 
-			updateTetModelVerts(softbodiesd, reinterpret_cast<CUdeviceptr>(activeSoftbodiesd), nbActiveSoftbodies, mStream);
+			updateTetModelVerts(softbodiesd, reinterpret_cast<hipDeviceptr_t>(activeSoftbodiesd), nbActiveSoftbodies, mStream);
 
 			//calculate stress for collision mesh
 			calculateStress();
@@ -1064,18 +1064,18 @@ namespace physx
 	}
 	
 	void PxgSoftBodyCore::solveRSContactsOutputRigidDelta(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd,
-		PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, CUstream solverStream, const PxReal dt) 
+		PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, hipStream_t solverStream, const PxReal dt) 
 	{
 		PxgDevicePointer<PxU32> totalContactCountsd = mRigidTotalContactCountBuf.getTypedDevicePtr();
 		{
-			const CUfunction solveOutputRigidDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_RIGID_RIGID_DELTA);
+			const hipFunction_t solveOutputRigidDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_RIGID_RIGID_DELTA);
 
 			PxgSimulationCore* core = mSimController->getSimulationCore();
 			PxgSoftBody* softbodiesd = reinterpret_cast<PxgSoftBody*>(core->getSoftBodyBuffer().getDevicePtr());
 
 
 			PxgGpuNarrowphaseCore* npCore = mGpuContext->getNarrowphaseCore();
-			CUdeviceptr materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
+			hipDeviceptr_t materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
 			PxsMaterialData* rigidBodyMaterials = reinterpret_cast<PxsMaterialData*>(npCore->mGpuMaterialManager.mGpuMaterialBuffer.getDevicePtr());
 
 			PxgDevicePointer<PxgFemContactInfo> contactInfosd = mRigidSortedContactInfoBuf.getTypedDevicePtr();
@@ -1104,8 +1104,8 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(rigidBodyMaterials)
 			};
 
-			CUresult result = mCudaContext->launchKernel(solveOutputRigidDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, solverStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(solveOutputRigidDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, solverStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 			mCudaContext->eventRecord(mSolveSoftBodyRigidEvent, solverStream);
@@ -1114,8 +1114,8 @@ namespace physx
 
 #if SB_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveOutputRigidDeltaVlaunch first pass kernel fail!\n");
 
 			int bob = 0;
@@ -1133,7 +1133,7 @@ namespace physx
 	}
 
 	void PxgSoftBodyCore::solveRSContactsOutputRigidDeltaTGS(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd,
-		PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, CUstream solverStream, const PxReal dt) 
+		PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, hipStream_t solverStream, const PxReal dt) 
 	{
 		PxgDevicePointer<PxU32> totalContactCountsd = mRigidTotalContactCountBuf.getTypedDevicePtr();
 
@@ -1144,13 +1144,13 @@ namespace physx
 		PX_UNUSED(solverStream);
 		PX_UNUSED(dt);
 		{
-			const CUfunction solveOutputRigidDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_RIGID_RIGID_DELTA_TGS);
+			const hipFunction_t solveOutputRigidDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_RIGID_RIGID_DELTA_TGS);
 
 			PxgSimulationCore* core = mSimController->getSimulationCore();
 			PxgSoftBody* softbodiesd = reinterpret_cast<PxgSoftBody*>(core->getSoftBodyBuffer().getDevicePtr());
 
 			PxgGpuNarrowphaseCore* npCore = mGpuContext->getNarrowphaseCore();
-			CUdeviceptr materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
+			hipDeviceptr_t materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
 			PxsMaterialData* rigidBodyMaterials = reinterpret_cast<PxsMaterialData*>(npCore->mGpuMaterialManager.mGpuMaterialBuffer.getDevicePtr());
 
 			PxgDevicePointer<PxgFemContactInfo> contactInfosd = mRigidSortedContactInfoBuf.getTypedDevicePtr();
@@ -1178,16 +1178,16 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(rigidBodyMaterials)
 			};
 
-			CUresult result = mCudaContext->launchKernel(solveOutputRigidDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, solverStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(solveOutputRigidDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, solverStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 			mCudaContext->eventRecord(mSolveSoftBodyRigidEvent, solverStream);
 
 #if SB_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveOutputRigidDeltaVlaunch first pass kernel fail!\n");
 
 			int bob = 0;
@@ -1205,7 +1205,7 @@ namespace physx
 
 
 	void PxgSoftBodyCore::solveCorotationalFEM(PxgSoftBody* softbodies, PxgSoftBody* softbodiesd, PxgDevicePointer<PxU32> activeSoftbodiesd,
-		const PxU32 nbActiveSoftbodies, const PxReal dt, CUstream stream, const bool isTGS, const bool isFirstIteration) 
+		const PxU32 nbActiveSoftbodies, const PxReal dt, hipStream_t stream, const bool isTGS, const bool isFirstIteration) 
 	{
 		PX_UNUSED(softbodies);
 
@@ -1228,7 +1228,7 @@ namespace physx
 				maxPartitions = PxMin(maxPartitions, PxU32(SB_PARTITION_LIMIT));
 
 				PxgGpuNarrowphaseCore* npCore = mGpuContext->getNarrowphaseCore();
-				CUdeviceptr materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
+				hipDeviceptr_t materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
 
 				{
 					const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_SOLVETETRA_LOW;
@@ -1237,7 +1237,7 @@ namespace physx
 
 					for (PxU32 i = 0; i < maxPartitions; ++i)
 					{
-						const CUfunction GMCPSolveTetraKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_CP_SOLVE_TETRA);
+						const hipFunction_t GMCPSolveTetraKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_CP_SOLVE_TETRA);
 
 						PxCudaKernelParam kernelParams[] =
 						{
@@ -1251,15 +1251,15 @@ namespace physx
 							PX_CUDA_KERNEL_PARAM(materials)
 						};
 
-						CUresult result = mCudaContext->launchKernel(GMCPSolveTetraKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-						PX_ASSERT(result == CUDA_SUCCESS);
+						hipError_t result = mCudaContext->launchKernel(GMCPSolveTetraKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+						PX_ASSERT(result == hipSuccess);
 						PX_UNUSED(result);
 					}
 
 #if SB_GPU_DEBUG
-					CUresult result = mCudaContext->streamSynchronize(mStream);
-					PX_ASSERT(result == CUDA_SUCCESS);
-					if (result != CUDA_SUCCESS)
+					hipError_t result = mCudaContext->streamSynchronize(mStream);
+					PX_ASSERT(result == hipSuccess);
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveTetrahedronsPartitionLaunch1 kernel fail!\n");
 #endif
 				}
@@ -1273,7 +1273,7 @@ namespace physx
 					    const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_SOLVETETRA_LOW;
 					    const PxU32 numBlocks = (maxJacobiTets + numThreadsPerBlock - 1) / numThreadsPerBlock;
 
-						const CUfunction GMCPSolveJacobiKernelFunction =
+						const hipFunction_t GMCPSolveJacobiKernelFunction =
 					        mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(
 					            PxgKernelIds::SB_GM_CP_SOLVE_TETRA_JACOBI_PARTITION);
 
@@ -1284,16 +1284,16 @@ namespace physx
 						                                     PX_CUDA_KERNEL_PARAM(isTGS),
 						                                     PX_CUDA_KERNEL_PARAM(materials) };
 
-					    CUresult result = mCudaContext->launchKernel(
+					    hipError_t result = mCudaContext->launchKernel(
 					        GMCPSolveJacobiKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1,
 					        0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-					    PX_ASSERT(result == CUDA_SUCCESS);
+					    PX_ASSERT(result == hipSuccess);
 					    PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 					    result = mCudaContext->streamSynchronize(mStream);
-					    PX_ASSERT(result == CUDA_SUCCESS);
-					    if(result != CUDA_SUCCESS)
+					    PX_ASSERT(result == hipSuccess);
+					    if(result != hipSuccess)
 						    PxGetFoundation().error(
 						        PxErrorCode::eINTERNAL_ERROR, PX_FL,
 						        "GPU sb_gm_cp_solveTetrahedronsJacobiPartitionLaunch kernel fail!\n");
@@ -1306,23 +1306,23 @@ namespace physx
 					    const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_SOLVETETRA;
 					    const PxU32 numBlocks = (maxVerts + numThreadsPerBlock - 1) / numThreadsPerBlock;
 
-					    const CUfunction solveTetraKernelFunction =
+					    const hipFunction_t solveTetraKernelFunction =
 					        mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(
 					            PxgKernelIds::SB_GM_APPLY_DEFORMATION_DELTAS);
 					    PxCudaKernelParam kernelParams[] = { PX_CUDA_KERNEL_PARAM(softbodiesd),
 						                                     PX_CUDA_KERNEL_PARAM(activeSoftbodiesd),
 						                                     PX_CUDA_KERNEL_PARAM(invDt) };
 
-					    CUresult result = mCudaContext->launchKernel(
+					    hipError_t result = mCudaContext->launchKernel(
 					        solveTetraKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0,
 					        stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-					    PX_ASSERT(result == CUDA_SUCCESS);
+					    PX_ASSERT(result == hipSuccess);
 					    PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 					    result = mCudaContext->streamSynchronize(mStream);
-					    PX_ASSERT(result == CUDA_SUCCESS);
-					    if(result != CUDA_SUCCESS)
+					    PX_ASSERT(result == hipSuccess);
+					    if(result != hipSuccess)
 						    PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,
 						                            "GPU sb_gm_applyDeformationDeltasLaunch kernel fail!\n");
 #endif
@@ -1337,7 +1337,7 @@ namespace physx
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_SOLVETETRA;
 				const PxU32 numBlocks = (maxTetraVerts + numThreadsPerBlock - 1) / numThreadsPerBlock;
 
-				const CUfunction GMCPAverageKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_CP_AVERAGEVERTS);
+				const hipFunction_t GMCPAverageKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_CP_AVERAGEVERTS);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -1346,14 +1346,14 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(invDt)
 				};
 
-				CUresult result = mCudaContext->launchKernel(GMCPAverageKernelFunction, numBlocks, nbActiveSoftbodies, 1, PxgSoftBodyKernelBlockDim::SB_PREINTEGRATION, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(GMCPAverageKernelFunction, numBlocks, nbActiveSoftbodies, 1, PxgSoftBodyKernelBlockDim::SB_PREINTEGRATION, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_averageVertsLaunch kernel fail!\n");
 
 #endif
@@ -1361,9 +1361,9 @@ namespace physx
 			
 #if SB_GPU_DEBUG & DRAW_GRID
 
-			CUresult result = mCudaContext->streamSynchronize(mStream);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			hipError_t result = mCudaContext->streamSynchronize(mStream);
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_averageVertsLaunch kernel fail!\n");
 
 			PxgNphaseImplementationContext* npContext = mNpCore->mNphaseImplContext;
@@ -1385,9 +1385,9 @@ namespace physx
 			orderedTets.reserve(numTetsGM);
 			orderedTets.forceSize_Unsafe(numTetsGM);
 
-			mCudaContext->memcpyDtoH(pos.begin(), (CUdeviceptr)sb.mGridModelPosition_InvMass, sizeof(PxVec4) * numVertsGM);
-			mCudaContext->memcpyDtoH(tetIndices.begin(), (CUdeviceptr)sb.mGridModelTetIndices, sizeof(uint4)*numTetsGM);
-			mCudaContext->memcpyDtoH(orderedTets.begin(), (CUdeviceptr)sb.mGridModelOrderedTetrahedrons, sizeof(PxU32) * numTetsGM);
+			mCudaContext->memcpyDtoH(pos.begin(), (hipDeviceptr_t)sb.mGridModelPosition_InvMass, sizeof(PxVec4) * numVertsGM);
+			mCudaContext->memcpyDtoH(tetIndices.begin(), (hipDeviceptr_t)sb.mGridModelTetIndices, sizeof(uint4)*numTetsGM);
+			mCudaContext->memcpyDtoH(orderedTets.begin(), (hipDeviceptr_t)sb.mGridModelOrderedTetrahedrons, sizeof(PxU32) * numTetsGM);
 
 			const PxMat44 m(PxIdentity);
 
@@ -1426,13 +1426,13 @@ namespace physx
 		//solve soft body vs particle contact in the soft body stream and update delta and applied force for soft body
 		{
 
-			const CUfunction solveOutputSoftBodyDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_PARTICLE_SOFT_DELTA);
+			const hipFunction_t solveOutputSoftBodyDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_PARTICLE_SOFT_DELTA);
 
 			//PxgSimulationCore* core = mSimController->getSimulationCore();
 			//PxgSoftBody* softbodiesd = reinterpret_cast<PxgSoftBody*>(core->getSoftBodyBuffer().getDevicePtr());
 
 			PxgGpuNarrowphaseCore* npCore = mGpuContext->getNarrowphaseCore();
-			CUdeviceptr materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
+			hipDeviceptr_t materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
 
 			PxgDevicePointer<PxgFemContactInfo> contactInfosd = mParticleSortedContactInfoBuffer.getTypedDevicePtr();
 			PxgDevicePointer<PxgFEMParticleConstraintBlock> constraintsd = mParticleConstraintBuf.getTypedDevicePtr();
@@ -1453,8 +1453,8 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(materials)
 			};
 
-			CUresult result = mCudaContext->launchKernel(solveOutputSoftBodyDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(solveOutputSoftBodyDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
@@ -1464,8 +1464,8 @@ namespace physx
 			if (numSoftCount > 0)
 			{
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveOutputSSDeltaVLaunch kernel fail!\n");
 
 				/*PxgSoftBody* softbodies = mSimController->getSoftBodies();
@@ -1483,7 +1483,7 @@ namespace physx
 					deltaV.reserve(numVerts);
 					deltaV.forceSize_Unsafe(numVerts);
 
-					mCudaContext->memcpyDtoH(deltaV.begin(), (CUdeviceptr)softbodies[i].mDelta, sizeof(float4)*numVerts);
+					mCudaContext->memcpyDtoH(deltaV.begin(), (hipDeviceptr_t)softbodies[i].mDelta, sizeof(float4)*numVerts);
 
 					int bob = 0;
 					PX_UNUSED(bob);
@@ -1495,7 +1495,7 @@ namespace physx
 	}
 
 	//solve soft body vs particle system in particle stream
-	void PxgSoftBodyCore::solveSPContactsOutputParticleDelta(const PxReal dt, const PxReal biasCoefficient, CUstream particleStream)
+	void PxgSoftBodyCore::solveSPContactsOutputParticleDelta(const PxReal dt, const PxReal biasCoefficient, hipStream_t particleStream)
 	{
 		//solve soft body vs particle contact in the particle system stream and update selfCollision delta for particle system
 		PxgSimulationCore* core = mGpuContext->getSimulationCore(); 
@@ -1522,7 +1522,7 @@ namespace physx
 			mCudaContext->streamWaitEvent(particleStream, mConstraintPrepSoftBodyParticleEvent);
 			//synchronizeStreams(mStream, particleStream);
 
-			const CUfunction solveOutputParticleDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_PARTICLE_PARTICLE_DELTA);
+			const hipFunction_t solveOutputParticleDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_PARTICLE_PARTICLE_DELTA);
 
 			PxgDevicePointer<PxgFEMParticleConstraintBlock> constraintsd = mParticleConstraintBuf.getTypedDevicePtr();
 
@@ -1531,7 +1531,7 @@ namespace physx
 			const PxReal relaxation = dt * biasCoefficient;
 
 			PxgGpuNarrowphaseCore* npCore = mGpuContext->getNarrowphaseCore();
-			CUdeviceptr materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
+			hipDeviceptr_t materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -1546,8 +1546,8 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(materials)
 			};
 
-			CUresult result = mCudaContext->launchKernel(solveOutputParticleDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, particleStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(solveOutputParticleDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, particleStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 			mCudaContext->eventRecord(mSolveSoftBodyParticleEvent, particleStream);
@@ -1557,8 +1557,8 @@ namespace physx
 			if (numContacts > 0)
 			{
 				result = mCudaContext->streamSynchronize(particleStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveOutputSSDeltaVLaunch kernel fail!\n");
 
 				PxArray<PxVec4> deltaV;
@@ -1582,7 +1582,7 @@ namespace physx
 
 			//accumulate deltaV changes for particle
 			{
-				const CUfunction accumulatedDeltaVKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_ACCUMULATE_FEM_PARTICLE_DELTA);
+				const hipFunction_t accumulatedDeltaVKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_ACCUMULATE_FEM_PARTICLE_DELTA);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -1597,15 +1597,15 @@ namespace physx
 
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_ACCUMULATE_DELTA;
 				const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_ACCUMULATE_DELTA;
-				CUresult result = mCudaContext->launchKernel(accumulatedDeltaVKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, particleStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(accumulatedDeltaVKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, particleStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 #if SB_GPU_DEBUG
 
 				//if (numContacts > 0)
 				//{
 				//	result = mCudaContext->streamSynchronize(particleStream);
-				//	if (result != CUDA_SUCCESS)
+				//	if (result != hipSuccess)
 				//		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_accumulateParticleDeltaVLaunch kernel fail!\n");
 				//
 				//	PxgParticleSystem* particleSystems = mSimController->getParticleSystems();
@@ -1623,7 +1623,7 @@ namespace physx
 				//		deltaV.reserve(numVerts);
 				//		deltaV.forceSize_Unsafe(numVerts);
 
-				//		mCudaContext->memcpyDtoH(deltaV.begin(), (CUdeviceptr)particleSystem.mAccumDeltaV, sizeof(float4)*numVerts);
+				//		mCudaContext->memcpyDtoH(deltaV.begin(), (hipDeviceptr_t)particleSystem.mAccumDeltaV, sizeof(float4)*numVerts);
 
 				//		int bob = 0;
 				//		PX_UNUSED(bob);
@@ -1649,17 +1649,17 @@ namespace physx
 		{
 
 
-			const CUfunction solveOutputSoftBodyDeltaKernelFunction = isTGS ? mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_SOFT_SOFT_BOTH_DELTA_TGS)
+			const hipFunction_t solveOutputSoftBodyDeltaKernelFunction = isTGS ? mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_SOFT_SOFT_BOTH_DELTA_TGS)
 				: mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_SOFT_SOFT_BOTH_DELTA);
 
 			//PxgSimulationCore* core = mSimController->getSimulationCore();
 			//PxgSoftBody* softbodiesd = reinterpret_cast<PxgSoftBody*>(core->getSoftBodyBuffer().getDevicePtr());
 
 			PxgGpuNarrowphaseCore* npCore = mGpuContext->getNarrowphaseCore();
-			CUdeviceptr materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
+			hipDeviceptr_t materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
 
 			PxgDevicePointer<PxgFemContactInfo> contactInfosd = mFemContactInfoBuffer.getTypedDevicePtr();
-			CUdeviceptr constraintsd = mFemConstraintBuf.getDevicePtr();
+			hipDeviceptr_t constraintsd = mFemConstraintBuf.getDevicePtr();
 
 			PxgDevicePointer<float4> appliedForced = mFemAppliedForcesBuf.getTypedDevicePtr();
 
@@ -1675,8 +1675,8 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(materials)
 			};
 
-			CUresult result = mCudaContext->launchKernel(solveOutputSoftBodyDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(solveOutputSoftBodyDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
@@ -1686,8 +1686,8 @@ namespace physx
 			if (numSoftCount > 0)
 			{
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveOutputSSDeltaVLaunch kernel fail!\n");
 
 				PxgSoftBody* softbodies = mSimController->getSoftBodies();
@@ -1705,7 +1705,7 @@ namespace physx
 					deltaV.reserve(numVerts);
 					deltaV.forceSize_Unsafe(numVerts);
 
-					mCudaContext->memcpyDtoH(deltaV.begin(), (CUdeviceptr)softbodies[i].mSimDelta, sizeof(float4)*numVerts);
+					mCudaContext->memcpyDtoH(deltaV.begin(), (hipDeviceptr_t)softbodies[i].mSimDelta, sizeof(float4)*numVerts);
 
 					int bob = 0;
 					PX_UNUSED(bob);
@@ -1726,7 +1726,7 @@ namespace physx
 
 		//solve soft body vs cloth contacts
 		{
-			const CUfunction solveOutputSoftBodyDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_SOFT_CLOTH_BOTH_DELTA);
+			const hipFunction_t solveOutputSoftBodyDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_SOFT_CLOTH_BOTH_DELTA);
 			PxgDevicePointer<PxgFemContactInfo> contactInfosd = mSCContactInfoBuffer.getTypedDevicePtr();
 			PxgDevicePointer<PxgSoftBodySoftBodyConstraintBlock> constraintsd = mSCConstraintBuf.getTypedDevicePtr();
 
@@ -1742,8 +1742,8 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(lambdaNs)
 			};
 
-			CUresult result = mCudaContext->launchKernel(solveOutputSoftBodyDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(solveOutputSoftBodyDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
@@ -1753,8 +1753,8 @@ namespace physx
 			if (numSoftCount > 0)
 			{
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveOutputSSDeltaVLaunch kernel fail!\n");
 
 				PxgSoftBody* softbodies = mSimController->getSoftBodies();
@@ -1772,7 +1772,7 @@ namespace physx
 					deltaV.reserve(numVerts);
 					deltaV.forceSize_Unsafe(numVerts);
 
-					mCudaContext->memcpyDtoH(deltaV.begin(), (CUdeviceptr)softbodies[i].mSimDelta, sizeof(float4)*numVerts);
+					mCudaContext->memcpyDtoH(deltaV.begin(), (hipDeviceptr_t)softbodies[i].mSimDelta, sizeof(float4)*numVerts);
 
 					int bob = 0;
 					PX_UNUSED(bob);
@@ -1793,19 +1793,19 @@ namespace physx
 		PxgSimulationCore* core = mSimController->getSimulationCore();
 		PxgSoftBody* softbodiesd = reinterpret_cast<PxgSoftBody*>(core->getSoftBodyBuffer().getDevicePtr());
 
-		//CUdeviceptr totalSSContactCountsd = mSSTotalContactCountBuffer.getDevicePtr();
+		//hipDeviceptr_t totalSSContactCountsd = mSSTotalContactCountBuffer.getDevicePtr();
 
 		//solve rigid body and soft body contacts
 		{
 			PxgDevicePointer<PxU32> totalRSContactCountsd = mRigidTotalContactCountBuf.getTypedDevicePtr();
 
-			const CUfunction solveOutputSoftBodyDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_RIGID_SOFT_DELTA);
+			const hipFunction_t solveOutputSoftBodyDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_RIGID_SOFT_DELTA);
 
 			//PxgSimulationCore* core = mSimController->getSimulationCore();
 			//PxgSoftBody* softbodiesd = reinterpret_cast<PxgSoftBody*>(core->getSoftBodyBuffer().getTypedDevicePtr());
 
 			PxgGpuNarrowphaseCore* npCore = mGpuContext->getNarrowphaseCore();
-			CUdeviceptr materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
+			hipDeviceptr_t materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
 			PxsMaterialData* rigidBodyMaterials = reinterpret_cast<PxsMaterialData*>(npCore->mGpuMaterialManager.mGpuMaterialBuffer.getDevicePtr());
 			PxgDevicePointer<PxgFemContactInfo> contactInfosd = mRigidSortedContactInfoBuf.getTypedDevicePtr();
 			PxgDevicePointer<PxgFemRigidConstraintBlock> constraintsd = mRigidConstraintBuf.getTypedDevicePtr();
@@ -1832,16 +1832,16 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(rigidBodyMaterials)
 			};
 
-			CUresult result = mCudaContext->launchKernel(solveOutputSoftBodyDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(solveOutputSoftBodyDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 			mCudaContext->eventRecord(mSolveSoftBodyEvent, mStream);
 
 #if SB_GPU_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		PX_ASSERT(result == CUDA_SUCCESS);
-		if (result != CUDA_SUCCESS)
+		PX_ASSERT(result == hipSuccess);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveOutputSoftBodyDeltaVLaunch first pass kernel fail!\n");
 
 
@@ -1857,7 +1857,7 @@ namespace physx
 			deltaV.reserve(numVerts);
 			deltaV.forceSize_Unsafe(numVerts);
 
-			mCudaContext->memcpyDtoH(deltaV.begin(), (CUdeviceptr)softbodies[i].mDelta, sizeof(float4)*numVerts);
+			mCudaContext->memcpyDtoH(deltaV.begin(), (hipDeviceptr_t)softbodies[i].mDelta, sizeof(float4)*numVerts);
 
 			int bob = 0;
 			PX_UNUSED(bob);
@@ -1879,7 +1879,7 @@ namespace physx
 
 		PxgDevicePointer<PxU32> totalContactCountsd = mRigidTotalContactCountBuf.getTypedDevicePtr();
 
-		const CUfunction kernelFunction =
+		const hipFunction_t kernelFunction =
 			mIsTGS ? mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_QUERY_RIGID_SOFT_REFERENCE_COUNT_TGS)
 				   : mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_QUERY_RIGID_SOFT_REFERENCE_COUNT);
 
@@ -1900,16 +1900,16 @@ namespace physx
 											 PX_CUDA_KERNEL_PARAM(lambdaNs),
 											 PX_CUDA_KERNEL_PARAM(femRigidContactCount) };
 
-		CUresult result = mCudaContext->launchKernel(kernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1,
+		hipError_t result = mCudaContext->launchKernel(kernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1,
 			PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams,
 			sizeof(kernelParams), 0, PX_FL);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 		PX_UNUSED(result);
 
 #if CLOTH_GPU_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		PX_ASSERT(result == CUDA_SUCCESS);
-		if (result != CUDA_SUCCESS)
+		PX_ASSERT(result == hipSuccess);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_queryRigidSoftBodyContactReferenceCountLaunch kernel fail!\n");
 #endif
 	}
@@ -1928,18 +1928,18 @@ namespace physx
 		PxgSimulationCore* core = mSimController->getSimulationCore();
 		PxgSoftBody* softbodiesd = reinterpret_cast<PxgSoftBody*>(core->getSoftBodyBuffer().getDevicePtr());
 
-		//CUdeviceptr totalSSContactCountsd = mSSTotalContactCountBuffer.getDevicePtr();
+		//hipDeviceptr_t totalSSContactCountsd = mSSTotalContactCountBuffer.getDevicePtr();
 
 		//solve rigid body and soft body contacts
 		{
 			PxgDevicePointer<PxU32> totalRSContactCountsd = mRigidTotalContactCountBuf.getTypedDevicePtr();
 
-			const CUfunction solveOutputSoftBodyDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_RIGID_SOFT_DELTA_TGS);
+			const hipFunction_t solveOutputSoftBodyDeltaKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_RIGID_SOFT_DELTA_TGS);
 
 			//PxgSimulationCore* core = mSimController->getSimulationCore();
 			//PxgSoftBody* softbodiesd = reinterpret_cast<PxgSoftBody*>(core->getSoftBodyBuffer().getTypedDevicePtr());
 			PxgGpuNarrowphaseCore* npCore = mGpuContext->getNarrowphaseCore();
-			CUdeviceptr materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
+			hipDeviceptr_t materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
 			PxsMaterialData* rigidBodyMaterials = reinterpret_cast<PxsMaterialData*>(npCore->mGpuMaterialManager.mGpuMaterialBuffer.getDevicePtr());
 			PxgDevicePointer<PxgFemContactInfo> contactInfosd = mRigidSortedContactInfoBuf.getTypedDevicePtr();
 			PxgDevicePointer<PxgFemRigidConstraintBlock> constraintsd = mRigidConstraintBuf.getTypedDevicePtr();
@@ -1966,16 +1966,16 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(rigidBodyMaterials)
 			};
 
-			CUresult result = mCudaContext->launchKernel(solveOutputSoftBodyDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(solveOutputSoftBodyDeltaKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 			mCudaContext->eventRecord(mSolveSoftBodyEvent, mStream);
 
 #if SB_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveOutputSoftBodyDeltaVLaunch first pass kernel fail!\n");
 
 
@@ -1991,7 +1991,7 @@ namespace physx
 			deltaV.reserve(numVerts);
 			deltaV.forceSize_Unsafe(numVerts);
 
-			mCudaContext->memcpyDtoH(deltaV.begin(), (CUdeviceptr)softbodies[i].mDelta, sizeof(float4)*numVerts);
+			mCudaContext->memcpyDtoH(deltaV.begin(), (hipDeviceptr_t)softbodies[i].mDelta, sizeof(float4)*numVerts);
 
 			int bob = 0;
 			PX_UNUSED(bob);
@@ -2001,19 +2001,19 @@ namespace physx
 		}
 	}
 
-//	void PxgSoftBodyCore::accumulateRigidDeltas(CUdeviceptr prePrepDescd, CUdeviceptr solverCoreDescd, CUdeviceptr sharedDescd, CUdeviceptr artiCoreDescd, 
-//		CUdeviceptr rigidIdsd, CUdeviceptr numIdsd, CUstream stream, bool useLocalRelax, const PxReal globalRelaxationCoefficient, const bool isTGS)
+//	void PxgSoftBodyCore::accumulateRigidDeltas(hipDeviceptr_t prePrepDescd, hipDeviceptr_t solverCoreDescd, hipDeviceptr_t sharedDescd, hipDeviceptr_t artiCoreDescd, 
+//		hipDeviceptr_t rigidIdsd, hipDeviceptr_t numIdsd, hipStream_t stream, bool useLocalRelax, const PxReal globalRelaxationCoefficient, const bool isTGS)
 //	{
 //		PX_UNUSED(rigidIdsd);
 //		PX_UNUSED(useLocalRelax);
 //
 //		{
-//			//CUdeviceptr contactInfosd = mRSSortedContactInfoBuffer.getDevicePtr();
-//			CUdeviceptr deltaVd = mRigidDeltaVelBuf.getDevicePtr();
-//			CUdeviceptr blockDeltaVd = mTempBlockDeltaVelBuf.getDevicePtr();
-//			CUdeviceptr blockRigidIdd = mTempBlockRigidIdBuf.getDevicePtr();
+//			//hipDeviceptr_t contactInfosd = mRSSortedContactInfoBuffer.getDevicePtr();
+//			hipDeviceptr_t deltaVd = mRigidDeltaVelBuf.getDevicePtr();
+//			hipDeviceptr_t blockDeltaVd = mTempBlockDeltaVelBuf.getDevicePtr();
+//			hipDeviceptr_t blockRigidIdd = mTempBlockRigidIdBuf.getDevicePtr();
 //
-//			const CUfunction rigidFirstKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ACCUMULATE_DELTAVEL_RIGIDBODY_FIRST);
+//			const hipFunction_t rigidFirstKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ACCUMULATE_DELTAVEL_RIGIDBODY_FIRST);
 //
 //			PxCudaKernelParam kernelParams[] =
 //			{
@@ -2025,14 +2025,14 @@ namespace physx
 //				PX_CUDA_KERNEL_PARAM(blockRigidIdd)
 //			};
 //
-//			CUresult result = mCudaContext->launchKernel(rigidFirstKernelFunction, PxgSoftBodyKernelGridDim::SB_ACCUMULATE_DELTA, 1, 1, PxgSoftBodyKernelBlockDim::SB_ACCUMULATE_DELTA, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-//			PX_ASSERT(result == CUDA_SUCCESS);
+//			hipError_t result = mCudaContext->launchKernel(rigidFirstKernelFunction, PxgSoftBodyKernelGridDim::SB_ACCUMULATE_DELTA, 1, 1, PxgSoftBodyKernelBlockDim::SB_ACCUMULATE_DELTA, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+//			PX_ASSERT(result == hipSuccess);
 //			PX_UNUSED(result);
 //
 //#if SB_GPU_DEBUG
 //			result = mCudaContext->streamSynchronize(stream);
-//			PX_ASSERT(result == CUDA_SUCCESS);
-//			if (result != CUDA_SUCCESS)
+//			PX_ASSERT(result == hipSuccess);
+//			if (result != hipSuccess)
 //				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU soft body accumulateDeltaVRigidFirstLaunch kernel fail!\n");
 //
 //			int bob = 0;
@@ -2043,14 +2043,14 @@ namespace physx
 //		mCudaContext->streamWaitEvent(stream, mSolveSoftBodyEvent);
 //
 //		{
-//			//CUdeviceptr contactInfosd = mRSSortedContactInfoBuffer.getDevicePtr();
-//			CUdeviceptr deltaVd = mRigidDeltaVelBuf.getDevicePtr();
-//			CUdeviceptr blockDeltaVd = mTempBlockDeltaVelBuf.getDevicePtr();
-//			CUdeviceptr blockRigidIdd = mTempBlockRigidIdBuf.getDevicePtr();
+//			//hipDeviceptr_t contactInfosd = mRSSortedContactInfoBuffer.getDevicePtr();
+//			hipDeviceptr_t deltaVd = mRigidDeltaVelBuf.getDevicePtr();
+//			hipDeviceptr_t blockDeltaVd = mTempBlockDeltaVelBuf.getDevicePtr();
+//			hipDeviceptr_t blockRigidIdd = mTempBlockRigidIdBuf.getDevicePtr();
 //
 //			//mCudaContext->streamWaitEvent(solverStream, mSolveSoftBodyRigidEvent);
 //
-//			const CUfunction rigidSecondKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ACCUMULATE_DELTAVEL_RIGIDBODY_SECOND);
+//			const hipFunction_t rigidSecondKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ACCUMULATE_DELTAVEL_RIGIDBODY_SECOND);
 //
 //			PxCudaKernelParam kernelParams[] =
 //			{
@@ -2069,14 +2069,14 @@ namespace physx
 //				PX_CUDA_KERNEL_PARAM(isTGS)
 //			};
 //
-//			CUresult result = mCudaContext->launchKernel(rigidSecondKernelFunction, PxgSoftBodyKernelGridDim::SB_ACCUMULATE_DELTA, 1, 1, PxgSoftBodyKernelBlockDim::SB_ACCUMULATE_DELTA, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-//			PX_ASSERT(result == CUDA_SUCCESS);
+//			hipError_t result = mCudaContext->launchKernel(rigidSecondKernelFunction, PxgSoftBodyKernelGridDim::SB_ACCUMULATE_DELTA, 1, 1, PxgSoftBodyKernelBlockDim::SB_ACCUMULATE_DELTA, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+//			PX_ASSERT(result == hipSuccess);
 //			PX_UNUSED(result);
 //
 //#if SB_GPU_DEBUG
 //			result = mCudaContext->streamSynchronize(stream);
-//			PX_ASSERT(result == CUDA_SUCCESS);
-//			if (result != CUDA_SUCCESS)
+//			PX_ASSERT(result == hipSuccess);
+//			if (result != hipSuccess)
 //				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU soft body accumulateDeltaVRigidSecondLaunch kernel fail!\n");
 //
 //			int bob = 0;
@@ -2087,7 +2087,7 @@ namespace physx
 
 
 	void PxgSoftBodyCore::solveRigidAttachmentRigidDelta(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd,
-		PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, CUstream solverStream, const PxReal dt) 
+		PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, hipStream_t solverStream, const PxReal dt) 
 	{
 		
 		PxgSimulationCore* simCore = mSimController->getSimulationCore();
@@ -2102,7 +2102,7 @@ namespace physx
 			PxgDevicePointer<float4> deltaVd = mRigidDeltaVelBuf.getTypedDevicePtr();
 			
 			{
-				const CUfunction solvePCRigidKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_RIGID_ATTACHMENT_RIGID_DELTA);
+				const hipFunction_t solvePCRigidKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_RIGID_ATTACHMENT_RIGID_DELTA);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -2119,12 +2119,12 @@ namespace physx
 
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 				const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_UPDATEROTATION;
-				CUresult result = mCudaContext->launchKernel(solvePCRigidKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, solverStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(solvePCRigidKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, solverStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(solverStream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_solvePCOutputRigidDeltaVLaunch kernel fail!\n");
 
 			/*	
@@ -2155,7 +2155,7 @@ namespace physx
 	}
 
 	void PxgSoftBodyCore::solveRigidAttachmentRigidDeltaTGS(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd,
-		PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, CUstream solverStream, const PxReal dt, const PxReal biasCoefficient,
+		PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, hipStream_t solverStream, const PxReal dt, const PxReal biasCoefficient,
 		bool isVelocityIteration)
 	{
 #if SB_GPU_DEBUG
@@ -2174,7 +2174,7 @@ namespace physx
 
 
 			{
-				const CUfunction solvePCRigidKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_ATTACHMENT_RIGID_DELTA_TGS);
+				const hipFunction_t solvePCRigidKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_ATTACHMENT_RIGID_DELTA_TGS);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -2193,12 +2193,12 @@ namespace physx
 
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 				const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_UPDATEROTATION;
-				CUresult result = mCudaContext->launchKernel(solvePCRigidKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, solverStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(solvePCRigidKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, solverStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(solverStream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_solvePCOutputRigidDeltaVLaunch kernel fail!\n");
 
 				/*
@@ -2242,7 +2242,7 @@ namespace physx
 
 
 			{
-				const CUfunction solvePCRigidKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_RIGID_ATTACHMENT_SOFT_DELTA);
+				const hipFunction_t solvePCRigidKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_RIGID_ATTACHMENT_SOFT_DELTA);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -2258,14 +2258,14 @@ namespace physx
 
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 				const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_UPDATEROTATION;
-				CUresult result = mCudaContext->launchKernel(solvePCRigidKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(solvePCRigidKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				mCudaContext->eventRecord(mSolveSoftBodyEvent, mStream);
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveOutputAttachmentSoftDeltaVLaunch kernel fail!\n");
 
 				/*
@@ -2299,7 +2299,7 @@ namespace physx
 			PxgDevicePointer<PxgFEMFEMAttachmentConstraint> constraintsd = simCore->getSoftBodySoftBodyConstraints();
 
 			{
-				const CUfunction solvePCRigidKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_SOFTBODY_ATTACHMENT_DELTA);
+				const hipFunction_t solvePCRigidKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_SOFTBODY_ATTACHMENT_DELTA);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -2310,14 +2310,14 @@ namespace physx
 
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 				const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_UPDATEROTATION;
-				CUresult result = mCudaContext->launchKernel(solvePCRigidKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(solvePCRigidKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveOutputAttachmentSoftDeltaVLaunchTGS kernel fail!\n");
 #endif
 			}
@@ -2341,7 +2341,7 @@ namespace physx
 			PxgDevicePointer<PxgFEMFEMAttachmentConstraint> constraintsd = simCore->getSoftBodyParticleConstraints();
 
 			{
-				const CUfunction solveParticleAttachmentKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_PARTICLE_ATTACHMENT_DELTA);
+				const hipFunction_t solveParticleAttachmentKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_PARTICLE_ATTACHMENT_DELTA);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -2353,14 +2353,14 @@ namespace physx
 
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 				const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_UPDATEROTATION;
-				CUresult result = mCudaContext->launchKernel(solveParticleAttachmentKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(solveParticleAttachmentKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveOutputAttachmentSoftDeltaVLaunchTGS kernel fail!\n");
 #endif
 			}
@@ -2383,7 +2383,7 @@ namespace physx
 			PxgDevicePointer<PxgFEMFEMAttachmentConstraint> constraintsd = simCore->getSoftBodyClothConstraints();
 
 			{
-				const CUfunction solvePCRigidKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_CLOTH_ATTACHMENT_DELTA);
+				const hipFunction_t solvePCRigidKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_CLOTH_ATTACHMENT_DELTA);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -2395,14 +2395,14 @@ namespace physx
 
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 				const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_UPDATEROTATION;
-				CUresult result = mCudaContext->launchKernel(solvePCRigidKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(solvePCRigidKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveOutputAttachmentSoftDeltaVLaunchTGS kernel fail!\n");
 #endif
 			}
@@ -2427,7 +2427,7 @@ namespace physx
 
 
 			{
-				const CUfunction solvePCRigidKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_ATTACHMENT_SOFT_DELTA_TGS);
+				const hipFunction_t solvePCRigidKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SOLVE_ATTACHMENT_SOFT_DELTA_TGS);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -2445,15 +2445,15 @@ namespace physx
 
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 				const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_UPDATEROTATION;
-				CUresult result = mCudaContext->launchKernel(solvePCRigidKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(solvePCRigidKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				mCudaContext->eventRecord(mSolveSoftBodyEvent, mStream);
 
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveOutputAttachmentSoftDeltaVLaunch kernel fail!\n");
 
 				/*
@@ -2477,7 +2477,7 @@ namespace physx
 	}
 
 	void PxgSoftBodyCore::prepRigidAttachmentConstraints(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgConstraintPrepareDesc> prepDescd,
-		const PxReal /*invDt*/, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, CUstream stream, bool /*isTGS*/) 
+		const PxReal /*invDt*/, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, hipStream_t stream, bool /*isTGS*/) 
 	{
 		PxgSimulationCore* simCore = mSimController->getSimulationCore();
 
@@ -2497,7 +2497,7 @@ namespace physx
 
 			//prepare primitive constraints sorted by particle id
 			{
-				const CUfunction prepAttachmentKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_RIGID_ATTACHMENT_CONSTRAINT_PREP);
+				const hipFunction_t prepAttachmentKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_RIGID_ATTACHMENT_CONSTRAINT_PREP);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -2515,20 +2515,20 @@ namespace physx
 
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 				const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_UPDATEROTATION;
-				CUresult result = mCudaContext->launchKernel(prepAttachmentKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(prepAttachmentKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(stream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU prepRigidAttachments ps_rigidAttachmentPrepareLaunch kernel fail!\n");
-				PX_ASSERT(result == CUDA_SUCCESS);
+				PX_ASSERT(result == hipSuccess);
 #endif
 			}
 		}
 	}
 
-	void PxgSoftBodyCore::prepSoftBodyAttachmentConstraints(CUstream stream)
+	void PxgSoftBodyCore::prepSoftBodyAttachmentConstraints(hipStream_t stream)
 	{
 
 		PxgSimulationCore* simCore = mSimController->getSimulationCore();
@@ -2545,7 +2545,7 @@ namespace physx
 
 			//prepare primitive constraints sorted by particle id
 			{
-				const CUfunction prepAttachmentKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::FEM_ATTACHMENT_CONSTRAINT_PREP);
+				const hipFunction_t prepAttachmentKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::FEM_ATTACHMENT_CONSTRAINT_PREP);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -2559,21 +2559,21 @@ namespace physx
 
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 				const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_UPDATEROTATION;
-				CUresult result = mCudaContext->launchKernel(prepAttachmentKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(prepAttachmentKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(stream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_clothAttachmentPrepareLaunch sb_femAttachmentPrepareLaunch kernel fail!\n");
-				PX_ASSERT(result == CUDA_SUCCESS);
+				PX_ASSERT(result == hipSuccess);
 #endif
 			}
 		}
 
 	}
 
-	void PxgSoftBodyCore::prepClothAttachmentConstraints(CUstream stream)
+	void PxgSoftBodyCore::prepClothAttachmentConstraints(hipStream_t stream)
 	{
 
 		PxgSimulationCore* simCore = mSimController->getSimulationCore();
@@ -2590,7 +2590,7 @@ namespace physx
 
 			//prepare primitive constraints sorted by particle id
 			{
-				const CUfunction prepAttachmentKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::FEM_ATTACHMENT_CONSTRAINT_PREP);
+				const hipFunction_t prepAttachmentKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::FEM_ATTACHMENT_CONSTRAINT_PREP);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -2604,21 +2604,21 @@ namespace physx
 
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 				const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_UPDATEROTATION;
-				CUresult result = mCudaContext->launchKernel(prepAttachmentKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(prepAttachmentKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(stream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_clothAttachmentPrepareLaunch ps_rigidAttachmentPrepareLaunch kernel fail!\n");
-				PX_ASSERT(result == CUDA_SUCCESS);
+				PX_ASSERT(result == hipSuccess);
 #endif
 			}
 		}
 
 	}
 
-	void PxgSoftBodyCore::prepParticleAttachmentConstraints(CUstream stream)
+	void PxgSoftBodyCore::prepParticleAttachmentConstraints(hipStream_t stream)
 	{
 		PxgSimulationCore* simCore = mSimController->getSimulationCore();
 
@@ -2634,7 +2634,7 @@ namespace physx
 
 			//prepare primitive constraints sorted by particle id
 			{
-				const CUfunction prepAttachmentKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::FEM_ATTACHMENT_CONSTRAINT_PREP);
+				const hipFunction_t prepAttachmentKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::FEM_ATTACHMENT_CONSTRAINT_PREP);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -2648,21 +2648,21 @@ namespace physx
 
 				const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 				const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_UPDATEROTATION;
-				CUresult result = mCudaContext->launchKernel(prepAttachmentKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(prepAttachmentKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(stream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_clothAttachmentPrepareLaunch ps_rigidAttachmentPrepareLaunch kernel fail!\n");
-				PX_ASSERT(result == CUDA_SUCCESS);
+				PX_ASSERT(result == hipSuccess);
 #endif
 			}
 		}
 	}
 
 	void PxgSoftBodyCore::prepRigidContactConstraint(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgConstraintPrepareDesc> prepDescd,
-		const PxReal invDt, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, CUstream solverStream, const bool isTGS, PxU32 numSolverBodies, PxU32 numArticulations)
+		const PxReal invDt, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, hipStream_t solverStream, const bool isTGS, PxU32 numSolverBodies, PxU32 numArticulations)
 	{
 		PxgSimulationCore* simCore = mSimController->getSimulationCore();
 		PxgDevicePointer<PxgSoftBody> softbodiesd = simCore->getSoftBodyBuffer().getTypedDevicePtr();
@@ -2685,7 +2685,7 @@ namespace physx
 				mFemRigidReferenceCount.allocateElements(numSolverBodies + numArticulations, PX_FL);
 			}
 
-			const CUfunction rigidContactPrepKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_RS_CONTACTPREPARE);
+			const hipFunction_t rigidContactPrepKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_RS_CONTACTPREPARE);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -2705,14 +2705,14 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(isTGS)
 			};
 
-			CUresult result = mCudaContext->launchKernel(rigidContactPrepKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, solverStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(rigidContactPrepKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, solverStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(solverStream);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_prepContacts first pass kernel fail!\n");
 
 
@@ -2747,7 +2747,7 @@ namespace physx
 				PxgDevicePointer<float4> softbodyAppliedForced = mParticleAppliedFEMForcesBuf.getTypedDevicePtr();
 				PxgDevicePointer<float4> particleAppliedForced = mParticleAppliedParticleForcesBuf.getTypedDevicePtr();
 
-				const CUfunction softbodyContactPrepKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SP_CONTACTPREPARE);
+				const hipFunction_t softbodyContactPrepKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SP_CONTACTPREPARE);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -2763,14 +2763,14 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(particleAppliedForced)
 				};
 
-				CUresult result = mCudaContext->launchKernel(softbodyContactPrepKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(softbodyContactPrepKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_particleContactPrepareLaunch first pass kernel fail!\n");
 
 				/*PxU32 numContacts;
@@ -2787,23 +2787,23 @@ namespace physx
 			}
 
 			//PxgParticleSystemCore* particleSystemCore = mSimController->getParticleSystemCore();
-			//CUstream particleStream = particleSystemCore->getStream();
+			//hipStream_t particleStream = particleSystemCore->getStream();
 			//compute start and end index for sorted contact based on particle id
 			{
 
 				////particley stream need to wait till soft body vs particle constraint 
 				//mCudaContext->streamWaitEvent(particleStream, mConstraintPrepSoftBodyParticleEvent);
 
-				//CUdeviceptr contactsd = mSPSortedContactPointBuffer.getDevicePtr();
+				//hipDeviceptr_t contactsd = mSPSortedContactPointBuffer.getDevicePtr();
 				PxgDevicePointer<PxU32> blockOffsetd = mTempBlockCellsHistogramBuf.getTypedDevicePtr();
-				CUdeviceptr offsetd = mTempCellsHistogramBuf.getDevicePtr();
+				hipDeviceptr_t offsetd = mTempCellsHistogramBuf.getDevicePtr();
 				PxgDevicePointer<PxU32> pairCountd = mTempHistogramCountBuf.getTypedDevicePtr();
 				PxgDevicePointer<PxU32> startd = mTempContactBuf.getTypedDevicePtr();
 				PxgDevicePointer<PxU32> endd = mTempContactRemapBuf.getTypedDevicePtr();
 
 				//compute blockOffset and offset array for particle
 				{
-					const CUfunction findStartEndFirstKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_FIND_RANGESTARTEND_FEM_FIRST);
+					const hipFunction_t findStartEndFirstKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_FIND_RANGESTARTEND_FEM_FIRST);
 
 					PxCudaKernelParam kernelParams[] =
 					{
@@ -2816,12 +2816,12 @@ namespace physx
 
 					const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_ACCUMULATE_DELTA;
 					const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_ACCUMULATE_DELTA;
-					CUresult result = mCudaContext->launchKernel(findStartEndFirstKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-					PX_ASSERT(result == CUDA_SUCCESS);
+					hipError_t result = mCudaContext->launchKernel(findStartEndFirstKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+					PX_ASSERT(result == hipSuccess);
 					PX_UNUSED(result);
 #if SB_GPU_DEBUG
 					result = mCudaContext->streamSynchronize(mStream);
-					if (result != CUDA_SUCCESS)
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_findStartEndParticleFirst kernel fail!\n");
 
 					/*PxU32 totalNumContacts;
@@ -2846,7 +2846,7 @@ namespace physx
 
 				//compute start and end range for particle
 				{
-					const CUfunction findStartEndSecondKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_RANGESTARTEND_FEM_SECONE);
+					const hipFunction_t findStartEndSecondKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_RANGESTARTEND_FEM_SECONE);
 
 					PxCudaKernelParam kernelParams[] =
 					{
@@ -2861,12 +2861,12 @@ namespace physx
 
 					const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_ACCUMULATE_DELTA;
 					const PxU32 numBlocks = PxgSoftBodyKernelGridDim::SB_ACCUMULATE_DELTA;
-					CUresult result = mCudaContext->launchKernel(findStartEndSecondKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-					PX_ASSERT(result == CUDA_SUCCESS);
+					hipError_t result = mCudaContext->launchKernel(findStartEndSecondKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+					PX_ASSERT(result == hipSuccess);
 					PX_UNUSED(result);
 #if SB_GPU_DEBUG
 					result = mCudaContext->streamSynchronize(mStream);
-					if (result != CUDA_SUCCESS)
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_findStartEndParticleSecond kernel fail!\n");
 
 					/*PxU32 pairCount;
@@ -2916,10 +2916,10 @@ namespace physx
 
 			PxgGpuNarrowphaseCore* npCore = mGpuContext->getNarrowphaseCore();
 
-			CUdeviceptr softbodyMaterials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
-			CUdeviceptr clothMaterials = npCore->mGpuFEMClothMaterialManager.mGpuMaterialBuffer.getDevicePtr();
+			hipDeviceptr_t softbodyMaterials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
+			hipDeviceptr_t clothMaterials = npCore->mGpuFEMClothMaterialManager.mGpuMaterialBuffer.getDevicePtr();
 
-			const CUfunction softbodyClothContactPrepKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SC_CONTACTPREPARE);
+			const hipFunction_t softbodyClothContactPrepKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SC_CONTACTPREPARE);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -2937,14 +2937,14 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(clothMaterials)
 			};
 
-			CUresult result = mCudaContext->launchKernel(softbodyClothContactPrepKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(softbodyClothContactPrepKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_clothContactPrepareLaunch kernel fail!\n");
 
 			PxU32 numContacts;
@@ -2965,18 +2965,18 @@ namespace physx
 	void PxgSoftBodyCore::prepSoftbodyContactConstraint()
 	{
 		PxgSimulationCore* simCore = mSimController->getSimulationCore();
-		CUdeviceptr softbodiesd = simCore->getSoftBodyBuffer().getDevicePtr();
+		hipDeviceptr_t softbodiesd = simCore->getSoftBodyBuffer().getDevicePtr();
 //
 //		{
-//			CUdeviceptr contactAsd = getSoftVsSoftbodyAContacts().getDevicePtr();
-//			CUdeviceptr contactBsd = getSoftVsSoftbodyBContacts().getDevicePtr();
-//			CUdeviceptr normalPensd = getSoftVsSoftbodyNormalPens().getDevicePtr();
-//			CUdeviceptr barycentrics0d = getSoftVsSoftbodyBarycentrics0().getDevicePtr();
-//			CUdeviceptr barycentrics1d = getSoftVsSoftbodyBarycentrics1().getDevicePtr();
-//			CUdeviceptr contactInfosd = getSoftVsSoftbodyContactInfos().getDevicePtr();
-//			CUdeviceptr totalNumCountsd = getSoftVsSoftbodyContactCount().getDevicePtr();
+//			hipDeviceptr_t contactAsd = getSoftVsSoftbodyAContacts().getDevicePtr();
+//			hipDeviceptr_t contactBsd = getSoftVsSoftbodyBContacts().getDevicePtr();
+//			hipDeviceptr_t normalPensd = getSoftVsSoftbodyNormalPens().getDevicePtr();
+//			hipDeviceptr_t barycentrics0d = getSoftVsSoftbodyBarycentrics0().getDevicePtr();
+//			hipDeviceptr_t barycentrics1d = getSoftVsSoftbodyBarycentrics1().getDevicePtr();
+//			hipDeviceptr_t contactInfosd = getSoftVsSoftbodyContactInfos().getDevicePtr();
+//			hipDeviceptr_t totalNumCountsd = getSoftVsSoftbodyContactCount().getDevicePtr();
 //
-//			CUfunction sbContactRemapKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SS_CONTACT_REMAP_TO_SIM);
+//			hipFunction_t sbContactRemapKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SS_CONTACT_REMAP_TO_SIM);
 //
 //			PxCudaKernelParam kernelParams[] =
 //			{
@@ -2995,18 +2995,18 @@ namespace physx
 //			PxU32 numWarpsPerBlock = 16;
 //			PxU32 numBlocks = 1024;
 //			//each warp deal with one test. 
-//			CUresult result = mCudaContext->launchKernel(sbContactRemapKernelFunction, numBlocks, 2, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+//			hipError_t result = mCudaContext->launchKernel(sbContactRemapKernelFunction, numBlocks, 2, 1, WARP_SIZE, numWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 //
-//			if (result != CUDA_SUCCESS)
+//			if (result != hipSuccess)
 //				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_primitiveContactGenLaunch fail to launch kernel!!\n");
 //
 //#if SB_GPU_DEBUG
 //
 //			result = mCudaContext->streamSynchronize(mStream);
-//			if (result != CUDA_SUCCESS)
+//			if (result != hipSuccess)
 //				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_primitiveContactGenLaunch kernel fail!!!\n");
 //
-//			PX_ASSERT(result == CUDA_SUCCESS);
+//			PX_ASSERT(result == hipSuccess);
 //#endif
 //		}
 //
@@ -3020,10 +3020,10 @@ namespace physx
 
 			PxgDevicePointer<PxU32> totalContactCountsd = mFemTotalContactCountBuffer.getTypedDevicePtr();
 
-			CUdeviceptr constraintsd = mFemConstraintBuf.getDevicePtr();
+			hipDeviceptr_t constraintsd = mFemConstraintBuf.getDevicePtr();
 			PxgDevicePointer<float4> softbodyAppliedForced = mFemAppliedForcesBuf.getTypedDevicePtr();
 
-			const CUfunction softbodyContactPrepKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SS_CONTACTPREPARE);
+			const hipFunction_t softbodyContactPrepKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_SS_CONTACTPREPARE);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -3039,14 +3039,14 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(mMaxContacts)
 			};
 
-			CUresult result = mCudaContext->launchKernel(softbodyContactPrepKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(softbodyContactPrepKernelFunction, PxgSoftBodyKernelGridDim::SB_UPDATEROTATION, 1, 1, PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_solveTetrahedron first pass kernel fail!\n");
 
 			PxU32 numContacts;
@@ -3064,7 +3064,7 @@ namespace physx
 
 
 	void PxgSoftBodyCore::constraintPrep(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgConstraintPrepareDesc> prepDescd,
-		const PxReal invDt, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, CUstream solverStream, const bool isTGS, PxU32 numSolverBodies, PxU32 numArticulations)
+		const PxReal invDt, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, hipStream_t solverStream, const bool isTGS, PxU32 numSolverBodies, PxU32 numArticulations)
 	{
 		PX_UNUSED(invDt);
 		PX_UNUSED(prePrepDescd);
@@ -3108,7 +3108,7 @@ namespace physx
 		synchronizeStreams(mCudaContext, solverStream, mStream);
 	}
 
-	void PxgSoftBodyCore::step(const PxReal dt, CUstream stream, const PxU32 nbActiveSoftbodies, const PxVec3& gravity)
+	void PxgSoftBodyCore::step(const PxReal dt, hipStream_t stream, const PxU32 nbActiveSoftbodies, const PxVec3& gravity)
 	{
 #if SB_GPU_DEBUG
 		PX_PROFILE_ZONE("PxgSoftBodyCore.step", 0);
@@ -3125,7 +3125,7 @@ namespace physx
 		const PxU32 maxTetraVerts = core->getGMMaxTetraVerts();
 
 		{
-			const CUfunction GMPreIntegrateKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_STEPSOFTBODY);
+			const hipFunction_t GMPreIntegrateKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_GM_STEPSOFTBODY);
 
 			const PxU32 numBlocks = (maxTetraVerts + PxgSoftBodyKernelBlockDim::SB_PREINTEGRATION - 1) / PxgSoftBodyKernelBlockDim::SB_PREINTEGRATION;
 
@@ -3139,15 +3139,15 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(externalForcesEveryTgsIterationEnabled)
 				};
 
-				CUresult result = mCudaContext->launchKernel(GMPreIntegrateKernelFunction, numBlocks, nbActiveSoftbodies, 1,
+				hipError_t result = mCudaContext->launchKernel(GMPreIntegrateKernelFunction, numBlocks, nbActiveSoftbodies, 1,
 					PxgSoftBodyKernelBlockDim::SB_PREINTEGRATION, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(stream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU preIntegrateSystem kernel fail!\n");
 #endif
 			}
@@ -3155,7 +3155,7 @@ namespace physx
 	}
 
 	void PxgSoftBodyCore::solveTGS(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgConstraintPrepareDesc> prepDescd, PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd,
-		PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, const PxReal dt, CUstream solverStream,
+		PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, const PxReal dt, hipStream_t solverStream,
 		bool isVelocityIteration, const PxReal biasCoefficient, const bool isFirstIteration, const PxVec3& gravity)
 	{
 #if SB_GPU_DEBUG
@@ -3239,7 +3239,7 @@ namespace physx
 
 			if (nbActiveParticleSystem > 0 && particleCore)
 			{
-				CUstream particleStream = particleCore->getStream();
+				hipStream_t particleStream = particleCore->getStream();
 				PxgDevicePointer<PxgParticleSystem> particleSystemd = particleCore->getParticleSystemBuffer().getTypedDevicePtr();
 				PxgDevicePointer<PxU32> activeParticleSystemd = particleCore->getActiveParticleSystemBuffer().getTypedDevicePtr();
 
@@ -3287,7 +3287,7 @@ namespace physx
 				PX_UNUSED(nbActiveClothes);
 
 				PxgFEMClothCore* clothCore = mSimController->getFEMClothCore();
-				CUstream clothStream = clothCore->getStream();
+				hipStream_t clothStream = clothCore->getStream();
 
 				synchronizeStreams(mCudaContext, clothStream, mStream);
 
@@ -3321,7 +3321,7 @@ namespace physx
 
 
 	void PxgSoftBodyCore::solve(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgConstraintPrepareDesc> prepDescd, PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd,
-		PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, const PxReal dt, CUstream solverStream,
+		PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, const PxReal dt, hipStream_t solverStream,
 		const bool isFirstIteration)
 	{
 #if SB_GPU_DEBUG
@@ -3405,7 +3405,7 @@ namespace physx
 
 			if (nbActiveParticleSystem > 0)
 			{
-				CUstream particleStream = particleSystemCore->getStream();
+				hipStream_t particleStream = particleSystemCore->getStream();
 
 				PxgDevicePointer<PxgParticleSystem> particleSystemd = particleSystemCore->getParticleSystemBuffer().getTypedDevicePtr();
 				PxgDevicePointer<PxU32> activeParticleSystemd = particleSystemCore->getActiveParticleSystemBuffer().getTypedDevicePtr();
@@ -3452,7 +3452,7 @@ namespace physx
 				PX_UNUSED(nbActiveClothes);
 
 				PxgFEMClothCore* clothCore = mSimController->getFEMClothCore();
-				CUstream clothStream = clothCore->getStream();
+				hipStream_t clothStream = clothCore->getStream();
 
 				synchronizeStreams(mCudaContext, clothStream, mStream);
 
@@ -3501,11 +3501,11 @@ namespace physx
 			PxgDevicePointer<PxU32> activeSoftBodiesd = core->getActiveSoftBodyBuffer().getTypedDevicePtr();
 
 			PxgGpuNarrowphaseCore* npCore = mGpuContext->getNarrowphaseCore();
-			CUdeviceptr matData = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
+			hipDeviceptr_t matData = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
 
 			//PxgSoftBody* softbodies = mSimController->getSoftBodies();
 
-			const CUfunction calculateTetraStressKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_CALC_STRESS);
+			const hipFunction_t calculateTetraStressKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_CALC_STRESS);
 
 			const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 			const PxU32 numBlocks = (maxTetrahedrons + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -3517,14 +3517,14 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(matData)
 			};
 
-			CUresult result = mCudaContext->launchKernel(calculateTetraStressKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(calculateTetraStressKernelFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_calculateStressLaunch kernel fail!\n");
 
 #endif
@@ -3550,11 +3550,11 @@ namespace physx
 			PxgDevicePointer<PxU32> activeSoftBodiesd = core->getActiveSoftBodyBuffer().getTypedDevicePtr();
 
 			PxgGpuNarrowphaseCore* npCore = mGpuContext->getNarrowphaseCore();
-			CUdeviceptr materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
+			hipDeviceptr_t materials = npCore->mGpuFEMMaterialManager.mGpuMaterialBuffer.getDevicePtr();
 			//PxgSoftBody* softbodies = mSimController->getSoftBodies();
 
-			const CUfunction plasticDeformFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_PLASTIC_DEFORM);
-			const CUfunction plasticDeformFunction2 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_PLASTIC_DEFORM2);
+			const hipFunction_t plasticDeformFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_PLASTIC_DEFORM);
+			const hipFunction_t plasticDeformFunction2 = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_PLASTIC_DEFORM2);
 
 			const PxU32 numThreadsPerBlock = PxgSoftBodyKernelBlockDim::SB_UPDATEROTATION;
 			const PxU32 numBlocks = (maxTetrahedrons + numThreadsPerBlock - 1) / numThreadsPerBlock;
@@ -3566,26 +3566,26 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(materials)
 			};
 
-			CUresult result = mCudaContext->launchKernel(plasticDeformFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(plasticDeformFunction, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_plasticDeform1Launch kernel fail!\n");
 
 #endif
 
 			result = mCudaContext->launchKernel(plasticDeformFunction2, numBlocks, nbActiveSoftbodies, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_plasticDeform2Launch kernel fail!\n");
 
 #endif
@@ -3636,7 +3636,7 @@ namespace physx
 	
 	void PxgSoftBodyCore::copyOrApplySoftBodyDataDEPRECATED(PxU32 dataIndex, PxU32* softBodyIndices, PxU8** data, PxU32* dataSizes, PxU32 maxSizeInBytes, const PxU32 nbSoftbodies, const PxU32 applyDataToSoftBodies)
 	{
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_COPY_OR_APPLY_SOFTBODY_DATA_DEPRECATED);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SB_COPY_OR_APPLY_SOFTBODY_DATA_DEPRECATED);
 
 		PxgSimulationCore* core = mSimController->getSimulationCore();
 
@@ -3660,20 +3660,20 @@ namespace physx
 			PX_CUDA_KERNEL_PARAM(applyDataToSoftBodies)
 		};
 
-		CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, threadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, 1, 1, threadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		PX_ASSERT(result == hipSuccess);
 		PX_UNUSED(result);
 
 #if SB_GPU_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		PX_ASSERT(result == CUDA_SUCCESS);
-		if (result != CUDA_SUCCESS)
+		PX_ASSERT(result == hipSuccess);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU softbody direct API kernel fail!\n");
 
 #endif
 	}	
 
-	void PxgSoftBodyCore::copySoftBodyDataDEPRECATED(void** data, void* dataEndIndices, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbCopySoftBodies, const PxU32 maxSize, CUevent copyEvent)
+	void PxgSoftBodyCore::copySoftBodyDataDEPRECATED(void** data, void* dataEndIndices, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbCopySoftBodies, const PxU32 maxSize, hipEvent_t copyEvent)
 	{
 		PxU32 dataIndex = PxgSoftBody::dataIndexFromFlagDEPRECATED(flag);
 
@@ -3686,12 +3686,12 @@ namespace physx
 		}
 		else
 		{
-			CUresult result = mCudaContext->streamSynchronize(mStream);
+			hipError_t result = mCudaContext->streamSynchronize(mStream);
 			PX_UNUSED(result);
 		}
 	}
 
-	void PxgSoftBodyCore::applySoftBodyDataDEPRECATED(void** data, void* dataEndIndices, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbUpdatedSoftBodies, const PxU32 maxSize, CUevent applyEvent, CUevent signalEvent)
+	void PxgSoftBodyCore::applySoftBodyDataDEPRECATED(void** data, void* dataEndIndices, void* softBodyIndices, PxSoftBodyGpuDataFlag::Enum flag, const PxU32 nbUpdatedSoftBodies, const PxU32 maxSize, hipEvent_t applyEvent, hipEvent_t signalEvent)
 	{
 		if (applyEvent)
 			mCudaContext->streamWaitEvent(mStream, applyEvent);
@@ -3705,7 +3705,7 @@ namespace physx
 			mCudaContext->eventRecord(signalEvent, mStream);
 		else
 		{
-			CUresult result = mCudaContext->streamSynchronize(mStream);
+			hipError_t result = mCudaContext->streamSynchronize(mStream);
 			PX_UNUSED(result);
 		}
 

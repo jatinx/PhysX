@@ -66,10 +66,10 @@ namespace physx
 	}
 
 	template<const bool debugExecution>
-	static PX_FORCE_INLINE PxCUresult _testLaunch(PxCUresult resultR, KernelWrangler* kernelWrangler, PxCudaContext* ctx, PxU16 kernelId, CUstream hStream, const char* file, PxU32 line)
+	static PX_FORCE_INLINE PxCUresult _testLaunch(PxCUresult resultR, KernelWrangler* kernelWrangler, PxCudaContext* ctx, PxU16 kernelId, hipStream_t hStream, const char* file, PxU32 line)
 	{
 		// PT: don't assert immediately, we want to print the failing kernel's name first
-		if(resultR != CUDA_SUCCESS)
+		if(resultR != hipSuccess)
 			outputKernelLaunchError(kernelWrangler, kernelId, resultR, file, line);
 		else if(debugExecution)
 		{
@@ -78,7 +78,7 @@ namespace physx
 			// This assumes the compiler removes all of it, which should work because we use a template for debugExecution.
 			const PxCUresult syncErr = ctx->streamSynchronize(hStream);
 			// PT: here again, don't assert immediately
-			if(syncErr != CUDA_SUCCESS)
+			if(syncErr != hipSuccess)
 			{
 				outputKernelLaunchSyncError(kernelWrangler, kernelId, syncErr, file, line);
 				/*char buffer[4096];
@@ -86,9 +86,9 @@ namespace physx
 					kernelWrangler->getCuFunctionName(kernelId), syncErr.value);
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, file, line, buffer);*/
 			}
-			PX_ASSERT(syncErr == CUDA_SUCCESS);
+			PX_ASSERT(syncErr == hipSuccess);
 		}
-		PX_ASSERT(resultR == CUDA_SUCCESS);
+		PX_ASSERT(resultR == hipSuccess);
 		return resultR;
 	}
 
@@ -98,7 +98,7 @@ namespace physx
 		KernelWrangler* kernelWrangler, PxCudaContext* ctx, PxU16 kernelId,
 		PxU32 gridDimX, PxU32 gridDimY, PxU32 gridDimZ,
 		PxU32 blockDimX, PxU32 blockDimY, PxU32 blockDimZ,
-		PxU32 sharedMemBytes, CUstream hStream,
+		PxU32 sharedMemBytes, hipStream_t hStream,
 		PxCudaKernelParam* kernelParams, size_t kernelParamsSizeInBytes,
 		const char* file, PxU32 line)
 	{
@@ -122,7 +122,7 @@ namespace physx
 		KernelWrangler* kernelWrangler, PxCudaContext* ctx, PxU16 kernelId,
 		PxU32 gridDimX, PxU32 gridDimY, PxU32 gridDimZ,
 		PxU32 blockDimX, PxU32 blockDimY, PxU32 blockDimZ,
-		PxU32 sharedMemBytes, CUstream hStream,
+		PxU32 sharedMemBytes, hipStream_t hStream,
 		void** kernelParams,
 		const char* file, PxU32 line)
 	{
@@ -179,7 +179,7 @@ namespace physx
 	public:	
 		static PX_FORCE_INLINE PxCUresult launchKernel(PxCudaContext* cudaContext, PxgCudaKernelWranglerManager* gpuKernelWranglerManager,
 			PxU16 kernelFunctionId, PxU32 gridDimX, PxU32 gridDimY, PxU32 gridDimZ,
-			PxU32 blockDimX, PxU32 blockDimY, PxU32 blockDimZ, PxU32 sharedMemBytes, CUstream stream, PxCudaKernelParam* kernelParams, PxU32 kernelParamsSize)
+			PxU32 blockDimX, PxU32 blockDimY, PxU32 blockDimZ, PxU32 sharedMemBytes, hipStream_t stream, PxCudaKernelParam* kernelParams, PxU32 kernelParamsSize)
 		{
 			return _launch<KERNEL_LAUNCH_ERROR_CHECK>(gpuKernelWranglerManager->mKernelWrangler, cudaContext, kernelFunctionId,
 													gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ,
@@ -188,7 +188,7 @@ namespace physx
 
 		static PX_FORCE_INLINE PxCUresult launchKernel(PxCudaContext* cudaContext, PxgCudaKernelWranglerManager* gpuKernelWranglerManager,
 			PxU16 kernelFunctionId, PxU32 gridDimX, PxU32 gridDimY, PxU32 gridDimZ,
-			PxU32 blockDimX, PxU32 blockDimY, PxU32 blockDimZ, PxU32 sharedMemBytes, CUstream stream, void** kernelParams)
+			PxU32 blockDimX, PxU32 blockDimY, PxU32 blockDimZ, PxU32 sharedMemBytes, hipStream_t stream, void** kernelParams)
 		{
 			return _launch<KERNEL_LAUNCH_ERROR_CHECK>(gpuKernelWranglerManager->mKernelWrangler, cudaContext, kernelFunctionId,
 				gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ,
@@ -196,7 +196,7 @@ namespace physx
 		}
 
 		static PX_FORCE_INLINE PxCUresult launchKernelBlocks(PxCudaContext* cudaContext, PxgCudaKernelWranglerManager* gpuKernelWranglerManager,
-			PxU16 kernelFunctionId, PxU32 numBlocks, PxU32 numThreadsPerBlock, PxU32 sharedMemBytes, CUstream stream, PxCudaKernelParam* kernelParams, PxU32 kernelParamsSize)
+			PxU16 kernelFunctionId, PxU32 numBlocks, PxU32 numThreadsPerBlock, PxU32 sharedMemBytes, hipStream_t stream, PxCudaKernelParam* kernelParams, PxU32 kernelParamsSize)
 		{
 			return launchKernel(cudaContext, gpuKernelWranglerManager, kernelFunctionId, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, sharedMemBytes, stream, kernelParams, kernelParamsSize);
 		}
@@ -204,7 +204,7 @@ namespace physx
 		template <class ...Args>
 		static PX_FORCE_INLINE PxCUresult launchKernelAutoPackParameters(PxCudaContext* cudaContext, PxgCudaKernelWranglerManager* gpuKernelWranglerManager,
 			PxU16 kernelFunctionId, PxU32 gridDimX, PxU32 gridDimY, PxU32 gridDimZ,
-			PxU32 blockDimX, PxU32 blockDimY, PxU32 blockDimZ, PxU32 sharedMemBytes, CUstream stream, const Args&... args)
+			PxU32 blockDimX, PxU32 blockDimY, PxU32 blockDimZ, PxU32 sharedMemBytes, hipStream_t stream, const Args&... args)
 		{
 			PxCudaKernelParam p[sizeof...(args)];
 			packArguments(p, 0, &args...);
@@ -214,7 +214,7 @@ namespace physx
 
 		template <class ...Args>
 		static PX_FORCE_INLINE PxCUresult launchKernelBlocksAutoPackParameters(PxCudaContext* cudaContext, PxgCudaKernelWranglerManager* gpuKernelWranglerManager,
-			PxU16 kernelFunctionId, PxU32 numBlocks, PxU32 numThreadsPerBlock, PxU32 sharedMemBytes, CUstream stream, const Args&... args)
+			PxU16 kernelFunctionId, PxU32 numBlocks, PxU32 numThreadsPerBlock, PxU32 sharedMemBytes, hipStream_t stream, const Args&... args)
 		{
 			PxCudaKernelParam p[sizeof...(args)];
 			packArguments(p, 0, &args...);
@@ -223,7 +223,7 @@ namespace physx
 		}
 
 		static PX_FORCE_INLINE PxCUresult launchKernelThreads(PxCudaContext* cudaContext, PxgCudaKernelWranglerManager* gpuKernelWranglerManager,
-			PxU16 kernelFunctionId, PxU32 totalNumThreads, PxU32 numThreadsPerBlock, PxU32 sharedMemBytes, CUstream stream, PxCudaKernelParam* kernelParams, PxU32 kernelParamsSize)
+			PxU16 kernelFunctionId, PxU32 totalNumThreads, PxU32 numThreadsPerBlock, PxU32 sharedMemBytes, hipStream_t stream, PxCudaKernelParam* kernelParams, PxU32 kernelParamsSize)
 		{
 			return launchKernelBlocks(cudaContext, gpuKernelWranglerManager, kernelFunctionId, divideRoundUp(totalNumThreads, numThreadsPerBlock),
 				numThreadsPerBlock, sharedMemBytes, stream, kernelParams, kernelParamsSize);
@@ -231,7 +231,7 @@ namespace physx
 
 		template <class ...Args>
 		static PX_FORCE_INLINE PxCUresult launchKernelThreadsAutoPackParameters(PxCudaContext* cudaContext, PxgCudaKernelWranglerManager* gpuKernelWranglerManager,
-			PxU16 kernelFunctionId, PxU32 totalNumThreads, PxU32 numThreadsPerBlock, PxU32 sharedMemBytes, CUstream stream, const Args&... args)
+			PxU16 kernelFunctionId, PxU32 totalNumThreads, PxU32 numThreadsPerBlock, PxU32 sharedMemBytes, hipStream_t stream, const Args&... args)
 		{
 			PxCudaKernelParam p[sizeof...(args)];
 			packArguments(p, 0, &args...);
@@ -252,7 +252,7 @@ namespace physx
 		PX_FORCE_INLINE const PxgCudaKernelWranglerManager* getKernelWrangler() const { return mGpuKernelWranglerManager; }
 
 		template <class ...Args>
-		PxCUresult launchKernel(PxU16 kernelId, PxU32 numBlocks, PxU32 numThreadsPerBlock, PxU32 sharedMemorySize, CUstream stream, const Args&... args)
+		PxCUresult launchKernel(PxU16 kernelId, PxU32 numBlocks, PxU32 numThreadsPerBlock, PxU32 sharedMemorySize, hipStream_t stream, const Args&... args)
 		{
 			void* p[sizeof...(args)];
 			packArgumentsPointerOnly(p, 0, &args...);
@@ -262,7 +262,7 @@ namespace physx
 
 		template <class ...Args>
 		PxCUresult launchKernelXYZ(PxU16 kernelId, PxU32 numBlocksX, PxU32 numBlocksY, PxU32 numBlocksZ,
-			PxU32 numThreadsPerBlockX, PxU32 numThreadsPerBlockY, PxU32 numThreadsPerBlockZ, PxU32 sharedMemorySize, CUstream stream, const Args&... args)
+			PxU32 numThreadsPerBlockX, PxU32 numThreadsPerBlockY, PxU32 numThreadsPerBlockZ, PxU32 sharedMemorySize, hipStream_t stream, const Args&... args)
 		{
 			void* p[sizeof...(args)];
 			packArgumentsPointerOnly(p, 0, &args...);
@@ -271,7 +271,7 @@ namespace physx
 		}
 
 		template <class ...Args>
-		PxCUresult launchKernelPtr(PxU16 kernelId, PxU32 numBlocks, PxU32 numThreadsPerBlock, PxU32 sharedMemorySize, CUstream stream, const Args*... args)
+		PxCUresult launchKernelPtr(PxU16 kernelId, PxU32 numBlocks, PxU32 numThreadsPerBlock, PxU32 sharedMemorySize, hipStream_t stream, const Args*... args)
 		{
 			void* p[sizeof...(args)];
 			packArgumentsPointerOnly(p, 0, args...);
@@ -281,7 +281,7 @@ namespace physx
 
 		template <class ...Args>
 		PxCUresult launchKernelXYZPtr(PxU16 kernelId, PxU32 numBlocksX, PxU32 numBlocksY, PxU32 numBlocksZ,
-			PxU32 numThreadsPerBlockX, PxU32 numThreadsPerBlockY, PxU32 numThreadsPerBlockZ, PxU32 sharedMemorySize, CUstream stream, const Args*... args)
+			PxU32 numThreadsPerBlockX, PxU32 numThreadsPerBlockY, PxU32 numThreadsPerBlockZ, PxU32 sharedMemorySize, hipStream_t stream, const Args*... args)
 		{
 			void* p[sizeof...(args)];
 			packArgumentsPointerOnly(p, 0, args...);

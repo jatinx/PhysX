@@ -302,7 +302,7 @@ public:
 	void addRigidFilter(PxRigidActor* rigidBody, const PxU32 particleID);
 	bool removeRigidFilter(PxRigidActor* rigidBody, const PxU32 particleID);
 
-	void copyToDevice(CUstream stream = 0);
+	void copyToDevice(hipStream_t stream = 0);
 };
 
 /**

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // a set of routines that let you do common 3d math
 // operations without any vector, matrix, or quaternion
 // classes or templates.

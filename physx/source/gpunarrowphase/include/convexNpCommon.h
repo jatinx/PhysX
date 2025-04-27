@@ -63,7 +63,7 @@
 
 #include "PxgCommonDefines.h"
 
-#include <vector_types.h>
+#include <hip/hip_vector_types.h>
 
 namespace physx
 {

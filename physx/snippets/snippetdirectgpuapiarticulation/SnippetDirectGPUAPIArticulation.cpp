@@ -68,12 +68,12 @@ static PxArray<PxTransform> gLinkPoses;
 
 static PxArray<PxReal> gDriveValue;
 
-static CUdeviceptr gRBIndicesD;
-static CUdeviceptr gRBPosesD;
-static CUdeviceptr gLinkPosesD;
+static hipDeviceptr_t gRBIndicesD;
+static hipDeviceptr_t gRBPosesD;
+static hipDeviceptr_t gLinkPosesD;
 
-static CUdeviceptr gArtiIndicesD;
-static CUdeviceptr gDriveD;
+static hipDeviceptr_t gArtiIndicesD;
+static hipDeviceptr_t gDriveD;
 
 PxU32 getRBCount()
 {

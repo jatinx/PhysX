@@ -77,10 +77,10 @@ namespace physx
 		bool mCopySubgridsInUseToHost;
 		PxU32 mNumSubgridsInUse;
 
-		PxU32* updateSubgrids(PxVec4* deviceParticlePos, const PxU32 numParticles, PxU32* devicePhases, CUstream stream,
+		PxU32* updateSubgrids(PxVec4* deviceParticlePos, const PxU32 numParticles, PxU32* devicePhases, hipStream_t stream,
 			PxU32 validPhase = PxParticlePhaseFlag::eParticlePhaseFluid, const PxU32* activeIndices = NULL);
 
-		void updateSubgridNeighbors(PxU32* totalCountPointer, CUstream stream);
+		void updateSubgridNeighbors(PxU32* totalCountPointer, hipStream_t stream);
 
 	public:
 		PxSparseGridBuilder() : mHashkeyPerParticle(NULL), mSortedToOriginalParticleIndex(NULL), mCopySubgridsInUseToHost(true), mNumSubgridsInUse(0) { }
@@ -251,7 +251,7 @@ namespace physx
 		\param[in] validPhase The valid phase mask marking the phase bits that particles must have set in order to contribute to the isosurface
 		\param[in] activeIndices Optional device array of active particle indices
 		*/
-		virtual void updateSparseGrid(PxVec4* deviceParticlePos, PxU32 numParticles, PxU32* devicePhases, CUstream stream,
+		virtual void updateSparseGrid(PxVec4* deviceParticlePos, PxU32 numParticles, PxU32* devicePhases, hipStream_t stream,
 			PxU32 validPhase = PxParticlePhaseFlag::eParticlePhaseFluid, const PxU32* activeIndices = NULL);
 
 		/**
@@ -260,7 +260,7 @@ namespace physx
 		\param[in] numParticles The number of particles
 		\param[in] stream The stream on which the work gets scheduled
 		*/
-		void updateSubgridEndIndices(PxU32 numParticles, CUstream stream);
+		void updateSubgridEndIndices(PxU32 numParticles, hipStream_t stream);
 	};
 
 #if !PX_DOXYGEN

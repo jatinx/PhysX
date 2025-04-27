@@ -75,13 +75,13 @@ namespace physx
 			mGpuContext->mGpuPBDParticleSystemCore = NULL;
 	}
 
-	void PxgPBDParticleSystemCore::updateVolumeBound(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd, const PxU32 numActiveParticleSystems,
-		CUstream bpStream)
+	void PxgPBDParticleSystemCore::updateVolumeBound(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd, const PxU32 numActiveParticleSystems,
+		hipStream_t bpStream)
 	{
 		if (mMaxVolumesPerBuffer > 0)
 		{
 			//Each block to compute a bound for one volume
-			const CUfunction updateVolumeBoundKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_UPDATE_VOLUME_BOUND);
+			const hipFunction_t updateVolumeBoundKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_UPDATE_VOLUME_BOUND);
 
 			const PxU32 numThreadsPerWarp = 32;
 			const PxU32 numWarpsPerBlock = PxgParticleSystemKernelBlockDim::UPDATEBOUND / numThreadsPerWarp;
@@ -95,30 +95,30 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(activeParticleSystemsd)
 				};
 
-				CUresult result = mCudaContext->launchKernel(updateVolumeBoundKernelFunction, mMaxVolumesPerBuffer, mMaxBuffersPerSystem, numActiveParticleSystems, numThreadsPerWarp, numWarpsPerBlock, 1, 0, bpStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(updateVolumeBoundKernelFunction, mMaxVolumesPerBuffer, mMaxBuffersPerSystem, numActiveParticleSystems, numThreadsPerWarp, numWarpsPerBlock, 1, 0, bpStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 				/*result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU updateBound first pass kernel fail!\n");*
 					*/
 
 #if PS_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(bpStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU updateBound first pass kernel fail!\n");
 
 				//PxgParticleSystem ps;
 				//mCudaContext->memcpyDtoH(&ps, particleSystemsd, sizeof(PxgParticleSystem));
 
 				//PxgParticleSimBuffer buffer;
-				//mCudaContext->memcpyDtoH(&buffer, (CUdeviceptr)ps.mParticleSimBuffers, sizeof(PxgParticleSimBuffer));
+				//mCudaContext->memcpyDtoH(&buffer, (hipDeviceptr_t)ps.mParticleSimBuffers, sizeof(PxgParticleSimBuffer));
 				////Dma back the bound
 				//PxParticleVolume volumes[3];
-				//mCudaContext->memcpyDtoH(volumes, (CUdeviceptr)buffer.mVolumes, sizeof(PxParticleVolume) * 3);
+				//mCudaContext->memcpyDtoH(volumes, (hipDeviceptr_t)buffer.mVolumes, sizeof(PxParticleVolume) * 3);
 
 				//int bob = 0;
 				//PX_UNUSED(bob);
@@ -130,10 +130,10 @@ namespace physx
 	void PxgPBDParticleSystemCore::preIntegrateSystems(const PxU32 nbActiveParticleSystems, const PxVec3 gravity, const PxReal dt)
 	{
 		//integrateSystems run on the broad phase stream so we don't need to have an extra event to sync in updateBounds
-		CUstream bpStream = mGpuContext->mGpuBp->getBpStream();
+		hipStream_t bpStream = mGpuContext->mGpuBp->getBpStream();
 
-		CUdeviceptr particleSystemsd = getParticleSystemBuffer().getDevicePtr();
-		CUdeviceptr activeParticleSystemsd = getActiveParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t particleSystemsd = getParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t activeParticleSystemsd = getActiveParticleSystemBuffer().getDevicePtr();
 
 		mGravity = gravity;
 		mComputePotentials = true;
@@ -147,7 +147,7 @@ namespace physx
 	{
 		PX_PROFILE_ZONE("PxgPBDParticleSystemCore::UpdateGrid", 0);
 		//This make sure updateBounds kernel are finished in GPU
-		CUstream bpStream = mGpuContext->mGpuBp->getBpStream();
+		hipStream_t bpStream = mGpuContext->mGpuBp->getBpStream();
 
 		synchronizeStreams(mCudaContext, bpStream, mStream, mBoundUpdateEvent);
 
@@ -161,8 +161,8 @@ namespace physx
 
 		PxgParticleSystem* particleSystems = mParticleSystemPool.begin();// mSimController->getPBDParticleSystems();
 
-		CUdeviceptr particleSystemsd = getParticleSystemBuffer().getDevicePtr();
-		CUdeviceptr activeParticleSystemsd = getActiveParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t particleSystemsd = getParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t activeParticleSystemsd = getActiveParticleSystemBuffer().getDevicePtr();
 
 		const PxU32 nbRequired = (2u + nbActiveParticleSystems);
 		
@@ -204,10 +204,10 @@ namespace physx
 					
 					PxgRadixSortDesc* rsDescs = &mRSDesc[i * 2];
 
-					CUdeviceptr inputKeyd = reinterpret_cast<CUdeviceptr>(ps.mGridParticleHash);
-					CUdeviceptr inputRankd = reinterpret_cast<CUdeviceptr>(ps.mSortedToUnsortedMapping);
-					CUdeviceptr outputKeyd = mTempGridParticleHashBuf.getDevicePtr();
-					CUdeviceptr outputRankd = mTempGridParticleIndexBuf.getDevicePtr();
+					hipDeviceptr_t inputKeyd = reinterpret_cast<hipDeviceptr_t>(ps.mGridParticleHash);
+					hipDeviceptr_t inputRankd = reinterpret_cast<hipDeviceptr_t>(ps.mSortedToUnsortedMapping);
+					hipDeviceptr_t outputKeyd = mTempGridParticleHashBuf.getDevicePtr();
+					hipDeviceptr_t outputRankd = mTempGridParticleIndexBuf.getDevicePtr();
 					PxgRadixSortCore::updateGPURadixSortDesc(mCudaContext, mStream, inputKeyd, inputRankd, outputKeyd, outputRankd, mRadixCountTotalBuf.getDevicePtr(), rsDescs,
 						mRadixSortDescBuf[0].getDevicePtr(), mRadixSortDescBuf[1].getDevicePtr(), numSimParticles);
 
@@ -222,10 +222,10 @@ namespace physx
 					
 					PxgRadixSortDesc* rsDescs = &mDiffuseParticlesRSDesc[i * 2];
 
-					CUdeviceptr inputKeyd = reinterpret_cast<CUdeviceptr>(ps.mDiffuseGridParticleHash);
-					CUdeviceptr inputRankd = reinterpret_cast<CUdeviceptr>(ps.mDiffuseSortedToUnsortedMapping);
-					CUdeviceptr outputKeyd = mTempGridDiffuseParticleHashBuf.getDevicePtr();
-					CUdeviceptr outputRankd = mTempGridDiffuseParticleIndexBuf.getDevicePtr();
+					hipDeviceptr_t inputKeyd = reinterpret_cast<hipDeviceptr_t>(ps.mDiffuseGridParticleHash);
+					hipDeviceptr_t inputRankd = reinterpret_cast<hipDeviceptr_t>(ps.mDiffuseSortedToUnsortedMapping);
+					hipDeviceptr_t outputKeyd = mTempGridDiffuseParticleHashBuf.getDevicePtr();
+					hipDeviceptr_t outputRankd = mTempGridDiffuseParticleIndexBuf.getDevicePtr();
 					PxgRadixSortCore::updateGPURadixSortDesc(mCudaContext, mStream, inputKeyd, inputRankd, outputKeyd, outputRankd, mRadixCountTotalBuf.getDevicePtr() + mRadixCountSize, rsDescs,
 						mRadixSortDescBuf[0].getDevicePtr() + sizeof(PxgRadixSortDesc), mRadixSortDescBuf[1].getDevicePtr() + sizeof(PxgRadixSortDesc),
 						numDiffuseParticles);
@@ -236,8 +236,8 @@ namespace physx
 
 				PxgCudaBuffer* radixSortDescBuf = mRadixSortDescBuf.begin();
 
-				CUfunction radixFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_MULTIBLOCK_NO_COUNT);
-				CUfunction calculateRanksFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_CALCULATERANKS_MULTIBLOCK_NO_COUNT);
+				hipFunction_t radixFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_MULTIBLOCK_NO_COUNT);
+				hipFunction_t calculateRanksFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RS_CALCULATERANKS_MULTIBLOCK_NO_COUNT);
 
 				{
 					PxU32 startBit = 0;
@@ -249,7 +249,7 @@ namespace physx
 					{
 						const PxU32 descIndex = pass & 1;
 
-						CUdeviceptr rsDesc = radixSortDescBuf[descIndex].getDevicePtr();
+						hipDeviceptr_t rsDesc = radixSortDescBuf[descIndex].getDevicePtr();
 
 						PxCudaKernelParam radixSortKernelParams[] =
 						{
@@ -257,24 +257,24 @@ namespace physx
 							PX_CUDA_KERNEL_PARAM(startBit)
 						};
 
-						CUresult  resultR = mCudaContext->launchKernel(radixFunction, PxgRadixSortKernelGridDim::RADIX_SORT, count, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
-						if (resultR != CUDA_SUCCESS)
+						hipError_t  resultR = mCudaContext->launchKernel(radixFunction, PxgRadixSortKernelGridDim::RADIX_SORT, count, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
+						if (resultR != hipSuccess)
 							PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortParticleContacts fail to launch kernel!!\n");
 
 						resultR = mCudaContext->launchKernel(calculateRanksFunction, PxgRadixSortKernelGridDim::RADIX_SORT, count, 1, PxgRadixSortKernelBlockDim::RADIX_SORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
-						if (resultR != CUDA_SUCCESS)
+						if (resultR != hipSuccess)
 							PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortParticleContacts fail to launch kernel!!\n");
 
 						startBit += 4;
 					}
 
-					/*CUresult result = mCudaContext->streamSynchronize(mStream);
-					if (result != CUDA_SUCCESS)
+					/*hipError_t result = mCudaContext->streamSynchronize(mStream);
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortParticleContacts fail!!\n");*/
 
 #if PS_GPU_DEBUG
-					CUresult result = mCudaContext->streamSynchronize(mStream);
-					if (result != CUDA_SUCCESS)
+					hipError_t result = mCudaContext->streamSynchronize(mStream);
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sortParticleContacts fail!!\n");
 #endif
 				}
@@ -317,7 +317,7 @@ namespace physx
 		//mCudaContext->streamFlush(mSelfCollisionStream);
 	}
 
-	void PxgPBDParticleSystemCore::solveVelocities(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd, const PxU32 nbActiveParticleSystems, const PxReal dt)
+	void PxgPBDParticleSystemCore::solveVelocities(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd, const PxU32 nbActiveParticleSystems, const PxReal dt)
 	{
 		const PxU32 maxNumParticles = getMaxParticles();
 
@@ -330,12 +330,12 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(activeParticleSystemsd)
 				};
 
-				const CUfunction vorticityConfinementKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_VORTICITY_CONFINEMENT);
+				const hipFunction_t vorticityConfinementKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_VORTICITY_CONFINEMENT);
 				{
 					const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::PS_SOLVE;
 					const PxU32 numBlocks = (maxNumParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
-					CUresult result = mCudaContext->launchKernel(vorticityConfinementKernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mFinalizeStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-					PX_ASSERT(result == CUDA_SUCCESS);
+					hipError_t result = mCudaContext->launchKernel(vorticityConfinementKernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mFinalizeStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+					PX_ASSERT(result == hipSuccess);
 					PX_UNUSED(result);
 				}
 			}
@@ -349,12 +349,12 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(dt)
 				};
 
-				const CUfunction solveVelocitiesKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_SOLVE_VELOCITIES);
+				const hipFunction_t solveVelocitiesKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_SOLVE_VELOCITIES);
 				{
 					const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::PS_SOLVE;
 					const PxU32 numBlocks = (maxNumParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
-					CUresult result = mCudaContext->launchKernel(solveVelocitiesKernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mFinalizeStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-					PX_ASSERT(result == CUDA_SUCCESS);
+					hipError_t result = mCudaContext->launchKernel(solveVelocitiesKernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mFinalizeStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+					PX_ASSERT(result == hipSuccess);
 					PX_UNUSED(result);
 				}
 			}
@@ -367,8 +367,8 @@ namespace physx
 	{
 		//const PxU32 numTotalParticleSystems = mSimController->getNbParticleSystems();
 		const PxU32 nbActiveParticleSystems = mSimController->getBodySimManager().mActivePBDParticleSystems.size();
-		CUdeviceptr particleSystemd = getParticleSystemBuffer().getDevicePtr();
-		CUdeviceptr activeParticleSystemd = getActiveParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t particleSystemd = getParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t activeParticleSystemd = getActiveParticleSystemBuffer().getDevicePtr();
 
 		solveSprings(particleSystemd, activeParticleSystemd, nbActiveParticleSystems, dt, isTGS);
 
@@ -389,8 +389,8 @@ namespace physx
 
 	}
 
-	void PxgPBDParticleSystemCore::constraintPrep(CUdeviceptr prePrepDescd, CUdeviceptr prepDescd, CUdeviceptr /*solverCoreDescd*/, CUdeviceptr sharedDescd,
-		const PxReal dt, CUstream solverStream, bool isTGS, PxU32 numSolverBodies)
+	void PxgPBDParticleSystemCore::constraintPrep(hipDeviceptr_t prePrepDescd, hipDeviceptr_t prepDescd, hipDeviceptr_t /*solverCoreDescd*/, hipDeviceptr_t sharedDescd,
+		const PxReal dt, hipStream_t solverStream, bool isTGS, PxU32 numSolverBodies)
 	{
 		//const PxU32 numTotalParticleSystems = mSimController->getNbParticleSystems();
 
@@ -406,8 +406,8 @@ namespace physx
 		synchronizeStreams(mCudaContext, mStream, solverStream);
 		
 
-		CUdeviceptr particleSystemsd = getParticleSystemBuffer().getDevicePtr();
-		CUdeviceptr activeParticleSystemsd = getActiveParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t particleSystemsd = getParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t activeParticleSystemsd = getActiveParticleSystemBuffer().getDevicePtr();
 		initializeSprings(particleSystemsd, activeParticleSystemsd, nbActiveParticleSystems);
 
 		prepPrimitiveConstraint(prePrepDescd, prepDescd, sharedDescd, dt, isTGS, solverStream);
@@ -424,8 +424,8 @@ namespace physx
 			getActiveParticleSystemBuffer().getDevicePtr(), mSimController->getBodySimManager().mActivePBDParticleSystems.size(), dt);
 	}
 
-	void PxgPBDParticleSystemCore::solve(CUdeviceptr prePrepDescd, CUdeviceptr solverCoreDescd,
-		CUdeviceptr sharedDescd, CUdeviceptr artiCoreDescd, const PxReal dt, CUstream solverStream)
+	void PxgPBDParticleSystemCore::solve(hipDeviceptr_t prePrepDescd, hipDeviceptr_t solverCoreDescd,
+		hipDeviceptr_t sharedDescd, hipDeviceptr_t artiCoreDescd, const PxReal dt, hipStream_t solverStream)
 	{
 
 #if PS_GPU_DEBUG
@@ -437,9 +437,9 @@ namespace physx
 		if (nbActiveParticles == 0)
 			return;
 
-		CUdeviceptr particleSystemd = getParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t particleSystemd = getParticleSystemBuffer().getDevicePtr();
 
-		CUdeviceptr activeParticleSystemd = getActiveParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t activeParticleSystemd = getActiveParticleSystemBuffer().getDevicePtr();
 
 		solveParticleCollision(dt, false, 0.7f);
 
@@ -472,7 +472,7 @@ namespace physx
 		const PxU32 nbActiveParticleSystems = mSimController->getBodySimManager().mActivePBDParticleSystems.size();
 		PxU32* activeParticleSystems = mSimController->getBodySimManager().mActivePBDParticleSystems.begin();
 
-		CUdeviceptr particleSystemd = getParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t particleSystemd = getParticleSystemBuffer().getDevicePtr();
 
 		PxgParticleSystem* particleSystems = mParticleSystemPool.begin(); //mSimController->getPBDParticleSystems();
 
@@ -495,19 +495,19 @@ namespace physx
 						PX_CUDA_KERNEL_PARAM(scale)
 					};
 
-					CUfunction stepKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_FINALIZE_PARTICLES);
+					hipFunction_t stepKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_FINALIZE_PARTICLES);
 					{
 						const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::PS_SOLVE;
 						const PxU32 numBlocks = (numParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
-						CUresult result = mCudaContext->launchKernel(stepKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-						PX_ASSERT(result == CUDA_SUCCESS);
+						hipError_t result = mCudaContext->launchKernel(stepKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+						PX_ASSERT(result == hipSuccess);
 						PX_UNUSED(result);
 					}
 
 #if PS_GPU_DEBUG
-					CUresult result = mCudaContext->streamSynchronize(mStream);
-					PX_ASSERT(result == CUDA_SUCCESS);
-					if (result != CUDA_SUCCESS)
+					hipError_t result = mCudaContext->streamSynchronize(mStream);
+					PX_ASSERT(result == hipSuccess);
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_finalizeParticlesLaunch kernel fail!\n");
 #endif
 				}
@@ -515,8 +515,8 @@ namespace physx
 		}
 	}
 
-	void PxgPBDParticleSystemCore::solveTGS(CUdeviceptr prePrepDescd, CUdeviceptr solverCoreDescd,
-		CUdeviceptr sharedDescd, CUdeviceptr artiCoreDescd, const PxReal dt, const PxReal totalInvDt, CUstream solverStream, const bool isVelocityIteration,
+	void PxgPBDParticleSystemCore::solveTGS(hipDeviceptr_t prePrepDescd, hipDeviceptr_t solverCoreDescd,
+		hipDeviceptr_t sharedDescd, hipDeviceptr_t artiCoreDescd, const PxReal dt, const PxReal totalInvDt, hipStream_t solverStream, const bool isVelocityIteration,
 		PxI32 iterationIndex, PxI32 /*numTGSIterations*/, PxReal coefficient)
 	{
 		bool isFirstIteration = iterationIndex == 0;
@@ -531,10 +531,10 @@ namespace physx
 			return;
 
 
-		CUdeviceptr particleSystemd = getParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t particleSystemd = getParticleSystemBuffer().getDevicePtr();
 
 		//PxgParticleSystem* particleSystems = mParticleSystemPool.begin(); //mSimController->getPBDParticleSystems();
-		CUdeviceptr activeParticleSystemd = getActiveParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t activeParticleSystemd = getActiveParticleSystemBuffer().getDevicePtr();
 
 		if (!isVelocityIteration)
 		{
@@ -580,8 +580,8 @@ namespace physx
 		PxU32* activeParticleSystems = mSimController->getBodySimManager().mActivePBDParticleSystems.begin();
 		PxgParticleSystem* particleSystems = mParticleSystemPool.begin(); 
 		PxgCudaBuffer& particleSystemBuffer = getParticleSystemBuffer();
-		CUdeviceptr particleSystemsd = particleSystemBuffer.getDevicePtr();
-		CUdeviceptr activeParticleSystemsd = getActiveParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t particleSystemsd = particleSystemBuffer.getDevicePtr();
+		hipDeviceptr_t activeParticleSystemsd = getActiveParticleSystemBuffer().getDevicePtr();
 		PxU32* particleSystemNodeIndex = mParticleSystemNodeIndexPool.begin();
 		
 		PxgParticleSystem* gpuParticleSystems = reinterpret_cast<PxgParticleSystem*>(particleSystemsd);
@@ -644,7 +644,7 @@ namespace physx
 		PxU32* particleSystemNodeIndex = mParticleSystemNodeIndexPool.begin(); //mSimController->getPBDParticleSystemNodeIndex();
 		void** bodySimsLL = mSimController->getBodySimManager().mBodies.begin();
 
-		CUdeviceptr particleSystemd = getParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t particleSystemd = getParticleSystemBuffer().getDevicePtr();
 		PxgParticleSystem* gpuParticleSystems = reinterpret_cast<PxgParticleSystem*>(particleSystemd);
 
 		for (PxU32 i = 0; i < nbActiveParticleSystems; ++i)
@@ -664,7 +664,7 @@ namespace physx
 		mCudaContextManager->releaseContext();
 	}
 
-	void PxgPBDParticleSystemCore::gpuMemDmaUpParticleSystem(PxgBodySimManager& bodySimManager, CUstream stream)
+	void PxgPBDParticleSystemCore::gpuMemDmaUpParticleSystem(PxgBodySimManager& bodySimManager, hipStream_t stream)
 	{
 		const PxU32 nbTotalPBDParticleSystems = bodySimManager.mTotalNumPBDParticleSystems;
 
@@ -713,7 +713,7 @@ namespace physx
 
 	}
 
-	void PxgPBDParticleSystemCore::solveDensities(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt,
+	void PxgPBDParticleSystemCore::solveDensities(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt,
 		PxReal coefficient)
 	{
 
@@ -731,14 +731,14 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(mComputePotentials)
 				};
 
-				const CUfunction calculateDensitiesKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_CALCULATE_DENSITIES_AND_POTENTIALS);
+				const hipFunction_t calculateDensitiesKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_CALCULATE_DENSITIES_AND_POTENTIALS);
 				
-				CUresult result = mCudaContext->launchKernel(calculateDensitiesKernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(calculateDensitiesKernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 			}
 
-			const CUfunction solveDensitiesKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_SOLVE_DENSITIES);
+			const hipFunction_t solveDensitiesKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_SOLVE_DENSITIES);
 			{
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -749,8 +749,8 @@ namespace physx
 				};
 
 			
-				CUresult result = mCudaContext->launchKernel(solveDensitiesKernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(solveDensitiesKernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 			}
 
@@ -764,12 +764,12 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(dt),
 				};
 
-				const CUfunction applyDeltasKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_APPLY_DELTAS);
+				const hipFunction_t applyDeltasKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_APPLY_DELTAS);
 				{
 					const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::PS_SOLVE;
 					const PxU32 numBlocks = (numParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
-					CUresult result = mCudaContext->launchKernel(applyDeltasKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-					PX_ASSERT(result == CUDA_SUCCESS);
+					hipError_t result = mCudaContext->launchKernel(applyDeltasKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+					PX_ASSERT(result == hipSuccess);
 					PX_UNUSED(result);
 				}
 			}
@@ -777,7 +777,7 @@ namespace physx
 		}
 	}
 
-	void PxgPBDParticleSystemCore::solveInflatables(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal coefficient, const PxReal dt)
+	void PxgPBDParticleSystemCore::solveInflatables(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal coefficient, const PxReal dt)
 	{
 		
 		if (mMaxClothsPerBuffer > 0)
@@ -791,10 +791,10 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(activeParticleSystemd)
 				};
 
-				const CUfunction calculateInflatableKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_CALCULATE_INFLATABLE_VOLUME);
+				const hipFunction_t calculateInflatableKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_CALCULATE_INFLATABLE_VOLUME);
 
-				CUresult result = mCudaContext->launchKernel(calculateInflatableKernel, mMaxClothsPerBuffer, mMaxClothBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(calculateInflatableKernel, mMaxClothsPerBuffer, mMaxClothBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 			}
@@ -809,18 +809,18 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(coefficient)
 				};
 
-				const CUfunction solveInflatableKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_SOLVE_INFLATABLE_VOLUME);
+				const hipFunction_t solveInflatableKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_SOLVE_INFLATABLE_VOLUME);
 				{
 
-					CUresult result = mCudaContext->launchKernel(solveInflatableKernel, mMaxClothsPerBuffer, mMaxClothBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-					PX_ASSERT(result == CUDA_SUCCESS);
+					hipError_t result = mCudaContext->launchKernel(solveInflatableKernel, mMaxClothsPerBuffer, mMaxClothBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+					PX_ASSERT(result == hipSuccess);
 					PX_UNUSED(result);
 				}
 			}
 		}
 	}
 
-	void PxgPBDParticleSystemCore::solveShapes(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt, const PxReal biasCoefficient)
+	void PxgPBDParticleSystemCore::solveShapes(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt, const PxReal biasCoefficient)
 	{
 		const PxU32 maxRigids = getMaxRigidsPerBuffer();
 
@@ -834,31 +834,31 @@ namespace physx
 				PX_CUDA_KERNEL_PARAM(biasCoefficient)
 			};
 
-			const CUfunction solveShapeKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_SOLVE_SHAPES);
+			const hipFunction_t solveShapeKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_SOLVE_SHAPES);
 			{
 				const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::PS_SOLVE_SHAPE;
-				CUresult result = mCudaContext->launchKernel(solveShapeKernel, maxRigids, mMaxRigidBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(solveShapeKernel, maxRigids, mMaxRigidBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 			}
 
 #if PS_GPU_DEBUG
 			{
-				CUresult result = mCudaContext->streamSynchronize(mStream);
-				if (result != CUDA_SUCCESS)
+				hipError_t result = mCudaContext->streamSynchronize(mStream);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU solvesprings kernel fail!\n");
-				PX_ASSERT(result == CUDA_SUCCESS);
+				PX_ASSERT(result == hipSuccess);
 			}
 #endif
 		}
 	}
 
-	void PxgPBDParticleSystemCore::solveAerodynamics(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt)
+	void PxgPBDParticleSystemCore::solveAerodynamics(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActiveParticleSystems, const PxReal dt)
 	{
 		if (mMaxTrianglesPerBuffer > 0)
 		{
 			{
-				CUfunction updateAeroDynamic1Function = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_AERODYNAMIC_1);
+				hipFunction_t updateAeroDynamic1Function = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_AERODYNAMIC_1);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -869,21 +869,21 @@ namespace physx
 
 				const PxU32 numBlocks = (mMaxTrianglesPerBuffer + PxgParticleSystemKernelBlockDim::PS_SOLVE - 1) / PxgParticleSystemKernelBlockDim::PS_SOLVE;
 
-				CUresult result = mCudaContext->launchKernel(updateAeroDynamic1Function, numBlocks, mMaxClothBuffersPerSystem, nbActiveParticleSystems, PxgParticleSystemKernelBlockDim::PS_SOLVE, 1, 1, 0, mFinalizeStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(updateAeroDynamic1Function, numBlocks, mMaxClothBuffersPerSystem, nbActiveParticleSystems, PxgParticleSystemKernelBlockDim::PS_SOLVE, 1, 1, 0, mFinalizeStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 
 				PX_UNUSED(result);
 
 #if PS_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mFinalizeStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_solveAerodynamics1Launch kernel fail!\n");
 #endif
 			}
 
 			{
-				CUfunction updateAeroDynamic2Function = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_AERODYNAMIC_2);
+				hipFunction_t updateAeroDynamic2Function = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_AERODYNAMIC_2);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -894,15 +894,15 @@ namespace physx
 
 				const PxU32 numBlocks = (mMaxParticlesPerBuffer + PxgParticleSystemKernelBlockDim::PS_SOLVE - 1) / PxgParticleSystemKernelBlockDim::PS_SOLVE;
 
-				CUresult result = mCudaContext->launchKernel(updateAeroDynamic2Function, numBlocks, mMaxBuffersPerSystem, nbActiveParticleSystems, PxgParticleSystemKernelBlockDim::PS_SOLVE, 1, 1, 0, mFinalizeStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(updateAeroDynamic2Function, numBlocks, mMaxBuffersPerSystem, nbActiveParticleSystems, PxgParticleSystemKernelBlockDim::PS_SOLVE, 1, 1, 0, mFinalizeStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 
 				PX_UNUSED(result);
 
 #if PS_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mFinalizeStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_solveAerodynamics2Launch kernel fail!\n");
 #endif
 			}
@@ -910,7 +910,7 @@ namespace physx
 
 	}
 
-	void PxgPBDParticleSystemCore::initializeSprings(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd,
+	void PxgPBDParticleSystemCore::initializeSprings(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd,
 		const PxU32 nbActiveParticleSystems)
 	{
 
@@ -930,26 +930,26 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(activeParticleSystemsd)
 				};
 
-				const CUfunction updateRemapKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_INITIALIZE_SPRINGS);
+				const hipFunction_t updateRemapKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_INITIALIZE_SPRINGS);
 
-				CUresult result = mCudaContext->launchKernel(updateRemapKernel, numBlocks, mMaxClothBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(updateRemapKernel, numBlocks, mMaxClothBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 
 #if PS_GPU_DEBUG
 				{
 					result = mCudaContext->streamSynchronize(mStream);
-					if (result != CUDA_SUCCESS)
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_initializeSpringsLaunch kernel fail!\n");
-					PX_ASSERT(result == CUDA_SUCCESS);
+					PX_ASSERT(result == hipSuccess);
 				}
 #endif
 			}
 		}
 	}
 
-	void PxgPBDParticleSystemCore::solveSprings(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd,
+	void PxgPBDParticleSystemCore::solveSprings(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd,
 		const PxU32 nbActiveParticleSystems, const PxReal dt, bool isTGS)
 	{
 		const PxU32 maxParticles = mMaxParticlesPerBuffer;
@@ -970,19 +970,19 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(activeParticleSystemsd)
 				};
 
-				const CUfunction updateRemapKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_UPDATE_REMAP_VERTS);
+				const hipFunction_t updateRemapKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_UPDATE_REMAP_VERTS);
 
-				CUresult result = mCudaContext->launchKernel(updateRemapKernel, numBlocks, mMaxClothBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(updateRemapKernel, numBlocks, mMaxClothBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 
 #if PS_GPU_DEBUG
 				{
 					result = mCudaContext->streamSynchronize(mStream);
-					if (result != CUDA_SUCCESS)
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_updateRemapVertsLaunch kernel fail!\n");
-					PX_ASSERT(result == CUDA_SUCCESS);
+					PX_ASSERT(result == hipSuccess);
 				}
 #endif
 			}
@@ -1009,19 +1009,19 @@ namespace physx
 						PX_CUDA_KERNEL_PARAM(isTGS)
 					};
 
-					const CUfunction solveSpringKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_SOLVE_SPRINGS);
+					const hipFunction_t solveSpringKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_SOLVE_SPRINGS);
 
-					CUresult result = mCudaContext->launchKernel(solveSpringKernel, numBlocks, mMaxClothBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-					PX_ASSERT(result == CUDA_SUCCESS);
+					hipError_t result = mCudaContext->launchKernel(solveSpringKernel, numBlocks, mMaxClothBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+					PX_ASSERT(result == hipSuccess);
 					PX_UNUSED(result);
 
 
 #if PS_GPU_DEBUG
 					{
 						result = mCudaContext->streamSynchronize(mStream);
-						if (result != CUDA_SUCCESS)
+						if (result != hipSuccess)
 							PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_solveSpringsPGSLaunch kernel fail!\n");
-						PX_ASSERT(result == CUDA_SUCCESS);
+						PX_ASSERT(result == hipSuccess);
 					}
 #endif
 				}
@@ -1042,21 +1042,21 @@ namespace physx
 					PX_CUDA_KERNEL_PARAM(invDt)
 				};
 
-				const CUfunction computeAverageKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_AVERAGEVERTS);
+				const hipFunction_t computeAverageKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_AVERAGEVERTS);
 
-				CUresult result = mCudaContext->launchKernel(
+				hipError_t result = mCudaContext->launchKernel(
 			        computeAverageKernel, numBlocks, mMaxClothBuffersPerSystem, nbActiveParticleSystems,
 			        numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 
 #if PS_GPU_DEBUG
 				{
 					result = mCudaContext->streamSynchronize(mStream);
-					if (result != CUDA_SUCCESS)
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_averageVertsLaunch fail!\n");
-					PX_ASSERT(result == CUDA_SUCCESS);
+					PX_ASSERT(result == hipSuccess);
 				}
 #endif
 			}
@@ -1068,22 +1068,22 @@ namespace physx
 
 	}
 
-	void PxgPBDParticleSystemCore::prepParticleConstraint(CUdeviceptr prePrepDescd, CUdeviceptr prepDescd, CUdeviceptr sharedDescd,
+	void PxgPBDParticleSystemCore::prepParticleConstraint(hipDeviceptr_t prePrepDescd, hipDeviceptr_t prepDescd, hipDeviceptr_t sharedDescd,
 		bool isTGS, const PxReal dt)
 	{
-		CUdeviceptr particleSystemd = getParticleSystemBuffer().getDevicePtr();
-		CUdeviceptr activeParticelSystemd = getActiveParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t particleSystemd = getParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t activeParticelSystemd = getActiveParticleSystemBuffer().getDevicePtr();
 		const PxU32 nbActiveParticles = mSimController->getBodySimManager().mActivePBDParticleSystems.size();
 
-		CUdeviceptr totalContactCountsd = getParticleContactCount().getDevicePtr();
-		CUdeviceptr contactsd = mPrimitiveContactSortedByParticleBuf.getDevicePtr();
-		CUdeviceptr constraintsd = mPrimitiveConstraintSortedByParticleBuf.getDevicePtr();
-		CUdeviceptr appliedForced = mPrimitiveConstraintAppliedParticleForces.getDevicePtr();
+		hipDeviceptr_t totalContactCountsd = getParticleContactCount().getDevicePtr();
+		hipDeviceptr_t contactsd = mPrimitiveContactSortedByParticleBuf.getDevicePtr();
+		hipDeviceptr_t constraintsd = mPrimitiveConstraintSortedByParticleBuf.getDevicePtr();
+		hipDeviceptr_t appliedForced = mPrimitiveConstraintAppliedParticleForces.getDevicePtr();
 		void* nullContactDeltaV = NULL;
 
 		//prepare primitive constraints sorted by particle id
 		{
-			const CUfunction prepPrimitiveCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_CONTACT_PREPARE);
+			const hipFunction_t prepPrimitiveCollisionKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_CONTACT_PREPARE);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -1102,14 +1102,14 @@ namespace physx
 
 			const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::PS_COLLISION;
 			const PxU32 numBlocks = PxgParticleSystemKernelGridDim::PS_COLLISION;
-			CUresult result = mCudaContext->launchKernel(prepPrimitiveCollisionKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(prepPrimitiveCollisionKernelFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 #if PS_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU prepParticleConstraint ps_contactPrepareLaunch kernel fail!\n");
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 #endif
 		}
 
@@ -1117,7 +1117,7 @@ namespace physx
 		//prepare primitive constraints sorted by particle id
 		if (mMaxParticles > 0 && mHasNonZeroFluidBoundaryScale)
 		{
-			const CUfunction staticDensityFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_ACCUMULATE_STATIC_DENSITY);
+			const hipFunction_t staticDensityFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_ACCUMULATE_STATIC_DENSITY);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -1127,25 +1127,25 @@ namespace physx
 
 			const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::PS_COLLISION;
 			const PxU32 numBlocks = (mMaxParticles + PxgParticleSystemKernelBlockDim::PS_COLLISION - 1) / PxgParticleSystemKernelBlockDim::PS_COLLISION;
-			CUresult result = mCudaContext->launchKernel(staticDensityFunction, numBlocks, nbActiveParticles, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(staticDensityFunction, numBlocks, nbActiveParticles, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 #if PS_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU prepParticleConstraint ps_contactPrepareLaunch kernel fail!\n");
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 #endif
 		}
 
 		if (mMaxParticles > 0 && mHasNonZeroFluidBoundaryScale)
 		{
 
-			CUdeviceptr pairCountd = mTempHistogramCountBuf.getDevicePtr();
-			CUdeviceptr startd = mTempContactBuf.getDevicePtr();
-			CUdeviceptr	endd = mTempContactRemapBuf.getDevicePtr();
+			hipDeviceptr_t pairCountd = mTempHistogramCountBuf.getDevicePtr();
+			hipDeviceptr_t startd = mTempContactBuf.getDevicePtr();
+			hipDeviceptr_t	endd = mTempContactRemapBuf.getDevicePtr();
 
-			const CUfunction rigidDensityFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_ACCUMULATE_RIGID_DENSITY);
+			const hipFunction_t rigidDensityFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_ACCUMULATE_RIGID_DENSITY);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -1158,14 +1158,14 @@ namespace physx
 
 			const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::PS_COLLISION;
 			const PxU32 numBlocks = PxgParticleSystemKernelGridDim::PS_COLLISION;
-			CUresult result = mCudaContext->launchKernel(rigidDensityFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(rigidDensityFunction, numBlocks, 1, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 #if PS_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU prepParticleConstraint ps_contactPrepareLaunch kernel fail!\n");
-			PX_ASSERT(result == CUDA_SUCCESS);
+			PX_ASSERT(result == hipSuccess);
 #endif
 		}
 
@@ -1173,8 +1173,8 @@ namespace physx
 
 
 	void PxgPBDParticleSystemCore::solveDiffuseParticles(
-		CUdeviceptr particleSystemsd, 
-		CUdeviceptr activeParticleSystemd, 
+		hipDeviceptr_t particleSystemsd, 
+		hipDeviceptr_t activeParticleSystemd, 
 		const PxU32 nbActiveParticleSystems, 
 		const PxReal dt)
 	{
@@ -1187,7 +1187,7 @@ namespace physx
 			// Everything is one-way collision, but to match/reuse the particle-shape collision detection pipeline,
 			// mesh/height-field are piped thru a different kernel.
 			{
-				const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_DIFFUSE_PARTICLES_ONE_WAY_COLLISION);
+				const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_DIFFUSE_PARTICLES_ONE_WAY_COLLISION);
 
 				PxCudaKernelParam kernelParams[] =
 				{
@@ -1198,20 +1198,20 @@ namespace physx
 
 				const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::PS_SOLVE;
 				const PxU32 numBlocks = (mMaxDiffuseParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
-				CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 #if PS_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_diffuseParticleOneWayCollision kernel fail!\n");
 #endif
 			}
 
 			// Update and write to diffuse buffer
 			{
-				const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_DIFFUSE_PARTICLES_UPDATE_PBF);
+				const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_DIFFUSE_PARTICLES_UPDATE_PBF);
 				PxCudaKernelParam kernelParams[] =
 				{
 					PX_CUDA_KERNEL_PARAM(particleSystemsd),
@@ -1221,21 +1221,21 @@ namespace physx
 				};
 				const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::PS_SOLVE;
 				const PxU32 numBlocks = (mMaxDiffuseParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
-				CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if PS_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_diffuseParticleUpdatePBF kernel fail!\n");
 #endif
 			}
 
 			// Update and write to diffuse buffer
 			{
-				const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_DIFFUSE_PARTICLES_COMPACT);
+				const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_DIFFUSE_PARTICLES_COMPACT);
 				PxCudaKernelParam kernelParams[] =
 				{
 					PX_CUDA_KERNEL_PARAM(particleSystemsd),
@@ -1245,23 +1245,23 @@ namespace physx
 				};
 				const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::PS_SOLVE;
 				const PxU32 numBlocks = (mMaxDiffusePerBuffer + numThreadsPerBlock - 1) / numThreadsPerBlock;
-				CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, mMaxDiffuseBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, mMaxDiffuseBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if PS_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_diffuseParticleUpdatePBF kernel fail!\n");
 #endif
 			}
 
 			// Create
 			{
-				CUdeviceptr randomTabled = mDiffuseParticlesRandomTableBuf.getDevicePtr();
+				hipDeviceptr_t randomTabled = mDiffuseParticlesRandomTableBuf.getDevicePtr();
 
-				const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_DIFFUSE_PARTICLES_CREATE);
+				const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_DIFFUSE_PARTICLES_CREATE);
 				PxCudaKernelParam kernelParams[] =
 				{
 					PX_CUDA_KERNEL_PARAM(particleSystemsd),
@@ -1272,35 +1272,35 @@ namespace physx
 				};
 				const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::PS_SOLVE;
 				const PxU32 numBlocks = (mMaxParticlesPerBuffer + numThreadsPerBlock - 1) / numThreadsPerBlock;
-				CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, mMaxBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, mMaxBuffersPerSystem, nbActiveParticleSystems, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if PS_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_diffuseParticleCreate kernel fail!\n");
 #endif
 			}
 
 			// Copy number of active particles
 			{
-				const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_DIFFUSE_PARTICLES_COPY);
+				const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_DIFFUSE_PARTICLES_COPY);
 				PxCudaKernelParam kernelParams[] =
 				{
 					PX_CUDA_KERNEL_PARAM(particleSystemsd),
 					PX_CUDA_KERNEL_PARAM(activeParticleSystemd),
 					PX_CUDA_KERNEL_PARAM(count)
 				};
-				CUresult result = mCudaContext->launchKernel(kernelFunction, 1, mMaxDiffuseBuffersPerSystem, nbActiveParticleSystems, 1, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(kernelFunction, 1, mMaxDiffuseBuffersPerSystem, nbActiveParticleSystems, 1, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if PS_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_diffuseParticleCopy kernel fail!\n");
 #endif
 
@@ -1308,37 +1308,37 @@ namespace physx
 
 			// Copy number of active particles
 			{
-				const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_DIFFUSE_PARTICLES_SUM);
+				const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_DIFFUSE_PARTICLES_SUM);
 				PxCudaKernelParam kernelParams[] =
 				{
 					PX_CUDA_KERNEL_PARAM(particleSystemsd),
 					PX_CUDA_KERNEL_PARAM(activeParticleSystemd),
 					PX_CUDA_KERNEL_PARAM(count)
 				};
-				CUresult result = mCudaContext->launchKernel(kernelFunction, nbActiveParticleSystems, 1, 1, 32, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(kernelFunction, nbActiveParticleSystems, 1, 1, 32, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if PS_GPU_DEBUG 
 				result = mCudaContext->streamSynchronize(mStream);
-				PX_ASSERT(result == CUDA_SUCCESS);
-				if (result != CUDA_SUCCESS)
+				PX_ASSERT(result == hipSuccess);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_diffuseParticleCopy kernel fail!\n");
 #endif
 			}
 		}
 	}
 	
-	void PxgPBDParticleSystemCore::updateMaterials(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemd, const PxU32 nbActiveParticleSystems, CUstream bpStream,
+	void PxgPBDParticleSystemCore::updateMaterials(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemd, const PxU32 nbActiveParticleSystems, hipStream_t bpStream,
 		const PxReal invTotalDt)
 	{
 		if (mMaxNumPhaseToMaterials && mMaxParticles)
 		{
 			PxgGpuNarrowphaseCore* npCore = mGpuContext->getNarrowphaseCore();
-			CUdeviceptr pbdMaterialsd = npCore->mGpuPBDMaterialManager.mGpuMaterialBuffer.getDevicePtr();
+			hipDeviceptr_t pbdMaterialsd = npCore->mGpuPBDMaterialManager.mGpuMaterialBuffer.getDevicePtr();
 
 			// Update materials
-			const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_UPDATE_MATERIALS);
+			const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_UPDATE_MATERIALS);
 			PxCudaKernelParam kernelParams[] =
 			{
 				PX_CUDA_KERNEL_PARAM(particleSystemsd),
@@ -1348,20 +1348,20 @@ namespace physx
 			};
 			const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::PS_SOLVE;
 			const PxU32 numBlocks = (mMaxNumPhaseToMaterials + numThreadsPerBlock - 1) / numThreadsPerBlock;
-			CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, bpStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-			PX_ASSERT(result == CUDA_SUCCESS);
+			hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, nbActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, bpStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+			PX_ASSERT(result == hipSuccess);
 			PX_UNUSED(result);
 
 #if PS_GPU_DEBUG
 			result = mCudaContext->streamSynchronize(bpStream);
-			PX_ASSERT(result == CUDA_SUCCESS);
-			if (result != CUDA_SUCCESS)
+			PX_ASSERT(result == hipSuccess);
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_updateMaterials kernel fail!\n");
 #endif
 		}
 	}
 
-	void PxgPBDParticleSystemCore::allocateParticleBuffer(const PxU32 nbTotalParticleSystems, CUstream stream)
+	void PxgPBDParticleSystemCore::allocateParticleBuffer(const PxU32 nbTotalParticleSystems, hipStream_t stream)
 	{
 		PX_PROFILE_ZONE("AllocateParticleBuffer", 0);
 		if (nbTotalParticleSystems > mNbTotalParticleSystems)
@@ -1422,7 +1422,7 @@ namespace physx
 	}
 
 	//create particle position buffers and create runsum for the buffer
-    bool PxgPBDParticleSystemCore::createUserParticleData(PxgParticleSystem& particleSystem, Dy::ParticleSystemCore& dyParticleSystemCore, PxgParticleSystemBuffer* buffer, PxgParticleSystemDiffuseBuffer* diffuseParticlesBuffer, CUstream stream)
+    bool PxgPBDParticleSystemCore::createUserParticleData(PxgParticleSystem& particleSystem, Dy::ParticleSystemCore& dyParticleSystemCore, PxgParticleSystemBuffer* buffer, PxgParticleSystemDiffuseBuffer* diffuseParticlesBuffer, hipStream_t stream)
 	{
 		const PxU32 numPBDParticleBuffer = dyParticleSystemCore.mParticleBuffers.size();
 		
@@ -1824,7 +1824,7 @@ namespace physx
 	}
 
 	void PxgPBDParticleSystemCore::resizeParticleDataBuffer(PxgParticleSystem& particleSystem, PxgParticleSystemBuffer* buffer, const PxU32 maxParticles,
-		const PxU32 maxNeighborhood, CUstream stream)
+		const PxU32 maxNeighborhood, hipStream_t stream)
 	{
 		buffer->grid_particle_hash.allocate(maxParticles * sizeof(PxU32), PX_FL);
 		buffer->grid_particle_index.allocate(maxParticles * sizeof(PxU32), PX_FL);
@@ -1904,7 +1904,7 @@ namespace physx
 
 	}
 
-	void PxgPBDParticleSystemCore::resizeDiffuseParticleDiffuseBuffer(PxgParticleSystem& particleSystem, PxgParticleSystemDiffuseBuffer* diffuseBuffer, const PxU32 maxDiffuseParticles, CUstream stream)
+	void PxgPBDParticleSystemCore::resizeDiffuseParticleDiffuseBuffer(PxgParticleSystem& particleSystem, PxgParticleSystemDiffuseBuffer* diffuseBuffer, const PxU32 maxDiffuseParticles, hipStream_t stream)
 	{
 		diffuseBuffer->diffuse_positions.allocate(maxDiffuseParticles * sizeof(PxVec4), PX_FL);
 		diffuseBuffer->diffuse_velocities.allocate(maxDiffuseParticles * sizeof(PxVec4), PX_FL);
@@ -1959,7 +1959,7 @@ namespace physx
 		}
 	}
 	
-	void PxgPBDParticleSystemCore::allocateParticleDataBuffer(void** bodySimsLL, CUstream stream)
+	void PxgPBDParticleSystemCore::allocateParticleDataBuffer(void** bodySimsLL, hipStream_t stream)
 	{
 		PX_PROFILE_ZONE("AllocateParticleDataBuffer", 0);
 		const PxU32 nbNewPBDParticleSystems = mNewParticleSystemPool.size();
@@ -2004,7 +2004,7 @@ namespace physx
 			{
 				//const PxU32 kRandomTableSize = 1024;
 				mDiffuseParticlesRandomTableBuf.allocate(mRandomTableSize * sizeof(PxReal), PX_FL);
-				CUdeviceptr randomTabled = mDiffuseParticlesRandomTableBuf.getDevicePtr();
+				hipDeviceptr_t randomTabled = mDiffuseParticlesRandomTableBuf.getDevicePtr();
 				Cm::BasicRandom rnd(42);
 				buffer->mRandomTable.resize(mRandomTableSize); //would be nice to deallocate after first frame
 				for (PxU32 i = 0; i < mRandomTableSize; ++i)
@@ -2068,11 +2068,11 @@ namespace physx
 	}
 
 	
-	void PxgPBDParticleSystemCore::calculateHashForDiffuseParticles(CUdeviceptr particleSystemsd, CUdeviceptr activeParticleSystemsd, const PxU32 numActiveParticleSystems)
+	void PxgPBDParticleSystemCore::calculateHashForDiffuseParticles(hipDeviceptr_t particleSystemsd, hipDeviceptr_t activeParticleSystemsd, const PxU32 numActiveParticleSystems)
 	{
 		if (mMaxDiffuseParticles > 0)
 		{
-			const CUfunction calcHashKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_CALCULATE_HASH_FOR_DIFFUSE_PARTICLES);
+			const hipFunction_t calcHashKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PS_CALCULATE_HASH_FOR_DIFFUSE_PARTICLES);
 
 			PxCudaKernelParam kernelParams[] =
 			{
@@ -2083,13 +2083,13 @@ namespace physx
 			{
 				const PxU32 numThreadsPerBlock = PxgParticleSystemKernelBlockDim::UPDATEGRID;
 				const PxU32 numBlocks = (mMaxDiffuseParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
-				CUresult result = mCudaContext->launchKernel(calcHashKernelFunction, numBlocks, numActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				PX_ASSERT(result == CUDA_SUCCESS);
+				hipError_t result = mCudaContext->launchKernel(calcHashKernelFunction, numBlocks, numActiveParticleSystems, 1, numThreadsPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				PX_ASSERT(result == hipSuccess);
 				PX_UNUSED(result);
 
 #if PS_GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU ps_calculateHashForDiffuseParticlesLaunch kernel fail!\n");
 #endif
 			}
@@ -2097,7 +2097,7 @@ namespace physx
 	}
 
 
-	void PxgPBDParticleSystemCore::updateDirtyData(PxgBodySimManager& bodySimManager, CUstream stream)
+	void PxgPBDParticleSystemCore::updateDirtyData(PxgBodySimManager& bodySimManager, hipStream_t stream)
 	{
 		PX_PROFILE_ZONE("updateDirtyData", 0);
 
@@ -2111,7 +2111,7 @@ namespace physx
 		const PxU32 nbActiveParticleSystems = bodySimManager.mActivePBDParticleSystems.size();
 		PxU32* activeParticleSystems = bodySimManager.mActivePBDParticleSystems.begin();
 
-		CUdeviceptr particleSystemd = getParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t particleSystemd = getParticleSystemBuffer().getDevicePtr();
 		PxgParticleSystem* gpuParticleSystems = reinterpret_cast<PxgParticleSystem*>(particleSystemd);
 
 		mHasNonZeroFluidBoundaryScale = false;
@@ -2247,7 +2247,7 @@ namespace physx
 		mTotalRigidAttachments = rigidAttachmentOffset;
 
 
-		CUdeviceptr activeParticleSystemsd = getActiveParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t activeParticleSystemsd = getActiveParticleSystemBuffer().getDevicePtr();
 		//we have a cpu mirror of the particle system and we just dma the whole particle buffer to gpu
 		//If any of the particle systems changed, we need to DMA up the particle systems because the num particles in data might change	
 
@@ -2264,14 +2264,14 @@ namespace physx
 		copyUserDiffuseBufferToUnsortedArray(particleSystemd, activeParticleSystemsd, nbActiveParticleSystems, stream);
 	}
 	
-	void PxgPBDParticleSystemCore::applyParticleBufferDataDEPRECATED(const PxU32* indices, const PxGpuParticleBufferIndexPair* bufferIndexPairs, const PxParticleBufferFlags* flags, PxU32 nbUpdatedBuffers, CUevent waitEvent, CUevent signalEvent)
+	void PxgPBDParticleSystemCore::applyParticleBufferDataDEPRECATED(const PxU32* indices, const PxGpuParticleBufferIndexPair* bufferIndexPairs, const PxParticleBufferFlags* flags, PxU32 nbUpdatedBuffers, hipEvent_t waitEvent, hipEvent_t signalEvent)
 	{
 		if (waitEvent)
 			mCudaContext->streamWaitEvent(mStream, waitEvent);
 
-		CUdeviceptr particleSystemd = getParticleSystemBuffer().getDevicePtr();
+		hipDeviceptr_t particleSystemd = getParticleSystemBuffer().getDevicePtr();
 
-		CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::APPLY_PARTICLE_BUFFER_DATA_DEPRECATED);
+		hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::APPLY_PARTICLE_BUFFER_DATA_DEPRECATED);
 
 		const PxU32 numThreadPerBlock = 1024;
 		const PxU32 numBlocks = (mMaxParticlesPerBuffer + numThreadPerBlock - 1) / numThreadPerBlock;
@@ -2284,15 +2284,15 @@ namespace physx
 			PX_CUDA_KERNEL_PARAM(flags),
 		};
 
-		CUresult result = mCudaContext->launchKernel(kernelFunction, numBlocks, nbUpdatedBuffers, 1, numThreadPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		hipError_t result = mCudaContext->launchKernel(kernelFunction, numBlocks, nbUpdatedBuffers, 1, numThreadPerBlock, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
 
 		PX_UNUSED(result);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 
 #if PS_GPU_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU applyParticleBufferData kernel fail!\n");
 #endif
 

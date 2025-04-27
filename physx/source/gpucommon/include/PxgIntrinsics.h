@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -30,7 +31,7 @@
 #define PXG_INTRINSICS_H
 
 #include "foundation/PxSimpleTypes.h"
-#include "cuda.h"
+#include "hip/hip_runtime.h"
 
 #if (defined(_MSC_VER) && defined(_WIN64)) || defined(__LP64__) || defined(__CUDACC_RTC__)
 	#define __STG_PTR   "l"

@@ -50,13 +50,13 @@ namespace physx
 {
 
 #if ENABLE_KERNEL_LAUNCH_ERROR_CHECK
-#define checkCudaError() { cudaError_t err = cudaDeviceSynchronize(); if (err != 0) printf("Cuda error file: %s, line: %i, error: %i\n", PX_FL, err); }	
+#define checkCudaError() { hipError_t err = hipDeviceSynchronize(); if (err != 0) printf("Cuda error file: %s, line: %i, error: %i\n", PX_FL, err); }	
 #else
 #define checkCudaError() { }
 #endif
 	
 	void updateAnisotropy(PxgKernelLauncher& launcher, PxGpuParticleSystem* particleSystems, const PxU32 id, PxAnisotropyData* anisotropyDataPerParticleSystem, PxU32 numParticles,
-		CUstream stream, PxU32 numThreadsPerBlock = 256)
+		hipStream_t stream, PxU32 numThreadsPerBlock = 256)
 	{
 		const PxU32 numBlocks = (numParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
 		launcher.launchKernel(PxgKernelIds::calculateAnisotropyLaunch, numBlocks, numThreadsPerBlock, 0, stream,
@@ -66,7 +66,7 @@ namespace physx
 
 	void anisotropyLaunch(PxgKernelLauncher& launcher, float4* deviceParticlePos, PxU32* sortedToOriginalParticleIndex, PxU32* sortedParticleToSubgrid, PxU32 maxNumSubgrids,
 		PxU32* subgridNeighbors, PxU32* subgridEndIndices, int numParticles, PxU32* phases, PxU32 validPhaseMask,
-		float4* q1, float4* q2, float4* q3, PxReal anisotropy, PxReal anisotropyMin, PxReal anisotropyMax, PxReal particleContactDistance, CUstream stream, PxU32 numThreadsPerBlock = 256)
+		float4* q1, float4* q2, float4* q3, PxReal anisotropy, PxReal anisotropyMin, PxReal anisotropyMax, PxReal particleContactDistance, hipStream_t stream, PxU32 numThreadsPerBlock = 256)
 	{
 		const PxU32 numBlocks = (numParticles + numThreadsPerBlock - 1) / numThreadsPerBlock;
 		launcher.launchKernel(PxgKernelIds::anisotropyKernel, numBlocks, numThreadsPerBlock, 0, stream,
@@ -148,25 +148,25 @@ namespace physx
 		mAnisotropy3 = NULL;
 	}
 
-	void PxgAnisotropyGenerator::generateAnisotropy(PxGpuParticleSystem* gpuParticleSystem, PxU32 numParticles, CUstream stream)
+	void PxgAnisotropyGenerator::generateAnisotropy(PxGpuParticleSystem* gpuParticleSystem, PxU32 numParticles, hipStream_t stream)
 	{
 		if (mDirty)
 		{
 			mDirty = false;
-			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyHtoDAsync(CUdeviceptr(mAnisotropyDataPerParticleSystemDevice), &mAnisotropyDataHost, sizeof(PxAnisotropyData), stream);
+			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyHtoDAsync(hipDeviceptr_t(mAnisotropyDataPerParticleSystemDevice), &mAnisotropyDataHost, sizeof(PxAnisotropyData), stream);
 		}
 
 		updateAnisotropy(mKernelLauncher, gpuParticleSystem, 0, mAnisotropyDataPerParticleSystemDevice, numParticles, stream);
 
 		if (mAnisotropy1)
 		{
-			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mAnisotropy1, CUdeviceptr(mAnisotropyDataHost.mAnisotropy_q1), numParticles * sizeof(PxVec4), stream);
-			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mAnisotropy2, CUdeviceptr(mAnisotropyDataHost.mAnisotropy_q2), numParticles * sizeof(PxVec4), stream);
-			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mAnisotropy3, CUdeviceptr(mAnisotropyDataHost.mAnisotropy_q3), numParticles * sizeof(PxVec4), stream);
+			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mAnisotropy1, hipDeviceptr_t(mAnisotropyDataHost.mAnisotropy_q1), numParticles * sizeof(PxVec4), stream);
+			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mAnisotropy2, hipDeviceptr_t(mAnisotropyDataHost.mAnisotropy_q2), numParticles * sizeof(PxVec4), stream);
+			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mAnisotropy3, hipDeviceptr_t(mAnisotropyDataHost.mAnisotropy_q3), numParticles * sizeof(PxVec4), stream);
 		}
 	}
 
-	void PxgAnisotropyGenerator::generateAnisotropy(PxVec4* particlePositionsGpu, PxParticleNeighborhoodProvider& neighborhoodProvider, PxU32 numParticles, PxReal particleContactOffset, CUstream stream)
+	void PxgAnisotropyGenerator::generateAnisotropy(PxVec4* particlePositionsGpu, PxParticleNeighborhoodProvider& neighborhoodProvider, PxU32 numParticles, PxReal particleContactOffset, hipStream_t stream)
 	{
 		PxgParticleNeighborhoodProvider* n = static_cast<PxgParticleNeighborhoodProvider*>(&neighborhoodProvider);
 
@@ -178,9 +178,9 @@ namespace physx
 
 		if (mAnisotropy1)
 		{
-			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mAnisotropy1, CUdeviceptr(mAnisotropyDataHost.mAnisotropy_q1), numParticles * sizeof(PxVec4), stream);
-			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mAnisotropy2, CUdeviceptr(mAnisotropyDataHost.mAnisotropy_q2), numParticles * sizeof(PxVec4), stream);
-			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mAnisotropy3, CUdeviceptr(mAnisotropyDataHost.mAnisotropy_q3), numParticles * sizeof(PxVec4), stream);
+			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mAnisotropy1, hipDeviceptr_t(mAnisotropyDataHost.mAnisotropy_q1), numParticles * sizeof(PxVec4), stream);
+			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mAnisotropy2, hipDeviceptr_t(mAnisotropyDataHost.mAnisotropy_q2), numParticles * sizeof(PxVec4), stream);
+			mKernelLauncher.getCudaContextManager()->getCudaContext()->memcpyDtoHAsync(mAnisotropy3, hipDeviceptr_t(mAnisotropyDataHost.mAnisotropy_q3), numParticles * sizeof(PxVec4), stream);
 		}
 	}
 

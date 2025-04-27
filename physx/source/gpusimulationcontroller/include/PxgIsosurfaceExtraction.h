@@ -75,11 +75,11 @@ namespace physx
 		virtual ~PxgSharedIsosurfaceExtractor() {}
 
 		template<typename DenseOrSparseGpuDataPackage>
-		void extractIso(DenseOrSparseGpuDataPackage& mData, PxVec4* deviceParticlePos, const PxU32 numParticles, CUstream stream, PxU32* phases, PxU32 validPhaseMask,
+		void extractIso(DenseOrSparseGpuDataPackage& mData, PxVec4* deviceParticlePos, const PxU32 numParticles, hipStream_t stream, PxU32* phases, PxU32 validPhaseMask,
 			PxU32* activeIndices = NULL, PxVec4* anisotropy1 = NULL, PxVec4* anisotropy2 = NULL, PxVec4* anisotropy3 = NULL, PxReal anisotropyFactor = 1.0f);
 
 		template<typename DenseOrSparseGpuDataPackage>
-		void meshFromDensity(DenseOrSparseGpuDataPackage& mData, CUstream stream);
+		void meshFromDensity(DenseOrSparseGpuDataPackage& mData, hipStream_t stream);
 	};
 
 	/**
@@ -126,7 +126,7 @@ namespace physx
 			paramsToMCData();
 		}
 
-		virtual void clearDensity(CUstream stream);
+		virtual void clearDensity(hipStream_t stream);
 
 		virtual PxU32 getMaxParticles() const
 		{
@@ -145,7 +145,7 @@ namespace physx
 
 		virtual void setMaxParticles(PxU32 maxParticles);
 
-		virtual void extractIsosurface(PxVec4* deviceParticlePos, const PxU32 numParticles, CUstream stream, PxU32* phases = NULL, PxU32 validPhaseMask = PxParticlePhaseFlag::eParticlePhaseFluid,
+		virtual void extractIsosurface(PxVec4* deviceParticlePos, const PxU32 numParticles, hipStream_t stream, PxU32* phases = NULL, PxU32 validPhaseMask = PxParticlePhaseFlag::eParticlePhaseFluid,
 			PxU32* activeIndices = NULL, PxVec4* anisotropy1 = NULL, PxVec4* anisotropy2 = NULL, PxVec4* anisotropy3 = NULL, PxReal anisotropyFactor = 1.0f);
 
 		virtual void setResultBufferHost(PxVec4* vertices, PxU32* triIndices, PxVec4* normals);
@@ -235,7 +235,7 @@ namespace physx
 			paramsToMCData();
 		}
 
-		virtual void clearDensity(CUstream stream);
+		virtual void clearDensity(hipStream_t stream);
 
 		virtual PxU32 getMaxParticles() const
 		{
@@ -258,7 +258,7 @@ namespace physx
 			mMaxParticles = maxParticles;
 		}
 
-		virtual void extractIsosurface(PxVec4* deviceParticlePos, const PxU32 numParticles, CUstream stream, PxU32* phases = NULL, PxU32 validPhaseMask = PxParticlePhaseFlag::eParticlePhaseFluid,
+		virtual void extractIsosurface(PxVec4* deviceParticlePos, const PxU32 numParticles, hipStream_t stream, PxU32* phases = NULL, PxU32 validPhaseMask = PxParticlePhaseFlag::eParticlePhaseFluid,
 			PxU32* activeIndices = NULL, PxVec4* anisotropy1 = NULL, PxVec4* anisotropy2 = NULL, PxVec4* anisotropy3 = NULL, PxReal anisotropyFactor = 1.0f);
 
 		virtual void setResultBufferHost(PxVec4* vertices, PxU32* triIndices, PxVec4* normals);

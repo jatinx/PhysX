@@ -298,27 +298,27 @@ namespace physx
 
 		// NEW DIRECT-GPU API
 
-		virtual bool	getRigidDynamicData(void* /*data*/, const PxRigidDynamicGPUIndex* /*gpuIndices*/, PxRigidDynamicGPUAPIReadType::Enum /*dataType*/, PxU32 /*nbElements*/, float /*oneOverDt*/, CUevent /*startEvent*/, CUevent /*finishEvent*/) const { return false; }
-		virtual bool 	setRigidDynamicData(const void* /*data*/, const PxRigidDynamicGPUIndex* /*gpuIndices*/, PxRigidDynamicGPUAPIWriteType::Enum /*dataType*/, PxU32 /*nbElements*/, CUevent /*startEvent*/, CUevent /*finishEvent*/) { return false; }
+		virtual bool	getRigidDynamicData(void* /*data*/, const PxRigidDynamicGPUIndex* /*gpuIndices*/, PxRigidDynamicGPUAPIReadType::Enum /*dataType*/, PxU32 /*nbElements*/, float /*oneOverDt*/, hipEvent_t /*startEvent*/, hipEvent_t /*finishEvent*/) const { return false; }
+		virtual bool 	setRigidDynamicData(const void* /*data*/, const PxRigidDynamicGPUIndex* /*gpuIndices*/, PxRigidDynamicGPUAPIWriteType::Enum /*dataType*/, PxU32 /*nbElements*/, hipEvent_t /*startEvent*/, hipEvent_t /*finishEvent*/) { return false; }
 
-		virtual bool 	getArticulationData(void* /*data*/, const PxArticulationGPUIndex* /*gpuIndices*/, PxArticulationGPUAPIReadType::Enum /*dataType*/, PxU32 /*nbElements*/, CUevent /*startEvent*/, CUevent /*finishEvent*/) const { return false; }
-		virtual bool 	setArticulationData(const void* /*data*/, const PxArticulationGPUIndex* /*gpuIndices*/, PxArticulationGPUAPIWriteType::Enum /*dataType*/, PxU32 /*nbElements*/, CUevent /*startEvent*/, CUevent /*finishEvent*/) { return false; }
-		virtual	bool	computeArticulationData(void* /*data*/, const PxArticulationGPUIndex* /*gpuIndices*/, PxArticulationGPUAPIComputeType::Enum /*operation*/, PxU32 /*nbElements*/, CUevent /*startEvent*/, CUevent /*finishEvent*/) { return false; }
+		virtual bool 	getArticulationData(void* /*data*/, const PxArticulationGPUIndex* /*gpuIndices*/, PxArticulationGPUAPIReadType::Enum /*dataType*/, PxU32 /*nbElements*/, hipEvent_t /*startEvent*/, hipEvent_t /*finishEvent*/) const { return false; }
+		virtual bool 	setArticulationData(const void* /*data*/, const PxArticulationGPUIndex* /*gpuIndices*/, PxArticulationGPUAPIWriteType::Enum /*dataType*/, PxU32 /*nbElements*/, hipEvent_t /*startEvent*/, hipEvent_t /*finishEvent*/) { return false; }
+		virtual	bool	computeArticulationData(void* /*data*/, const PxArticulationGPUIndex* /*gpuIndices*/, PxArticulationGPUAPIComputeType::Enum /*operation*/, PxU32 /*nbElements*/, hipEvent_t /*startEvent*/, hipEvent_t /*finishEvent*/) { return false; }
 
-		virtual bool 	evaluateSDFDistances(PxVec4* /*localGradientAndSDFConcatenated*/, const PxShapeGPUIndex* /*shapeIndices*/, const PxVec4* /*localSamplePointsConcatenated*/, const PxU32* /*samplePointCountPerShape*/, PxU32 /*nbElements*/, PxU32 /*maxPointCount*/, CUevent /*startEvent = NULL*/, CUevent /*finishEvent = NULL*/) { return false; }
-		virtual	bool	copyContactData(void* /*data*/, PxU32* /*numContactPairs*/, const PxU32 /*maxContactPairs*/, CUevent /*startEvent*/, CUevent /*copyEvent*/) { return false; }
+		virtual bool 	evaluateSDFDistances(PxVec4* /*localGradientAndSDFConcatenated*/, const PxShapeGPUIndex* /*shapeIndices*/, const PxVec4* /*localSamplePointsConcatenated*/, const PxU32* /*samplePointCountPerShape*/, PxU32 /*nbElements*/, PxU32 /*maxPointCount*/, hipEvent_t /*startEvent = NULL*/, hipEvent_t /*finishEvent = NULL*/) { return false; }
+		virtual	bool	copyContactData(void* /*data*/, PxU32* /*numContactPairs*/, const PxU32 /*maxContactPairs*/, hipEvent_t /*startEvent*/, hipEvent_t /*copyEvent*/) { return false; }
 
 		virtual PxArticulationGPUAPIMaxCounts getArticulationGPUAPIMaxCounts()	const	{ return PxArticulationGPUAPIMaxCounts(); }
 
-		virtual	bool	getD6JointData(void* /*data*/, const PxD6JointGPUIndex* /*gpuIndices*/, PxD6JointGPUAPIReadType::Enum /*dataType*/, PxU32 /*nbElements*/, PxF32 /*oneOverDt*/, CUevent /*startEvent*/, CUevent /*finishEvent*/) const { return false; }
+		virtual	bool	getD6JointData(void* /*data*/, const PxD6JointGPUIndex* /*gpuIndices*/, PxD6JointGPUAPIReadType::Enum /*dataType*/, PxU32 /*nbElements*/, PxF32 /*oneOverDt*/, hipEvent_t /*startEvent*/, hipEvent_t /*finishEvent*/) const { return false; }
 
 		// END NEW DIRECT-GPU API
 
 		// DEPRECATED DIRECT-GPU API
 
-		PX_DEPRECATED virtual	void	copySoftBodyDataDEPRECATED(void** /*data*/, void* /*dataSizes*/, void* /*softBodyIndices*/, PxSoftBodyGpuDataFlag::Enum /*flag*/, const PxU32 /*nbCopySoftBodies*/, const PxU32 /*maxSize*/, CUevent /*copyEvent*/) {}
-		PX_DEPRECATED virtual	void	applySoftBodyDataDEPRECATED(void** /*data*/, void* /*dataSizes*/, void* /*softBodyIndices*/, PxSoftBodyGpuDataFlag::Enum /*flag*/, const PxU32 /*nbUpdatedSoftBodies*/, const PxU32 /*maxSize*/, CUevent /*applyEvent*/, CUevent /*signalEvent*/) {}
-		PX_DEPRECATED virtual 	void	applyParticleBufferDataDEPRECATED(const PxU32* /*indices*/, const PxGpuParticleBufferIndexPair* /*indexPairs*/, const PxParticleBufferFlags* /*flags*/, PxU32 /*nbUpdatedBuffers*/, CUevent /*waitEvent*/, CUevent /*signalEvent*/) {}
+		PX_DEPRECATED virtual	void	copySoftBodyDataDEPRECATED(void** /*data*/, void* /*dataSizes*/, void* /*softBodyIndices*/, PxSoftBodyGpuDataFlag::Enum /*flag*/, const PxU32 /*nbCopySoftBodies*/, const PxU32 /*maxSize*/, hipEvent_t /*copyEvent*/) {}
+		PX_DEPRECATED virtual	void	applySoftBodyDataDEPRECATED(void** /*data*/, void* /*dataSizes*/, void* /*softBodyIndices*/, PxSoftBodyGpuDataFlag::Enum /*flag*/, const PxU32 /*nbUpdatedSoftBodies*/, const PxU32 /*maxSize*/, hipEvent_t /*applyEvent*/, hipEvent_t /*signalEvent*/) {}
+		PX_DEPRECATED virtual 	void	applyParticleBufferDataDEPRECATED(const PxU32* /*indices*/, const PxGpuParticleBufferIndexPair* /*indexPairs*/, const PxParticleBufferFlags* /*flags*/, PxU32 /*nbUpdatedBuffers*/, hipEvent_t /*waitEvent*/, hipEvent_t /*signalEvent*/) {}
 
 		// END DEPRECATED DIRECT-GPU API
 

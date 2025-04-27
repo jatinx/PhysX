@@ -97,7 +97,7 @@ namespace physx
 		\param[in]		outReorderTrackingBuffer	Optional: Gpu tracking buffer that contains the original location in the unsorted array for every element after the sorting completed.
 		\param[in]		numElementsToSort			Optional: The number of elements that should get sorted. By default all elements are processed. The maximal number of elements is specified in the constructor.
 		*/
-		virtual void sort(T* inAndOutBuffer, PxU32 numBitsToSort, const CUstream& stream, PxU32* outReorderTrackingBuffer = NULL, PxU32 numElementsToSort = 0xFFFFFFFF);
+		virtual void sort(T* inAndOutBuffer, PxU32 numBitsToSort, const hipStream_t& stream, PxU32* outReorderTrackingBuffer = NULL, PxU32 numElementsToSort = 0xFFFFFFFF);
 
 		/**
 		\brief Releases all internal data
@@ -122,8 +122,8 @@ namespace physx
 
 		PxgKernelLauncher* mKernelLauncher;
 
-		void scan(PxU32* inAndOutBuf, PxU32 exclusiveScan, const CUstream& stream, PxU32 numElementsToScan);
-		void sumOnly(PxU32* inBuf, const CUstream& stream, PxU32 numElementsToScan);
+		void scan(PxU32* inAndOutBuf, PxU32 exclusiveScan, const hipStream_t& stream, PxU32 numElementsToScan);
+		void sumOnly(PxU32* inBuf, const hipStream_t& stream, PxU32 numElementsToScan);
 
 	public:
 		/**
@@ -166,7 +166,7 @@ namespace physx
 		\param[in]		stream				Gpu stream on which the calculation is scheduled. To be sure that the scan finished, a synchronize call must be executed on that stream.
 		\param[in]		numElementsToScan	Optional: The number of elements that should get scanned. By default all elements are processed. The maximal number of elements is specified in the constructor.
 		*/
-		PX_FORCE_INLINE void exclusiveScan(PxU32* inAndOutBuf, const CUstream& stream, PxU32 numElementsToScan = 0xFFFFFFFF)
+		PX_FORCE_INLINE void exclusiveScan(PxU32* inAndOutBuf, const hipStream_t& stream, PxU32 numElementsToScan = 0xFFFFFFFF)
 		{
 			const PxU32 exclusiveScan = 1;
 			scan(inAndOutBuf, exclusiveScan, stream, numElementsToScan);
@@ -179,7 +179,7 @@ namespace physx
 		\param[in]	stream				Gpu stream on which the calculation is scheduled. To be sure that the scan finished, a synchronize call must be executed on that stream.
 		\param[in]	numElementsToScan	The number of elements that should get scanned. By default all elements are processed. The maximal number of elements is specified in the constructor.
 		*/
-		PX_FORCE_INLINE void inclusiveScan(PxU32* inAndOutBuf, const CUstream& stream, PxU32 numElementsToScan = 0xFFFFFFFF)
+		PX_FORCE_INLINE void inclusiveScan(PxU32* inAndOutBuf, const hipStream_t& stream, PxU32 numElementsToScan = 0xFFFFFFFF)
 		{
 			const PxU32 exclusiveScan = 0;
 			scan(inAndOutBuf, exclusiveScan, stream, numElementsToScan);

@@ -55,15 +55,15 @@ public:
 
 	virtual void computeNormalVectors(
 		PxTrimeshSkinningGpuData* skinningDataArrayD, PxU32 arrayLength,
-		CUstream stream, PxU32 numGpuThreads) PX_OVERRIDE;
+		hipStream_t stream, PxU32 numGpuThreads) PX_OVERRIDE;
 
 	virtual void evaluateVerticesEmbeddedIntoSurface(
 		PxTrimeshSkinningGpuData* skinningDataArrayD, PxU32 arrayLength,
-		CUstream stream, PxU32 numGpuThreads) PX_OVERRIDE;
+		hipStream_t stream, PxU32 numGpuThreads) PX_OVERRIDE;
 
 	virtual void evaluateVerticesEmbeddedIntoVolume(
 		PxTetmeshSkinningGpuData* skinningDataArrayD, PxU32 arrayLength,
-		CUstream stream, PxU32 numGpuThreads) PX_OVERRIDE;
+		hipStream_t stream, PxU32 numGpuThreads) PX_OVERRIDE;
 };
 
 #endif	

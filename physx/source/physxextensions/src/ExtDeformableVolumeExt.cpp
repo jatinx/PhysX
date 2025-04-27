@@ -273,7 +273,7 @@ void PxDeformableVolumeExt::updateEmbeddedCollisionMesh(PxDeformableVolume& defo
 	}
 }
 
-void PxDeformableVolumeExt::copyToDevice(PxDeformableVolume& deformableVolume, PxDeformableVolumeDataFlags flags, PxVec4* simPositionsPinned, PxVec4* simVelocitiesPinned, PxVec4* collPositionsPinned, PxVec4* restPositionsPinned, CUstream stream)
+void PxDeformableVolumeExt::copyToDevice(PxDeformableVolume& deformableVolume, PxDeformableVolumeDataFlags flags, PxVec4* simPositionsPinned, PxVec4* simVelocitiesPinned, PxVec4* collPositionsPinned, PxVec4* restPositionsPinned, hipStream_t stream)
 {
 	//Updating the collision mesh's vertices ensures that simulation mesh and collision mesh are
 	//represented in the same coordinate system and the same scale
@@ -284,16 +284,16 @@ void PxDeformableVolumeExt::copyToDevice(PxDeformableVolume& deformableVolume, P
 	PxCudaContext* ctx = deformableVolume.getCudaContextManager()->getCudaContext();
 
 	if (flags & PxDeformableVolumeDataFlag::ePOSITION_INVMASS && collPositionsPinned)
-		ctx->memcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(deformableVolume.getPositionInvMassBufferD()), collPositionsPinned, deformableVolume.getCollisionMesh()->getNbVertices() * sizeof(PxVec4), stream);
+		ctx->memcpyHtoDAsync(reinterpret_cast<hipDeviceptr_t>(deformableVolume.getPositionInvMassBufferD()), collPositionsPinned, deformableVolume.getCollisionMesh()->getNbVertices() * sizeof(PxVec4), stream);
 
 	if (flags & PxDeformableVolumeDataFlag::eREST_POSITION_INVMASS && restPositionsPinned)
-		ctx->memcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(deformableVolume.getRestPositionBufferD()), restPositionsPinned, deformableVolume.getCollisionMesh()->getNbVertices() * sizeof(PxVec4), stream);
+		ctx->memcpyHtoDAsync(reinterpret_cast<hipDeviceptr_t>(deformableVolume.getRestPositionBufferD()), restPositionsPinned, deformableVolume.getCollisionMesh()->getNbVertices() * sizeof(PxVec4), stream);
 
 	if (flags & PxDeformableVolumeDataFlag::eSIM_POSITION_INVMASS && simPositionsPinned)
-		ctx->memcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(deformableVolume.getSimPositionInvMassBufferD()), simPositionsPinned, deformableVolume.getSimulationMesh()->getNbVertices() * sizeof(PxVec4), stream);
+		ctx->memcpyHtoDAsync(reinterpret_cast<hipDeviceptr_t>(deformableVolume.getSimPositionInvMassBufferD()), simPositionsPinned, deformableVolume.getSimulationMesh()->getNbVertices() * sizeof(PxVec4), stream);
 
 	if (flags & PxDeformableVolumeDataFlag::eSIM_VELOCITY && simVelocitiesPinned)
-		ctx->memcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(deformableVolume.getSimVelocityBufferD()), simVelocitiesPinned, deformableVolume.getSimulationMesh()->getNbVertices() * sizeof(PxVec4), stream);
+		ctx->memcpyHtoDAsync(reinterpret_cast<hipDeviceptr_t>(deformableVolume.getSimVelocityBufferD()), simVelocitiesPinned, deformableVolume.getSimulationMesh()->getNbVertices() * sizeof(PxVec4), stream);
 
 	// we need to synchronize if the stream is the default argument.
 	if (stream == 0)

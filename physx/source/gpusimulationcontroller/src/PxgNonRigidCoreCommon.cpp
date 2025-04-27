@@ -112,9 +112,9 @@ PxgNonRigidCore::~PxgNonRigidCore()
 	mCudaContextManager->releaseContext();
 }
 
-void PxgNonRigidCore::updateGPURadixSortBlockDesc(CUstream stream, CUdeviceptr inputKeyd, CUdeviceptr inputRankd,
-	CUdeviceptr outputKeyd, CUdeviceptr outputRankd, CUdeviceptr radixCountd, CUdeviceptr numKeysd,
-	PxgRadixSortBlockDesc* rsDescs, CUdeviceptr radixSortDescBuf0, CUdeviceptr radixSortDescBuf1)
+void PxgNonRigidCore::updateGPURadixSortBlockDesc(hipStream_t stream, hipDeviceptr_t inputKeyd, hipDeviceptr_t inputRankd,
+	hipDeviceptr_t outputKeyd, hipDeviceptr_t outputRankd, hipDeviceptr_t radixCountd, hipDeviceptr_t numKeysd,
+	PxgRadixSortBlockDesc* rsDescs, hipDeviceptr_t radixSortDescBuf0, hipDeviceptr_t radixSortDescBuf1)
 {
 	rsDescs[0].inputKeys = reinterpret_cast<PxU32*>(inputKeyd);
 	rsDescs[0].inputRanks = reinterpret_cast<PxU32*>(inputRankd);

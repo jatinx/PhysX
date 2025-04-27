@@ -85,16 +85,16 @@ public:
 		PX_EXT_PINNED_MEMORY_FREE(*mCudaContextManager, mPositionsInvMass);
 	}
 
-	void copyDeformedVerticesFromGPUAsync(CUstream stream)
+	void copyDeformedVerticesFromGPUAsync(hipStream_t stream)
 	{	
 		physx::PxScopedCudaLock _lock(*mCudaContextManager);
-		mCudaContextManager->getCudaContext()->memcpyDtoHAsync(mPositionsInvMass, reinterpret_cast<CUdeviceptr>(mDeformableSurface->getPositionInvMassBufferD()), mTriangleMesh->getNbVertices() * sizeof(physx::PxVec4), stream);
+		mCudaContextManager->getCudaContext()->memcpyDtoHAsync(mPositionsInvMass, reinterpret_cast<hipDeviceptr_t>(mDeformableSurface->getPositionInvMassBufferD()), mTriangleMesh->getNbVertices() * sizeof(physx::PxVec4), stream);
 	}
 
 	void copyDeformedVerticesFromGPU()
 	{	
 		physx::PxScopedCudaLock _lock(*mCudaContextManager);
-		mCudaContextManager->getCudaContext()->memcpyDtoH(mPositionsInvMass, reinterpret_cast<CUdeviceptr>(mDeformableSurface->getPositionInvMassBufferD()), mTriangleMesh->getNbVertices() * sizeof(physx::PxVec4));
+		mCudaContextManager->getCudaContext()->memcpyDtoH(mPositionsInvMass, reinterpret_cast<hipDeviceptr_t>(mDeformableSurface->getPositionInvMassBufferD()), mTriangleMesh->getNbVertices() * sizeof(physx::PxVec4));
 	}
 
 

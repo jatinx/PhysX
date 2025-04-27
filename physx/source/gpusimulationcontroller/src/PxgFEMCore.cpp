@@ -174,7 +174,7 @@ PxgFEMCore::PxgFEMCore(PxgCudaKernelWranglerManager* gpuKernelWrangler, PxCudaCo
 	mRigidConstraintBuf.allocateElements((maxContacts + 31) / 32, PX_FL);
 	mParticleConstraintBuf.allocateElements((maxContacts + 31) / 32, PX_FL);
 
-	mCudaContext->eventCreate(&mFinalizeEvent, CU_EVENT_DISABLE_TIMING);
+	mCudaContext->eventCreate(&mFinalizeEvent, hipEventDisableTiming);
 
 	mCudaContextManager->releaseContext();
 }
@@ -227,7 +227,7 @@ void PxgFEMCore::reorderRigidContacts()
 		PxgDevicePointer<PxU64> sortedRigidsIdd = mRigidSortedRigidIdBuf.getTypedDevicePtr();
 		PxgDevicePointer<PxU32> remapByRigidd = mContactRemapSortedByRigidBuf.getTypedDevicePtr();
 
-		CUfunction reorderFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::FEM_REORDER_RS_CONTACTS);
+		hipFunction_t reorderFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::FEM_REORDER_RS_CONTACTS);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -244,29 +244,29 @@ void PxgFEMCore::reorderRigidContacts()
 			PX_CUDA_KERNEL_PARAM(sortedRigidsIdd)
 		};
 
-		CUresult  result = mCudaContext->launchKernel(reorderFunction, PxgSoftBodyKernelGridDim::SB_REORDERCONTACTS, 1, 1, PxgSoftBodyKernelBlockDim::SB_REORDERCONTACTS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		hipError_t  result = mCudaContext->launchKernel(reorderFunction, PxgSoftBodyKernelGridDim::SB_REORDERCONTACTS, 1, 1, PxgSoftBodyKernelBlockDim::SB_REORDERCONTACTS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_reorderRSContactsLaunch fail to launch kernel!!\n");
 #if FEM_GPU_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU sb_reorderRSContactsLaunch fail!!\n");
 #endif
 	}
 }
 
 void PxgFEMCore::accumulateRigidDeltas(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd, PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, 
-	PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, PxgDevicePointer<PxNodeIndex> rigidIdsd, PxgDevicePointer<PxU32> numIdsd, CUstream stream, CUevent waitEvent, bool isTGS)
+	PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd, PxgDevicePointer<PxNodeIndex> rigidIdsd, PxgDevicePointer<PxU32> numIdsd, hipStream_t stream, hipEvent_t waitEvent, bool isTGS)
 {
 	PX_UNUSED(rigidIdsd);
 
 	{
-		//CUdeviceptr contactInfosd = mRSSortedContactInfoBuffer.getDevicePtr();
+		//hipDeviceptr_t contactInfosd = mRSSortedContactInfoBuffer.getDevicePtr();
 		PxgDevicePointer<float4> deltaVd = mRigidDeltaVelBuf.getTypedDevicePtr();
 		PxgDevicePointer<PxVec4> blockDeltaVd = mTempBlockDeltaVelBuf.getTypedDevicePtr();
 		PxgDevicePointer<PxU64> blockRigidIdd = mTempBlockRigidIdBuf.getTypedDevicePtr();
 
-		const CUfunction rigidFirstKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ACCUMULATE_DELTAVEL_RIGIDBODY_FIRST);
+		const hipFunction_t rigidFirstKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ACCUMULATE_DELTAVEL_RIGIDBODY_FIRST);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -278,14 +278,14 @@ void PxgFEMCore::accumulateRigidDeltas(PxgDevicePointer<PxgPrePrepDesc> prePrepD
 			PX_CUDA_KERNEL_PARAM(blockRigidIdd)
 		};
 
-		CUresult result = mCudaContext->launchKernel(rigidFirstKernelFunction, PxgSoftBodyKernelGridDim::SB_ACCUMULATE_DELTA, 1, 1, PxgSoftBodyKernelBlockDim::SB_ACCUMULATE_DELTA, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		hipError_t result = mCudaContext->launchKernel(rigidFirstKernelFunction, PxgSoftBodyKernelGridDim::SB_ACCUMULATE_DELTA, 1, 1, PxgSoftBodyKernelBlockDim::SB_ACCUMULATE_DELTA, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		PX_ASSERT(result == hipSuccess);
 		PX_UNUSED(result);
 
 #if FEM_GPU_DEBUG
 		result = mCudaContext->streamSynchronize(stream);
-		PX_ASSERT(result == CUDA_SUCCESS);
-		if (result != CUDA_SUCCESS)
+		PX_ASSERT(result == hipSuccess);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU fem accumulateDeltaVRigidFirstLaunch kernel fail!\n");
 
 		int bob = 0;
@@ -296,14 +296,14 @@ void PxgFEMCore::accumulateRigidDeltas(PxgDevicePointer<PxgPrePrepDesc> prePrepD
 	mCudaContext->streamWaitEvent(stream, waitEvent);
 
 	{
-		//CUdeviceptr contactInfosd = mRSSortedContactInfoBuffer.getDevicePtr();
+		//hipDeviceptr_t contactInfosd = mRSSortedContactInfoBuffer.getDevicePtr();
 		PxgDevicePointer<float4> deltaVd = mRigidDeltaVelBuf.getTypedDevicePtr();
 		PxgDevicePointer<PxVec4> blockDeltaVd = mTempBlockDeltaVelBuf.getTypedDevicePtr();
 		PxgDevicePointer<PxU64> blockRigidIdd = mTempBlockRigidIdBuf.getTypedDevicePtr();
 
 		//mCudaContext->streamWaitEvent(solverStream, mSolveSoftBodyRigidEvent);
 
-		const CUfunction rigidSecondKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ACCUMULATE_DELTAVEL_RIGIDBODY_SECOND);
+		const hipFunction_t rigidSecondKernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ACCUMULATE_DELTAVEL_RIGIDBODY_SECOND);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -320,14 +320,14 @@ void PxgFEMCore::accumulateRigidDeltas(PxgDevicePointer<PxgPrePrepDesc> prePrepD
 			PX_CUDA_KERNEL_PARAM(isTGS)
 		};
 
-		CUresult result = mCudaContext->launchKernel(rigidSecondKernelFunction, PxgSoftBodyKernelGridDim::SB_ACCUMULATE_DELTA, 1, 1, PxgSoftBodyKernelBlockDim::SB_ACCUMULATE_DELTA, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		hipError_t result = mCudaContext->launchKernel(rigidSecondKernelFunction, PxgSoftBodyKernelGridDim::SB_ACCUMULATE_DELTA, 1, 1, PxgSoftBodyKernelBlockDim::SB_ACCUMULATE_DELTA, 1, 1, 0, stream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		PX_ASSERT(result == hipSuccess);
 		PX_UNUSED(result);
 
 #if FEM_GPU_DEBUG
 		result = mCudaContext->streamSynchronize(stream);
-		PX_ASSERT(result == CUDA_SUCCESS);
-		if (result != CUDA_SUCCESS)
+		PX_ASSERT(result == hipSuccess);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU fem accumulateDeltaVRigidSecondLaunch kernel fail!\n");
 
 		int bob = 0;

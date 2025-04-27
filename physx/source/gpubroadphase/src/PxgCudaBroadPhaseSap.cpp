@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -69,8 +70,8 @@
 #if GPU_BP_DEBUG
 	#define GPU_DEBUG_STREAM(s, x)									\
 	{																\
-		const CUresult err = mCudaContext->streamSynchronize(s);	\
-		if(err != CUDA_SUCCESS)										\
+		const hipError_t err = mCudaContext->streamSynchronize(s);	\
+		if(err != hipSuccess)										\
 			outputError<PxErrorCode::eINTERNAL_ERROR>(__LINE__, x);	\
 	}
 #else
@@ -234,18 +235,18 @@ void PxgCudaBroadPhaseSap::release()
 void PxgCudaBroadPhaseSap::createGpuStreamsAndEvents()
 {
 	int leastPriority, mostPriority;
-	cuCtxGetStreamPriorityRange(&leastPriority, &mostPriority);
+	hipDeviceGetStreamPriorityRange(&leastPriority, &mostPriority);
 
-	CUresult result = mCudaContext->streamCreateWithPriority(&mStream, CU_STREAM_NON_BLOCKING, mostPriority);
+	hipError_t result = mCudaContext->streamCreateWithPriority(&mStream, hipStreamNonBlocking, mostPriority);
 
-	if (result != CUDA_SUCCESS)
+	if (result != hipSuccess)
 		outputError<PxErrorCode::eINTERNAL_ERROR>(__LINE__, "GPU Create Stream 0 fail!!\n");
 
-	result = mCudaContext->eventCreate(&mEvent, CU_EVENT_DISABLE_TIMING);
+	result = mCudaContext->eventCreate(&mEvent, hipEventDisableTiming);
 
 	mPinnedEvent = PX_PINNED_MEMORY_ALLOC(PxU32, *mCudaContextManager, 1);
 
-	if (result != CUDA_SUCCESS)
+	if (result != hipSuccess)
 		outputError<PxErrorCode::eINTERNAL_ERROR>(__LINE__, "GPU Create Event 0 fail!!\n");
 }
 
@@ -411,7 +412,7 @@ void PxgCudaBroadPhaseSap::runCopyResultsKernel(PxgBroadPhaseDesc& /*desc*/)
 {
 	PX_PROFILE_ZONE("PxgCudaBroadPhaseSap.runCopyResultsKernel", mContextID);
 
-	CUdeviceptr bpBuff = mBPDescBuf.getDevicePtr();
+	hipDeviceptr_t bpBuff = mBPDescBuf.getDevicePtr();
 	{
 		KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpBuff) };
 		_launch<GPU_BP_DEBUG>(PROLOG, PxgKernelIds::BP_ACCUMULATE_REPORT_STAGE_1, PxgBPKernelGridDim::BP_COMPUTE_INCREMENTAL_CMP_COUNTS1, 4, 1, PxgBPKernelBlockDim::BP_COMPUTE_INCREMENTAL_CMP_COUNTS1, 1, 1, 0, EPILOG);
@@ -438,7 +439,7 @@ void PxgCudaBroadPhaseSap::gpuDMABack(const PxgBroadPhaseDesc& desc)
 	//PxCudaStreamFlush(mStreams.begin());		//KS - dispatch work!
 
 	{
-		CUdeviceptr bpBuff = mBPDescBuf.getDevicePtr();
+		hipDeviceptr_t bpBuff = mBPDescBuf.getDevicePtr();
 
 		mCudaContext->memcpyDtoHAsync((void*)&desc, bpBuff, sizeof(PxgBroadPhaseDesc), mStream);
 		//resultR = mCudaContext->streamSynchronize(mStream);
@@ -643,7 +644,7 @@ void PxgCudaBroadPhaseSap::purgeDuplicateLostPairs()
 	purgeDuplicates(mLostActorPairs);
 }
 
-void PxgCudaBroadPhaseSap::runRadixSort(const PxU32 numOfKeys, CUdeviceptr radixSortDescBuf)
+void PxgCudaBroadPhaseSap::runRadixSort(const PxU32 numOfKeys, hipDeviceptr_t radixSortDescBuf)
 {
 	PX_PROFILE_ZONE("PxgCudaBroadPhaseSap.runRadixSort", mContextID);
 
@@ -654,7 +655,7 @@ void PxgCudaBroadPhaseSap::runRadixSort(const PxU32 numOfKeys, CUdeviceptr radix
 	{
 		const PxU32 descIndex = (i & 1)*3; 
 
-		CUdeviceptr rsDesc = radixSortDescBuf + descIndex*sizeof(PxgRadixSortDesc);
+		hipDeviceptr_t rsDesc = radixSortDescBuf + descIndex*sizeof(PxgRadixSortDesc);
 
 		KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(rsDesc), CUDA_KERNEL_PARAM(numOfKeys), CUDA_KERNEL_PARAM(startBit) };
 
@@ -683,7 +684,7 @@ void PxgCudaBroadPhaseSap::sortProjectionAndHandlesWRKernel(PxU32 previousNumOfB
 	//we need to pad the number of projection to the multiply of 4
 	nbProjections = (nbProjections + 3) & (~3);
 	
-	CUdeviceptr bpBuff = mBPDescBuf.getDevicePtr();
+	hipDeviceptr_t bpBuff = mBPDescBuf.getDevicePtr();
 	KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpBuff) };
 
 	_launch<GPU_BP_DEBUG>(PROLOG, PxgKernelIds::BP_INITIALIZE_RANKS, PxgBPKernelGridDim::BP_INITIALIZE_RANKS, 1, 1, PxgBPKernelBlockDim::BP_INITIALIZE_RANKS, 1, 1, 0, EPILOG);
@@ -726,7 +727,7 @@ void PxgCudaBroadPhaseSap::initializeSapBoxKernel(const PxU32 numHandles, bool i
 	const PxU32 nbBlocks = ((numHandles*2) + PxgBPKernelBlockDim::BP_INITIALIZE_SAPBOX-1)/ PxgBPKernelBlockDim::BP_INITIALIZE_SAPBOX;
 	if(nbBlocks)
 	{
-		CUdeviceptr bpDescd = mBPDescBuf.getDevicePtr();
+		hipDeviceptr_t bpDescd = mBPDescBuf.getDevicePtr();
 		KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpDescd), CUDA_KERNEL_PARAM(numHandles), CUDA_KERNEL_PARAM(isNew) };
 
 		_launch<GPU_BP_DEBUG>(PROLOG, PxgKernelIds::BP_INITIALIZE_SAPBOX, nbBlocks, 1, 1, PxgBPKernelBlockDim::BP_INITIALIZE_SAPBOX, 1, 1, 0, EPILOG);
@@ -747,7 +748,7 @@ void PxgCudaBroadPhaseSap::translateAABBsKernel()
 	if(mUpdateData_BoxesCapacity == 0)
 		return;
 
-	CUdeviceptr bpDescd = mBPDescBuf.getDevicePtr();
+	hipDeviceptr_t bpDescd = mBPDescBuf.getDevicePtr();
 	KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpDescd) };
 
 	const PxU32 aabbsPerBlock = PxgBPKernelBlockDim::BP_TRANSLATE_AABBS/8;
@@ -762,7 +763,7 @@ void PxgCudaBroadPhaseSap::markRemovedPairsKernel()
 
 	if(mUpdateData_RemovedHandleSize)
 	{
-		CUdeviceptr bpDescd = mBPDescBuf.getDevicePtr();
+		hipDeviceptr_t bpDescd = mBPDescBuf.getDevicePtr();
 		KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpDescd) };
 
 		_launch<GPU_BP_DEBUG>(PROLOG, PxgKernelIds::BP_MARK_DELETEDPAIRS, PxgBPKernelGridDim::BP_UPDATE_DELETEDPAIRS, 1, 1, PxgBPKernelBlockDim::BP_UPDATE_DELETEDPAIRS, 1, 1, 0, EPILOG);
@@ -775,7 +776,7 @@ void PxgCudaBroadPhaseSap::markRemovedPairsProjectionsKernel()
 		
 	if(mUpdateData_RemovedHandleSize)
 	{
-		CUdeviceptr bpDescd = mBPDescBuf.getDevicePtr();
+		hipDeviceptr_t bpDescd = mBPDescBuf.getDevicePtr();
 		KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpDescd) };
 
 		_launch<GPU_BP_DEBUG>(PROLOG, PxgKernelIds::BP_UPDATE_DELETEDPAIRS, PxgBPKernelGridDim::BP_UPDATE_DELETEDPAIRS, 1, 1, PxgBPKernelBlockDim::BP_UPDATE_DELETEDPAIRS, 1, 1, 0, EPILOG);
@@ -788,7 +789,7 @@ void PxgCudaBroadPhaseSap::markUpdatedPairsKernel()
 
 	//if(mUpdatedHandleSize != 0)	// PT: TODO: why was this removed? ==> probably because the GPU code started reading from the AABB manager bitmap directly (which created the "evil coupling" we found before)
 	{
-		CUdeviceptr bpDescd = mBPDescBuf.getDevicePtr();
+		hipDeviceptr_t bpDescd = mBPDescBuf.getDevicePtr();
 		KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpDescd) };
 
 #ifdef SUPPORT_UPDATE_HANDLES_ARRAY_FOR_GPU
@@ -819,7 +820,7 @@ void PxgCudaBroadPhaseSap::markCreatedPairsKernel()
 
 	if(mUpdateData_CreatedHandleSize)
 	{
-		CUdeviceptr bpDescd = mBPDescBuf.getDevicePtr();
+		hipDeviceptr_t bpDescd = mBPDescBuf.getDevicePtr();
 		KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpDescd) };
 
 		_launch<GPU_BP_DEBUG>(PROLOG, PxgKernelIds::BP_UPDATE_CREATEDPAIRS, PxgBPKernelGridDim::BP_UPDATE_CREATEDPAIRS, 1, 1, PxgBPKernelBlockDim::BP_UPDATE_CREATEDPAIRS, 1, 1, 0, EPILOG);
@@ -830,7 +831,7 @@ void PxgCudaBroadPhaseSap::calculateEndPtHistogramKernel(const bool isIncrementa
 {
 	PX_PROFILE_ZONE("PxgCudaBroadPhaseSap.calculateEndPtHistogramKernel", mContextID);
 
-	CUdeviceptr bpDescd = mBPDescBuf.getDevicePtr();
+	hipDeviceptr_t bpDescd = mBPDescBuf.getDevicePtr();
 	KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpDescd), CUDA_KERNEL_PARAM(isIncremental) };
 
 	_launch<GPU_BP_DEBUG>(PROLOG, PxgKernelIds::BP_COMPUTE_ENDPT_HISTOGRAM, PxgBPKernelGridDim::BP_COMPUTE_ENDPT_HISTOGRAM, 3, 1, PxgBPKernelBlockDim::BP_COMPUTE_ENDPT_HISTOGRAM, 1, 1, 0, EPILOG);
@@ -850,7 +851,7 @@ void PxgCudaBroadPhaseSap::computeRegionHistogramKernel()
 		mCudaContext->memsetD32Async(mActiveRegionTotalBuf.getDevicePtr(), 0, totalNbProjectionRegions, mStream);
 		mCudaContext->memsetD32Async(mStartRegionsTotalBuf.getDevicePtr(), 0, totalNbProjectionRegions, mStream);
 
-		CUdeviceptr bpDescd = mBPDescBuf.getDevicePtr();
+		hipDeviceptr_t bpDescd = mBPDescBuf.getDevicePtr();
 		KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpDescd) };
 
 		//create regions
@@ -873,7 +874,7 @@ void PxgCudaBroadPhaseSap::computeStartAndActiveHistogramKernel()
 
 	if(mUpdateData_CreatedHandleSize)
 	{
-		CUdeviceptr bpDescd = mBPDescBuf.getDevicePtr();
+		hipDeviceptr_t bpDescd = mBPDescBuf.getDevicePtr();
 		KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpDescd) };
 
 		_launch<GPU_BP_DEBUG>(PROLOG, PxgKernelIds::BP_WRITEOUT_ACTIVE_HISTOGRAM, PxgBPKernelGridDim::BP_WRITEOUT_ACTIVE_HISTOGRAM, 1, 1, PxgBPKernelBlockDim::BP_WRITEOUT_ACTIVE_HISTOGRAM, 1, 1, 0, EPILOG);
@@ -888,7 +889,7 @@ void PxgCudaBroadPhaseSap::performIncrementalSapKernel()
 
 	//if(mUpdatedHandleSize != 0)	// PT: TODO: why was this removed?
 	{
-		CUdeviceptr bpDescd = mBPDescBuf.getDevicePtr();
+		hipDeviceptr_t bpDescd = mBPDescBuf.getDevicePtr();
 		KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpDescd) };
 
 		_launch<GPU_BP_DEBUG>(PROLOG, PxgKernelIds::BP_COMPUTE_INCREMENTAL_CMP_COUNTS1, PxgBPKernelGridDim::BP_COMPUTE_INCREMENTAL_CMP_COUNTS1, 1, 1, PxgBPKernelBlockDim::BP_COMPUTE_INCREMENTAL_CMP_COUNTS1, 1, 1, 0, EPILOG);
@@ -904,7 +905,7 @@ void PxgCudaBroadPhaseSap::generateNewPairsKernel()
 	if(mUpdateData_CreatedHandleSize)
 	{
 		//Need to generate pairs for created handles...
-		CUdeviceptr bpDescd = mBPDescBuf.getDevicePtr();
+		hipDeviceptr_t bpDescd = mBPDescBuf.getDevicePtr();
 		KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpDescd) };
 
 		_launch<GPU_BP_DEBUG>(PROLOG, PxgKernelIds::BP_WRITEOUT_OVERLAPCHECKS_HISTOGRAM_NEWBOUNDS, PxgBPKernelGridDim::BP_WRITEOUT_OVERLAPCHECKS_HISTOGRAM_NEWBOUNDS, 1, 1, PxgBPKernelBlockDim::BP_WRITEOUT_OVERLAPCHECKS_HISTOGRAM_NEWBOUNDS, 1, 1, 0, EPILOG);
@@ -922,7 +923,7 @@ void PxgCudaBroadPhaseSap::clearNewFlagKernel()
 
 	if(mUpdateData_CreatedHandleSize)
 	{
-		CUdeviceptr bpDescd = mBPDescBuf.getDevicePtr();
+		hipDeviceptr_t bpDescd = mBPDescBuf.getDevicePtr();
 		KERNEL_PARAM_TYPE kernelParams[] = { CUDA_KERNEL_PARAM(bpDescd) };
 
 		_launch<GPU_BP_DEBUG>(PROLOG, PxgKernelIds::BP_CLEAR_NEWFLAG, PxgBPKernelGridDim::BP_CLEAR_NEWFLAG, 1, 1, PxgBPKernelBlockDim::BP_CLEAR_NEWFLAG, 1, 1, 0, EPILOG);
@@ -936,11 +937,11 @@ void PxgCudaBroadPhaseSap::updateRadixSortDesc(PxgRadixSortDesc* rsDescs)
 	for (PxU32 i = 0; i < 3; ++i)
 	{
 		PxU32 offIndex = i+3;
-		CUdeviceptr inputKeyd = mBoxPtProjectionsBuf[i].getDevicePtr();
-		CUdeviceptr inputRankd = mBoxProjectionRanksBuf[i].getDevicePtr();
-		CUdeviceptr outputKeyd = mTempBoxPtProjectionBuf[i].getDevicePtr();
-		CUdeviceptr outputRankd = mTempBoxPtHandlesBuf[i].getDevicePtr();
-		CUdeviceptr radixCountd = mRadixCountBuf[i].getDevicePtr();
+		hipDeviceptr_t inputKeyd = mBoxPtProjectionsBuf[i].getDevicePtr();
+		hipDeviceptr_t inputRankd = mBoxProjectionRanksBuf[i].getDevicePtr();
+		hipDeviceptr_t outputKeyd = mTempBoxPtProjectionBuf[i].getDevicePtr();
+		hipDeviceptr_t outputRankd = mTempBoxPtHandlesBuf[i].getDevicePtr();
+		hipDeviceptr_t radixCountd = mRadixCountBuf[i].getDevicePtr();
 
 		rsDescs[i].inputKeys		= reinterpret_cast<PxU32*>(inputKeyd);
 		rsDescs[i].inputRanks		= reinterpret_cast<PxU32*>(inputRankd);
@@ -954,7 +955,7 @@ void PxgCudaBroadPhaseSap::updateRadixSortDesc(PxgRadixSortDesc* rsDescs)
 		rsDescs[offIndex].inputRanks		= reinterpret_cast<PxU32*>(outputRankd);
 		rsDescs[offIndex].radixBlockCounts	= reinterpret_cast<PxU32*>(radixCountd);
 
-		CUdeviceptr inputVald = mBoxPtHandlesBuf[i].getDevicePtr();
+		hipDeviceptr_t inputVald = mBoxPtHandlesBuf[i].getDevicePtr();
 
 		mRSDescWOR[i].inputKeys			= reinterpret_cast<PxU32*>(inputKeyd);
 		mRSDescWOR[i].inputRanks		= reinterpret_cast<PxU32*>(inputVald);

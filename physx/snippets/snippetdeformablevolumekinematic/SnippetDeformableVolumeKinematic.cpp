@@ -199,8 +199,8 @@ static void createDeformableVolumes(const PxCookingParams& params)
 	}
 
 	PxVec4* kinematicTargetsD = PX_EXT_DEVICE_MEMORY_ALLOC(PxVec4, *cudaContextManager, vertexCount);
-	cudaContextManager->getCudaContext()->memcpyHtoD(reinterpret_cast<CUdeviceptr>(deformableVolume->getSimPositionInvMassBufferD()), positionInvMass, vertexCount * sizeof(PxVec4));
-	cudaContextManager->getCudaContext()->memcpyHtoD(reinterpret_cast<CUdeviceptr>(kinematicTargetsD), kinematicTargets, vertexCount * sizeof(PxVec4));
+	cudaContextManager->getCudaContext()->memcpyHtoD(reinterpret_cast<hipDeviceptr_t>(deformableVolume->getSimPositionInvMassBufferD()), positionInvMass, vertexCount * sizeof(PxVec4));
+	cudaContextManager->getCudaContext()->memcpyHtoD(reinterpret_cast<hipDeviceptr_t>(kinematicTargetsD), kinematicTargets, vertexCount * sizeof(PxVec4));
 	deformableVolume->setDeformableVolumeFlag(PxDeformableVolumeFlag::ePARTIALLY_KINEMATIC, true);
 	deformableVolume->setKinematicTargetBufferD(kinematicTargetsD);
 	
@@ -368,7 +368,7 @@ void stepPhysics(bool /*interactive*/)
 			}
 
 			PxScopedCudaLock _lock(*cudaContextManager);
-			cudaContextManager->getCudaContext()->memcpyHtoD(reinterpret_cast<CUdeviceptr>(dv->mTargetPositionsD), dv->mTargetPositionsH, dv->mTargetCount * sizeof(PxVec4));
+			cudaContextManager->getCudaContext()->memcpyHtoD(reinterpret_cast<hipDeviceptr_t>(dv->mTargetPositionsD), dv->mTargetPositionsH, dv->mTargetCount * sizeof(PxVec4));
 		}
 	}
 	simTime += dt;

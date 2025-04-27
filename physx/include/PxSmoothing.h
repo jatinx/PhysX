@@ -64,7 +64,7 @@ namespace physx
 		\param[in] numParticles The number of particles
 		\param[in] stream The stream on which the cuda call gets scheduled
 		*/
-		virtual void generateSmoothedPositions(PxGpuParticleSystem* gpuParticleSystem, PxU32 numParticles, CUstream stream) = 0;
+		virtual void generateSmoothedPositions(PxGpuParticleSystem* gpuParticleSystem, PxU32 numParticles, hipStream_t stream) = 0;
 
 		/**
 		\brief Schedules the compuation of smoothed positions on the specified cuda stream
@@ -75,7 +75,7 @@ namespace physx
 		\param[in] particleContactOffset The particle contact offset
 		\param[in] stream The stream on which the cuda call gets scheduled
 		*/
-		virtual void generateSmoothedPositions(PxVec4* particlePositionsGpu, PxParticleNeighborhoodProvider& neighborhoodProvider, PxU32 numParticles, PxReal particleContactOffset, CUstream stream) = 0;
+		virtual void generateSmoothedPositions(PxVec4* particlePositionsGpu, PxParticleNeighborhoodProvider& neighborhoodProvider, PxU32 numParticles, PxReal particleContactOffset, hipStream_t stream) = 0;
 
 		/**
 		\brief Set a host buffer that holds the smoothed position data after the timestep completed
@@ -161,7 +161,7 @@ namespace physx
 			mSmoothedPositionGenerator = smoothedPositionGenerator;
 		}
 
-		virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, CUstream stream)
+		virtual void onPostSolve(const PxGpuMirroredPointer<PxGpuParticleSystem>& gpuParticleSystem, hipStream_t stream)
 		{
 			if (mSmoothedPositionGenerator)
 			{
@@ -169,9 +169,9 @@ namespace physx
 			}
 		}
 
-		virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, CUstream /*stream*/) { }
+		virtual void onBegin(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, hipStream_t /*stream*/) { }
 
-		virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, CUstream /*stream*/) { }
+		virtual void onAdvance(const PxGpuMirroredPointer<PxGpuParticleSystem>& /*gpuParticleSystem*/, hipStream_t /*stream*/) { }
 
 	private:
 		PxSmoothedPositionGenerator* mSmoothedPositionGenerator;

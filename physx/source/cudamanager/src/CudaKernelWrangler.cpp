@@ -42,13 +42,13 @@
 #pragma clang diagnostic ignored "-Wdocumentation"
 #pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
 #endif
-#include <cuda.h>
+#include <hip/hip_runtime.h>
 #if PX_LINUX && PX_CLANG
 #pragma clang diagnostic pop
 #endif
 
 #include <texture_types.h>
-#include <vector_types.h>
+#include <hip/hip_vector_types.h>
 
 #include "cudamanager/PxCudaContextManager.h"
 #include "cudamanager/PxCudaContext.h"
@@ -79,8 +79,8 @@ KernelWrangler::KernelWrangler(PxCudaContextManager& cudaContextManager, PxError
 	PX_ASSERT(funcNames);
 	mKernelNames = funcNames;
 
-	// matchup funcNames to CUDA modules, get CUfunction handles
-	CUmodule* cuModules = cudaContextManager.getCuModules();
+	// matchup funcNames to CUDA modules, get hipFunction_t handles
+	hipModule_t* cuModules = cudaContextManager.getCuModules();
 	PxKernelIndex* cuFunctionTable = PxGpuGetCudaFunctionTable();
 	const PxU32 cuFunctionTableSize = PxGpuGetCudaFunctionTableSize();
 
@@ -108,7 +108,7 @@ KernelWrangler::KernelWrangler(PxCudaContextManager& cudaContextManager, PxError
 				if (!Pxstrcmp(cuFunctionTable[j].functionName, funcNames[i]))
 				{
 					PxCUresult ret = mCudaContext->moduleGetFunction(&mCuFunctions[i], cuModules[cuFunctionTable[j].moduleIndex], funcNames[i]);
-					if (ret != CUDA_SUCCESS)
+					if (ret != hipSuccess)
 					{
 						char buffer[256];
 						Pxsnprintf(buffer, 256, "Could not find CUDA module containing function '%s'.", funcNames[i]);
@@ -139,7 +139,7 @@ KernelWrangler::KernelWrangler(PxCudaContextManager& cudaContextManager, PxError
  * of this DLL.
  */
 
-#include <driver_types.h>
+#include <hip/driver_types.h>
 
 #if PX_WINDOWS_FAMILY
 #define CUDARTAPI __stdcall
@@ -190,29 +190,29 @@ void CUDARTAPI __cudaRegisterFunction(void** fatCubinHandle, const char*,
 /* These functions are implemented just to resolve link dependencies */
 
 extern "C"
-cudaError_t CUDARTAPI cudaLaunch(const char* entry)
+hipError_t CUDARTAPI hipLaunchByPtr(const char* entry)
 {
 	PX_UNUSED(entry);
-	return cudaSuccess;
+	return hipSuccess;
 }
 
 extern "C"
-cudaError_t CUDARTAPI cudaLaunchKernel( const void* , dim3 , dim3 , void** , size_t , cudaStream_t  ) 
+hipError_t CUDARTAPI hipLaunchKernel(reinterpret_cast<const void*>( const void* ), dim3 , dim3 , void** , size_t , hipStream_t  ) 
 {
-	return cudaSuccess;
+	return hipSuccess;
 }
 
 extern "C"
-cudaError_t CUDARTAPI cudaSetupArgument(const void*, size_t, size_t)
+hipError_t CUDARTAPI hipSetupArgument(const void*, size_t, size_t)
 {
-	return cudaSuccess;
+	return hipSuccess;
 }
 
 extern "C"
-struct cudaChannelFormatDesc CUDARTAPI cudaCreateChannelDesc(
-    int x, int y, int z, int w, enum cudaChannelFormatKind f)
+struct hipChannelFormatDesc CUDARTAPI hipCreateChannelDesc(
+    int x, int y, int z, int w, enum hipChannelFormatKind f)
 {
-	struct cudaChannelFormatDesc desc;
+	struct hipChannelFormatDesc desc;
 	desc.x = x;
 	desc.y = y;
 	desc.z = z;
@@ -222,11 +222,11 @@ struct cudaChannelFormatDesc CUDARTAPI cudaCreateChannelDesc(
 }
 
 extern "C" 
-cudaError_t CUDARTAPI __cudaPopCallConfiguration(
+hipError_t CUDARTAPI __cudaPopCallConfiguration(
   dim3         *,
   dim3         *,
   size_t       *,
   void         *)
 {
-	return cudaSuccess;
+	return hipSuccess;
 }

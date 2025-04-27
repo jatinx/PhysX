@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -122,19 +123,19 @@ PxgCudaSolverCore::~PxgCudaSolverCore()
 
 void PxgCudaSolverCore::createStreams()
 {
-	//CUstream mStream;
-	CUresult result = mCudaContext->streamCreate(&mStream, CU_STREAM_NON_BLOCKING);
+	//hipStream_t mStream;
+	hipError_t result = mCudaContext->streamCreate(&mStream, hipStreamNonBlocking);
 
-	if (result != CUDA_SUCCESS)
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU Create Stream fail!!\n");
 
-	result = mCudaContext->streamCreate(&mStream2, CU_STREAM_NON_BLOCKING);
-	if (result != CUDA_SUCCESS)
+	result = mCudaContext->streamCreate(&mStream2, hipStreamNonBlocking);
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU Create Stream fail!!\n");
 
-	mCudaContext->eventCreate(&mEventDmaBack, CU_EVENT_DISABLE_TIMING);
+	mCudaContext->eventCreate(&mEventDmaBack, hipEventDisableTiming);
 
-	mCudaContext->eventCreate(&mIntegrateEvent, CU_EVENT_DISABLE_TIMING);
+	mCudaContext->eventCreate(&mIntegrateEvent, hipEventDisableTiming);
 
 	mPinnedEvent = PX_PINNED_MEMORY_ALLOC(PxU32, *mCudaContextManager, 1);
 
@@ -313,8 +314,8 @@ void PxgCudaSolverCore::gpuMemDMAUpContactData(PxgPinnedHostLinearMemoryAllocato
 	PX_PROFILE_ZONE("PxgCudaSolverCore.gpuMemDMAUpContactData", 0);
 	PX_UNUSED(compressedPatchStreamLowerPartSize);
 	PX_UNUSED(compressedContactStreamLowerPartSize);
-	CUdeviceptr compressedContactsd = mCompressedContacts.getDevicePtr();//.allocate((PxU32) compressedContactsHostMemoryAllocator->mTotalSize);
-	CUdeviceptr compressedPatchesd = mCompressedPatches.getDevicePtr();//allocate((PxU32) compressedPatchesHostMemoryAllocator->mTotalSize);
+	hipDeviceptr_t compressedContactsd = mCompressedContacts.getDevicePtr();//.allocate((PxU32) compressedContactsHostMemoryAllocator->mTotalSize);
+	hipDeviceptr_t compressedPatchesd = mCompressedPatches.getDevicePtr();//allocate((PxU32) compressedPatchesHostMemoryAllocator->mTotalSize);
 
 	mDestroyedEdgeIndices.allocate(sizeof(PxU32) * nbDestroyedEdges, PX_FL);
 
@@ -375,10 +376,10 @@ void PxgCudaSolverCore::gpuMemDMAUpContactData(PxgPinnedHostLinearMemoryAllocato
 	if(nbBlocksRequired > 0)
 	{
 		//Launch zero friction patch kernel
-		const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLEAR_FRICTION_PATCH_COUNTS);
+		const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CLEAR_FRICTION_PATCH_COUNTS);
 
-		CUdeviceptr frictionPatchPtr = mFrictionPatchCounts[1 - mCurrentIndex].getDevicePtr();
-		CUdeviceptr destroyedIndicesPtr = mDestroyedEdgeIndices.getDevicePtr();
+		hipDeviceptr_t frictionPatchPtr = mFrictionPatchCounts[1 - mCurrentIndex].getDevicePtr();
+		hipDeviceptr_t destroyedIndicesPtr = mDestroyedEdgeIndices.getDevicePtr();
 		PxCudaKernelParam kernelParams[] =
 		{
 			PX_CUDA_KERNEL_PARAM(frictionPatchPtr),
@@ -386,8 +387,8 @@ void PxgCudaSolverCore::gpuMemDMAUpContactData(PxgPinnedHostLinearMemoryAllocato
 			PX_CUDA_KERNEL_PARAM(nbDestroyedEdges)
 		};
 
-		CUresult result = mCudaContext->launchKernel(kernelFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::CLEAR_FRICTION_PATCH_COUNTS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		hipError_t result = mCudaContext->launchKernel(kernelFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::CLEAR_FRICTION_PATCH_COUNTS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		PX_ASSERT(result == hipSuccess);
 		PX_UNUSED(result);
 	}
 
@@ -395,8 +396,8 @@ void PxgCudaSolverCore::gpuMemDMAUpContactData(PxgPinnedHostLinearMemoryAllocato
 
 #if GPU_DEBUG
 
-	CUresult result = cuStreamSynchronize(mStream);
-	if (result != CUDA_SUCCESS)
+	hipError_t result = hipStreamSynchronize(mStream);
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU DMA up cpu joint data fail!!\n");
 #endif
 }
@@ -449,8 +450,8 @@ void PxgCudaSolverCore::gpuMemDmaUpBodyData(PxPinnedArray<PxgSolverBodyData>& so
 
 #if GPU_DEBUG
 
-	CUresult result = mCudaContext->streamSynchronize(mStream);
-	if (result != CUDA_SUCCESS)
+	hipError_t result = mCudaContext->streamSynchronize(mStream);
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU DMA up fail!!\n");
 #endif
 }
@@ -517,7 +518,7 @@ void PxgCudaSolverCore::gpuMemDMAUp(PxgPinnedHostLinearMemoryAllocator& hostAllo
 	const PxU32 totalFrictionBlocks = numFrictionBlockes + numArtiFrictionBlocks;
 
 	mDataBuffer.allocate((PxU32)hostAllocator.mCurrentSize, PX_FL);
-	CUdeviceptr dataBufferd = mDataBuffer.getDevicePtr();
+	hipDeviceptr_t dataBufferd = mDataBuffer.getDevicePtr();
 	mContactUniqueIndices = dataBufferd + (reinterpret_cast<PxU8*>(data.contactUniqueIndices) - hostAllocator.mStart);
 	mConstraintUniqueIndices = dataBufferd + (reinterpret_cast<PxU8*>(data.constraintUniqueIndices) - hostAllocator.mStart);
 	mArtiConstraintUniqueIndices = dataBufferd + (reinterpret_cast<PxU8*>(data.artiConstraintUniqueindices) - hostAllocator.mStart);
@@ -562,9 +563,9 @@ void PxgCudaSolverCore::gpuMemDMAUp(PxgPinnedHostLinearMemoryAllocator& hostAllo
 	mArtiConstraint1dBatchIndices.allocate(numArti1dConstraintBatches * sizeof(PxU32), PX_FL);
 		
 	mSolverBodyReferences.allocate(totalActiveBodyCount * numSlabs * sizeof(PxgSolverReferences), PX_FL);
-	//CUdeviceptr constraint1DBatchIndicesd = mConstraint1DBatchIndices.getDevicePtr();
-	//CUdeviceptr contactBatchIndicesd = mContactBatchIndices.getDevicePtr();
-	CUdeviceptr solverBodyReferencesd = mSolverBodyReferences.getDevicePtr();
+	//hipDeviceptr_t constraint1DBatchIndicesd = mConstraint1DBatchIndices.getDevicePtr();
+	//hipDeviceptr_t contactBatchIndicesd = mContactBatchIndices.getDevicePtr();
+	hipDeviceptr_t solverBodyReferencesd = mSolverBodyReferences.getDevicePtr();
 
 	mBlockWorkUnits.allocate(sizeof(PxgBlockWorkUnit) * (totalContactBatches), PX_FL);
 		
@@ -695,8 +696,8 @@ void PxgCudaSolverCore::gpuMemDMAUp(PxgPinnedHostLinearMemoryAllocator& hostAllo
 	mCudaContext->streamFlush(mStream);
 
 #if GPU_DEBUG
-	CUresult result = mCudaContext->streamSynchronize(mStream);
-	if(result != CUDA_SUCCESS)
+	hipError_t result = mCudaContext->streamSynchronize(mStream);
+	if(result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU DMA up fail!!\n");
 #endif
 }
@@ -733,12 +734,12 @@ void PxgCudaSolverCore::gpuMemDMAbackSolverData(PxU8* forceBufferPool, PxU32 for
 
 	if(hasForceThresholds)
 	{
-		CUdeviceptr pDeviceAddress = 0;
-		CUresult result = mCudaContext->memHostGetDevicePointer(&pDeviceAddress, changedElems, 0);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		hipDeviceptr_t pDeviceAddress = 0;
+		hipError_t result = mCudaContext->memHostGetDevicePointer(&pDeviceAddress, changedElems, 0);
+		PX_ASSERT(result == hipSuccess);
 		//Dispatch kernel to copy from force changed event buffer to changed elems buffer!
 
-		CUfunction function = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::DMA_CHANGED_ELEMS);
+		hipFunction_t function = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::DMA_CHANGED_ELEMS);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -747,7 +748,7 @@ void PxgCudaSolverCore::gpuMemDMAbackSolverData(PxU8* forceBufferPool, PxU32 for
 		};
 
 		result = mCudaContext->launchKernel(function, PxgKernelGridDim::DMA_CHANGED_ELEMS, 1, 1, PxgKernelBlockDim::DMA_CHANGED_ELEMS, 1, 1, 0, mStream2, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		if(result != CUDA_SUCCESS)
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU constraintPartition fail to launch kernel!!\n");
 	}
 
@@ -766,8 +767,8 @@ void PxgCudaSolverCore::gpuMemDMAbackSolverData(PxU8* forceBufferPool, PxU32 for
 	mCudaContext->streamFlush(mStream2);
 
 #if GPU_DEBUG
-	CUresult result = mCudaContext->streamSynchronize(mStream2);
-	if (result != CUDA_SUCCESS)
+	hipError_t result = mCudaContext->streamSynchronize(mStream2);
+	if (result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU pre integration kernel fail!\n");
 #endif
 }
@@ -777,9 +778,9 @@ void PxgCudaSolverCore::syncDmaBack(PxU32& nbChangedThresholdElements)
 	PX_PROFILE_ZONE("GpuDynamics.DMABackBodies.Sync", 0);
 	mCudaContextManager->acquireContext();
 	//Wait for mStream to have completed
-	/*CUresult result = mCudaContext->streamSynchronize(mStream);
+	/*hipError_t result = mCudaContext->streamSynchronize(mStream);
 	PX_UNUSED(result);
-	PX_ASSERT(result == CUDA_SUCCESS);*/
+	PX_ASSERT(result == hipSuccess);*/
 		
 	volatile PxU32* pEvent = mPinnedEvent;
 	if (!spinWait(*pEvent, 0.1f))
@@ -797,7 +798,7 @@ void PxgCudaSolverCore::syncDmaBack(PxU32& nbChangedThresholdElements)
 		mNbPrevExceededForceElements = 0;
 	}
 
-	//if(result != CUDA_SUCCESS)
+	//if(result != hipSuccess)
 	//	PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "gpuMemDMAbackSolverBodies fail in sync stream!!\n");
 	mCudaContextManager->releaseContext();
 }
@@ -816,23 +817,23 @@ void PxgCudaSolverCore::preIntegration(const PxU32 offset, const PxU32 nbSolverB
 {
 	PX_PROFILE_ZONE("GpuDynamics.preIntegration", 0);
 
-	CUdeviceptr islandNodeIndices = mIslandNodeIndices2.getDevicePtr();
-	CUdeviceptr solverBodyIndices = mSolverBodyIndices.getDevicePtr();
+	hipDeviceptr_t islandNodeIndices = mIslandNodeIndices2.getDevicePtr();
+	hipDeviceptr_t solverBodyIndices = mSolverBodyIndices.getDevicePtr();
 
 	// PT: TODO: merge PRE_INTEGRATION and TGS_PRE_INTEGRATION kernels, they call the same code, then refactor the CPU-side launch code between PGS / TGS.
-	const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PRE_INTEGRATION);
+	const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PRE_INTEGRATION);
 
 	const PxU32 nbBlocks = (nbSolverBodies - offset + PxgKernelBlockDim::PRE_INTEGRATION-1)/PxgKernelBlockDim::PRE_INTEGRATION;
 
 	if(nbBlocks)
 	{
 		PxgSimulationCore* simulationCore = mGpuContext->getSimulationCore();
-		CUdeviceptr solverBodyDatad = mSolverBodyDataPool.getDevicePtr();
-		CUdeviceptr solverBodySleepDatad = mSolverBodySleepDataPool.getDevicePtr();
+		hipDeviceptr_t solverBodyDatad = mSolverBodyDataPool.getDevicePtr();
+		hipDeviceptr_t solverBodySleepDatad = mSolverBodySleepDataPool.getDevicePtr();
 		PxgDevicePointer<PxgBodySim> bodySimd = simulationCore->getBodySimBufferDevicePtr();
-		CUdeviceptr outTransforms = mOutBody2WorldPool.getDevicePtr();
-		CUdeviceptr solverTxIDatad = mSolverTxIDataPool.getDevicePtr();
-		CUdeviceptr velocityoutd = mOutVelocityPool.getDevicePtr();
+		hipDeviceptr_t outTransforms = mOutBody2WorldPool.getDevicePtr();
+		hipDeviceptr_t solverTxIDatad = mSolverTxIDataPool.getDevicePtr();
+		hipDeviceptr_t velocityoutd = mOutVelocityPool.getDevicePtr();
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -850,27 +851,27 @@ void PxgCudaSolverCore::preIntegration(const PxU32 offset, const PxU32 nbSolverB
 			PX_CUDA_KERNEL_PARAM(solverBodyIndices)
 		};
 
-		CUresult launchResult = mCudaContext->launchKernel(kernelFunction, nbBlocks, 1, 1, PxgKernelBlockDim::PRE_INTEGRATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		PX_ASSERT(launchResult == CUDA_SUCCESS);
+		hipError_t launchResult = mCudaContext->launchKernel(kernelFunction, nbBlocks, 1, 1, PxgKernelBlockDim::PRE_INTEGRATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		PX_ASSERT(launchResult == hipSuccess);
 		PX_UNUSED(launchResult);
 
 #if GPU_DEBUG
-		CUresult result = mCudaContext->streamSynchronize(mStream);
-		if(result != CUDA_SUCCESS)
+		hipError_t result = mCudaContext->streamSynchronize(mStream);
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU pre integration kernel fail!\n");
 #endif
 	}
 
 	// PT: TODO: refactor with similar code in TGS
-	const CUfunction staticInitFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::INIT_STATIC_KINEMATICS);
+	const hipFunction_t staticInitFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::INIT_STATIC_KINEMATICS);
 	const PxU32 nbStaticBlocks = (offset + PxgKernelBlockDim::PRE_INTEGRATION - 1) / PxgKernelBlockDim::PRE_INTEGRATION;
 
 	if (nbStaticBlocks)
 	{
-		CUdeviceptr solverBodyDatad = mSolverBodyDataPool.getDevicePtr();
-		CUdeviceptr outTransforms = mOutBody2WorldPool.getDevicePtr();
-		CUdeviceptr solverTxIDatad = mSolverTxIDataPool.getDevicePtr();
-		CUdeviceptr outVelocities = mOutVelocityPool.getDevicePtr();
+		hipDeviceptr_t solverBodyDatad = mSolverBodyDataPool.getDevicePtr();
+		hipDeviceptr_t outTransforms = mOutBody2WorldPool.getDevicePtr();
+		hipDeviceptr_t solverTxIDatad = mSolverTxIDataPool.getDevicePtr();
+		hipDeviceptr_t outVelocities = mOutVelocityPool.getDevicePtr();
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -884,13 +885,13 @@ void PxgCudaSolverCore::preIntegration(const PxU32 offset, const PxU32 nbSolverB
 			PX_CUDA_KERNEL_PARAM(solverBodyIndices)
 		};
 
-		CUresult launchResult = mCudaContext->launchKernel(staticInitFunction, nbStaticBlocks, 1, 1, PxgKernelBlockDim::PRE_INTEGRATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		PX_ASSERT(launchResult == CUDA_SUCCESS);
+		hipError_t launchResult = mCudaContext->launchKernel(staticInitFunction, nbStaticBlocks, 1, 1, PxgKernelBlockDim::PRE_INTEGRATION, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		PX_ASSERT(launchResult == hipSuccess);
 		PX_UNUSED(launchResult);
 
 #if GPU_DEBUG
-		CUresult result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		hipError_t result = mCudaContext->streamSynchronize(mStream);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU static init kernel fail!\n");
 #endif
 	}
@@ -911,15 +912,15 @@ void PxgCudaSolverCore::jointConstraintBlockPrePrepParallel( PxU32 nbConstraintB
 		};
 
 		//create block version of joint constraint
-		const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::JOINT_CONSTRAINT_PREPREP_BLOCK);
+		const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::JOINT_CONSTRAINT_PREPREP_BLOCK);
 
-		CUresult result = mCudaContext->launchKernel(kernelFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::CONSTRAINT_PREPREP_BLOCK, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		hipError_t result = mCudaContext->launchKernel(kernelFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::CONSTRAINT_PREPREP_BLOCK, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		PX_ASSERT(result == hipSuccess);
 		PX_UNUSED(result);
 
 #if GPU_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU constraint1DBlockPrePrepLaunch kernel fail!\n");
 #endif
 	}
@@ -933,7 +934,7 @@ void PxgCudaSolverCore::jointConstraintPrepareParallel(PxU32 nbJointBatches)
 		
 	if (nbBlocksRequired)
 	{
-		const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::JOINT_CONSTRAINT_PREPARE_BLOCK_PARALLEL);
+		const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::JOINT_CONSTRAINT_PREPARE_BLOCK_PARALLEL);
 
 		PxCudaKernelParam kernelParams[] =
 		{
@@ -941,13 +942,13 @@ void PxgCudaSolverCore::jointConstraintPrepareParallel(PxU32 nbJointBatches)
 			PX_CUDA_KERNEL_PARAM(mSharedDescd)
 		};
 
-		CUresult result = mCudaContext->launchKernel(kernelFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::CONSTRAINT_PREPARE_BLOCK_PARALLEL, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		hipError_t result = mCudaContext->launchKernel(kernelFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::CONSTRAINT_PREPARE_BLOCK_PARALLEL, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU jointConstraintPrepare fail to launch kernel!!\n");
 
 #if GPU_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU jointConstraintPrepare fail!!\n");
 #endif
 	}
@@ -957,7 +958,7 @@ void PxgCudaSolverCore::contactConstraintPrepareParallel(PxU32 nbContactBatches)
 {
 	PX_PROFILE_ZONE("GpuDynamics.contactConstraintPrepareParallel", 0);
 		
-	const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONTACT_CONSTRAINT_PREPARE_BLOCK_PARALLEL);
+	const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONTACT_CONSTRAINT_PREPARE_BLOCK_PARALLEL);
 
 	PxCudaKernelParam kernelParams[] =
 	{
@@ -971,14 +972,14 @@ void PxgCudaSolverCore::contactConstraintPrepareParallel(PxU32 nbContactBatches)
 
 	if(nbBlocks > 0)
 	{
-		CUresult result = mCudaContext->launchKernel(kernelFunction, nbBlocks, 1, 1, PxgKernelBlockDim::CONSTRAINT_PREPARE_BLOCK_PARALLEL, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		if(result != CUDA_SUCCESS)
+		hipError_t result = mCudaContext->launchKernel(kernelFunction, nbBlocks, 1, 1, PxgKernelBlockDim::CONSTRAINT_PREPARE_BLOCK_PARALLEL, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU contactConstraintBlockPrepareParallelLaunch fail to launch kernel!!\n");
 	}
 
 #if GPU_DEBUG
-	CUresult result = mCudaContext->streamSynchronize(mStream);
-	if(result != CUDA_SUCCESS)
+	hipError_t result = mCudaContext->streamSynchronize(mStream);
+	if(result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU contactConstraintBlockPrepareParallelLaunch fail!!\n");
 #endif
 }
@@ -995,20 +996,20 @@ void PxgCudaSolverCore::artiJointConstraintPrepare(PxU32 nbArtiJointBatches)
 
 	if (nbBlocksRequired > 0)
 	{
-		CUfunction artiJointPrepKernel1T = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_JOINT_PREP);
+		hipFunction_t artiJointPrepKernel1T = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_JOINT_PREP);
 		PxCudaKernelParam kernelParams[] =
 		{
 			PX_CUDA_KERNEL_PARAM(mPrepareDescd),
 			PX_CUDA_KERNEL_PARAM(mSharedDescd)
 		};
 
-		CUresult result = mCudaContext->launchKernel(artiJointPrepKernel1T, nbBlocksRequired, 1, 1, numThreadsPerWarp, nbWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		hipError_t result = mCudaContext->launchKernel(artiJointPrepKernel1T, nbBlocksRequired, 1, 1, numThreadsPerWarp, nbWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU artiContactConstraintPrepare fail to launch kernel!!\n");
 
 #if GPU_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU artiJointConstraintBlockPrepareParallelLaunch fail!!\n");
 #endif
 	}
@@ -1019,7 +1020,7 @@ void PxgCudaSolverCore::artiContactConstraintPrepare(PxU32 nbArtiContactBatches)
 {
 	PX_PROFILE_ZONE("GpuDynamics.artiContactConstraintPrepParallel", 0);
 
-	CUfunction artiContactPrepKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_CONTACT_PREP);
+	hipFunction_t artiContactPrepKernel = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_CONTACT_PREP);
 	PxCudaKernelParam kernelParams[] =
 	{
 		PX_CUDA_KERNEL_PARAM(mPrepareDescd),
@@ -1032,13 +1033,13 @@ void PxgCudaSolverCore::artiContactConstraintPrepare(PxU32 nbArtiContactBatches)
 
 	if (nbBlocks > 0)
 	{
-		CUresult result = mCudaContext->launchKernel(artiContactPrepKernel, nbBlocks, 1, 1, WARP_SIZE, nbWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		hipError_t result = mCudaContext->launchKernel(artiContactPrepKernel, nbBlocks, 1, 1, WARP_SIZE, nbWarpsPerBlock, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU artiContactConstraintPrepare fail to launch kernel!!\n");
 
 #if GPU_DEBUG
-		result = cuStreamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		result = hipStreamSynchronize(mStream);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU artiContactConstraintPrepare fail!!\n");
 #endif
 	}
@@ -1073,7 +1074,7 @@ void PxgCudaSolverCore::nonRigidConstraintPrepare(PxU32 numArticulations)
 
 void PxgCudaSolverCore::writeBackBlock(PxU32 a, PxgIslandContext& context)
 {
-	const CUfunction writebackBlockFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::WRITEBACK_BLOCKS);
+	const hipFunction_t writebackBlockFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::WRITEBACK_BLOCKS);
 		
 	PxCudaKernelParam kernelParams[] =
 	{
@@ -1086,13 +1087,13 @@ void PxgCudaSolverCore::writeBackBlock(PxU32 a, PxgIslandContext& context)
 	if (nbBlocksRequired)
 	{
 
-		CUresult result = mCudaContext->launchKernel(writebackBlockFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::WRITEBACK_BLOCKS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		if (result != CUDA_SUCCESS)
+		hipError_t result = mCudaContext->launchKernel(writebackBlockFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::WRITEBACK_BLOCKS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU writebackBlocks fail to launch kernel!!\n");
 
 #if GPU_DEBUG
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU writebackBlocks kernel fail!\n");
 #endif	
 	}		
@@ -1105,13 +1106,13 @@ void PxgCudaSolverCore::solvePartitions(PxgIslandContext* islandContexts, PxInt3
 
 	const PxU32 numThreadsPerWarp = WARP_SIZE;
 	const PxU32 numWarpsPerBlock = PxgArticulationCoreKernelBlockDim::COMPUTE_UNCONSTRAINED_VELOCITES / numThreadsPerWarp;
-	CUdeviceptr artiDescd = mGpuContext->getArticulationCore()->getArticulationCoreDescd();
+	hipDeviceptr_t artiDescd = mGpuContext->getArticulationCore()->getArticulationCoreDescd();
 
-	CUfunction solveBlockPartitionFunction =
+	hipFunction_t solveBlockPartitionFunction =
 	    mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SOLVE_BLOCK_PARTITION);
-	CUfunction artiSolveBlockPartitionFunction =
+	hipFunction_t artiSolveBlockPartitionFunction =
 	    mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::ARTI_SOLVE_BLOCK_PARTITION);
-	CUfunction computeBodiesAverageVelocitiesFunction =
+	hipFunction_t computeBodiesAverageVelocitiesFunction =
 	    mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_AVERAGE_VELOCITY);
 
 	PxU32 startIndex = 0;
@@ -1158,17 +1159,17 @@ void PxgCudaSolverCore::solvePartitions(PxgIslandContext* islandContexts, PxInt3
 															   PX_CUDA_KERNEL_PARAM(islandIndex), PX_CUDA_KERNEL_PARAM(c),
 															   PX_CUDA_KERNEL_PARAM(doFriction) };
 
-			CUresult result = mCudaContext->launchKernel(
+			hipError_t result = mCudaContext->launchKernel(
 				solveBlockPartitionFunction, nbBlocks, 1, 1, PxgKernelBlockDim::SOLVE_BLOCK_PARTITION, 1, 1, 0, mStream,
 				blockPartitionkernelParams, sizeof(blockPartitionkernelParams), 0, PX_FL);
 
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,
 					"GPU solveBlockPartitionFunction fail to launch kernel!!\n");
 
 #if GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			if (result != CUDA_SUCCESS)
+			if (result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,
 					"GPU solveBlockPartitionFunction kernel fail!\n");
 #endif
@@ -1182,17 +1183,17 @@ void PxgCudaSolverCore::solvePartitions(PxgIslandContext* islandContexts, PxInt3
 				PX_CUDA_KERNEL_PARAM(doFriction),       PX_CUDA_KERNEL_PARAM(artiDescd)
 			};
 
-			CUresult result = mCudaContext->launchKernel(
+			hipError_t result = mCudaContext->launchKernel(
 			    artiSolveBlockPartitionFunction, nbArtiBlocks, 1, 1, numThreadsPerWarp, numWarpsPerBlock, 1, 0, mStream,
 			    artiBlockPartitionkernelParams, sizeof(artiBlockPartitionkernelParams), 0, PX_FL);
 
-			if(result != CUDA_SUCCESS)
+			if(result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,
 				                        "GPU artiSolveBlockPartitionFunction fail to launch kernel!!\n");
 
 #if GPU_DEBUG
-			result = cuStreamSynchronize(mStream);
-			if(result != CUDA_SUCCESS)
+			result = hipStreamSynchronize(mStream);
+			if(result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,
 				                        "GPU artiSolveBlockPartitionFunction kernel fail!\n");
 #endif
@@ -1209,18 +1210,18 @@ void PxgCudaSolverCore::solvePartitions(PxgIslandContext* islandContexts, PxInt3
 
 		if (nbBlocksRequired > 0)
 		{
-			CUresult result =
+			hipError_t result =
 				mCudaContext->launchKernel(computeBodiesAverageVelocitiesFunction, nbBlocksRequired, 1, 1, 32,
 					PxgKernelBlockDim::COMPUTE_BODIES_AVERAGE_VELOCITY / 32, 1, 0, mStream,
 					defaultKernelParams, sizeof(defaultKernelParams), 0, PX_FL);
 
-			if(result != CUDA_SUCCESS)
+			if(result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,
 				                        "GPU computeBodiesAverageVelocitiesFunction fail to launch kernel!!\n");
 
 #if GPU_DEBUG
 			result = mCudaContext->streamSynchronize(mStream);
-			if(result != CUDA_SUCCESS)
+			if(result != hipSuccess)
 				PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL,
 				                        "GPU computeBodiesAverageVelocitiesFunction kernel fail!\n");
 #endif
@@ -1237,9 +1238,9 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 	PX_PROFILE_ZONE("GpuDynamics.Solve", 0);
 
 	/*{
-		CUresult result = PxCudaStreamFlush(mStream);
+		hipError_t result = PxCudaStreamFlush(mStream);
 		result = mCudaContext->streamSynchronize(mStream);
-		if (result != CUDA_SUCCESS)
+		if (result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU mSolveBlockPartitionFunction kernel fail!\n");
 	}*/
 
@@ -1250,13 +1251,13 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 	PxgSoftBodyCore* softbodyCore = mGpuContext->getGpuSoftBodyCore(); 
 	PxgFEMClothCore* femClothCore = mGpuContext->getGpuFEMClothCore();
 		
-	const CUfunction concludeBlockFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONCLUDE_BLOCKS);
-	const CUfunction writebackBodiesFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::WRITE_BACK_BODIES);		
-	const CUfunction propagateVelocitiesFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PROPAGATE_BODY_VELOCITY);
-	const CUfunction solveRigidStaticconstraintsFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_SOLVE_STATIC_CONSTRAINTS);
-	const CUfunction solvePropagateStaticconstraintsFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PROPAGATE_STATIC_SOLVER_VELOCITIES);
+	const hipFunction_t concludeBlockFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CONCLUDE_BLOCKS);
+	const hipFunction_t writebackBodiesFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::WRITE_BACK_BODIES);		
+	const hipFunction_t propagateVelocitiesFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PROPAGATE_BODY_VELOCITY);
+	const hipFunction_t solveRigidStaticconstraintsFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RIGID_SOLVE_STATIC_CONSTRAINTS);
+	const hipFunction_t solvePropagateStaticconstraintsFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::PROPAGATE_STATIC_SOLVER_VELOCITIES);
 
-	CUdeviceptr artiDescd = mGpuContext->getArticulationCore()->getArticulationCoreDescd();
+	hipDeviceptr_t artiDescd = mGpuContext->getArticulationCore()->getArticulationCoreDescd();
 
 	const PxReal dt = mSharedDesc->dt;
 	const PxReal invDt = 1.f / dt;
@@ -1268,8 +1269,8 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 	const PxU32 clearValue = residualReportingEnabled ? 0u : 0xFFFFFFFFu;
 	//Clear the residual accumulation values at least once even if residual accumulation is not enabled because depending on the value used
 	//for clearing, residuals will get computed or not.
-	mCudaContext->memsetD32Async(CUdeviceptr(zeroA), clearValue, sizeof(Dy::ErrorAccumulator) / sizeof(PxU32), mStream);
-	mCudaContext->memsetD32Async(CUdeviceptr(zeroB), clearValue, sizeof(Dy::ErrorAccumulator) / sizeof(PxU32), mStream);
+	mCudaContext->memsetD32Async(hipDeviceptr_t(zeroA), clearValue, sizeof(Dy::ErrorAccumulator) / sizeof(PxU32), mStream);
+	mCudaContext->memsetD32Async(hipDeviceptr_t(zeroB), clearValue, sizeof(Dy::ErrorAccumulator) / sizeof(PxU32), mStream);
 
 	PxCudaKernelParam defaultKernelParams[] =
 	{
@@ -1290,8 +1291,8 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 			if (residualReportingEnabled) 
 			{
 				//Zero contact error accumulators
-				mCudaContext->memsetD32Async(CUdeviceptr(zeroA), clearValue, sizeof(Dy::ErrorAccumulator) / sizeof(PxU32), mStream);
-				mCudaContext->memsetD32Async(CUdeviceptr(zeroB), clearValue, sizeof(Dy::ErrorAccumulator) / sizeof(PxU32), mStream);
+				mCudaContext->memsetD32Async(hipDeviceptr_t(zeroA), clearValue, sizeof(Dy::ErrorAccumulator) / sizeof(PxU32), mStream);
+				mCudaContext->memsetD32Async(hipDeviceptr_t(zeroB), clearValue, sizeof(Dy::ErrorAccumulator) / sizeof(PxU32), mStream);
 			}
 
 			bool doFriction = mFrictionEveryIteration ? true : (context.mNumPositionIterations - b) <= 3;
@@ -1352,18 +1353,18 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 						PX_CUDA_KERNEL_PARAM(doFriction)
 					};
 
-					CUresult result = mCudaContext->launchKernel(solveRigidStaticconstraintsFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::SOLVE_BLOCK_PARTITION, 1, 1, 0, mStream, staticKernelParams, sizeof(staticKernelParams), 0, PX_FL);
-					if (result != CUDA_SUCCESS)
+					hipError_t result = mCudaContext->launchKernel(solveRigidStaticconstraintsFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::SOLVE_BLOCK_PARTITION, 1, 1, 0, mStream, staticKernelParams, sizeof(staticKernelParams), 0, PX_FL);
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU solveStaticBlock fail to launch kernel!!\n");
 						
 #if GPU_DEBUG
 					result = mCudaContext->streamSynchronize(mStream);
-					if (result != CUDA_SUCCESS)
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU solveStaticBlock kernel fail!\n");
 #endif			
 
 					result = mCudaContext->launchKernel(solvePropagateStaticconstraintsFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::SOLVE_BLOCK_PARTITION, 1, 1, 0, mStream, staticKernelParams, sizeof(staticKernelParams), 0, PX_FL);
-					if (result != CUDA_SUCCESS)
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU solveStaticBlock fail to launch kernel!!\n");
 				}
 			}
@@ -1371,12 +1372,12 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 			const PxU32 nbBlocksRequired = (context.mBodyCount * 32 + PxgKernelBlockDim::COMPUTE_BODIES_AVERAGE_VELOCITY - 1) / PxgKernelBlockDim::COMPUTE_BODIES_AVERAGE_VELOCITY;
 			if (nbBlocksRequired)
 			{
-				CUresult result = mCudaContext->launchKernel(propagateVelocitiesFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::COMPUTE_BODIES_AVERAGE_VELOCITY, 1, 1, 0, mStream, defaultKernelParams, sizeof(defaultKernelParams), 0, PX_FL);
-				if (result != CUDA_SUCCESS)
+				hipError_t result = mCudaContext->launchKernel(propagateVelocitiesFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::COMPUTE_BODIES_AVERAGE_VELOCITY, 1, 1, 0, mStream, defaultKernelParams, sizeof(defaultKernelParams), 0, PX_FL);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU mComputeBodiesAverageVelocitiesFunction fail to launch kernel!!\n");
 #if GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU mComputeBodiesAverageVelocitiesFunction kernel fail!\n");
 #endif			
 			}
@@ -1395,13 +1396,13 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 
 			if (nbBlocksRequired)
 			{
-				CUresult result = mCudaContext->launchKernel(concludeBlockFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::CONCLUDE_BLOCKS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				if (result != CUDA_SUCCESS)
+				hipError_t result = mCudaContext->launchKernel(concludeBlockFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::CONCLUDE_BLOCKS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU concludeBlockFunction fail to launch kernel!!\n");
 
 #if GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU concludeBlockFunction kernel fail!\n");
 #endif
 			}
@@ -1419,13 +1420,13 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 
 			if (nbBlocksRequired)
 			{
-				CUresult result = mCudaContext->launchKernel(writebackBodiesFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::WRITE_BACK_BODIES, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				if (result != CUDA_SUCCESS)
+				hipError_t result = mCudaContext->launchKernel(writebackBodiesFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::WRITE_BACK_BODIES, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU solveContactParallel fail to launch kernel!!\n");
 
 #if GPU_DEBUG
 				result = mCudaContext->streamSynchronize(mStream);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU solveContactParallel kernel fail!\n");
 #endif
 			}
@@ -1439,9 +1440,9 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 
 			if (posIterResidualPinnedMemSize > 0)
 			{
-				CUfunction function = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::DMA_CONSTRAINT_RESIDUAL);
+				hipFunction_t function = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::DMA_CONSTRAINT_RESIDUAL);
 
-				CUdeviceptr ptr = mConstraintWriteBackBuffer.getDevicePtr();
+				hipDeviceptr_t ptr = mConstraintWriteBackBuffer.getDevicePtr();
 				PxCudaKernelParam kernelParams[] =
 				{
 					PX_CUDA_KERNEL_PARAM(ptr),
@@ -1453,7 +1454,7 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 				PxU32 gridSize = (posIterResidualPinnedMemSize + threadBlockSize - 1) / threadBlockSize;
 
 				PxCUresult result = mCudaContext->launchKernel(function, gridSize, 1, 1, threadBlockSize, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU dmaConstraintResidual fail to launch kernel!!\n");
 			}
 
@@ -1461,9 +1462,9 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 			{
 				//perArticulationInternalError.resize(mGpuContext->getArticulationCore()->getArticulationCoreDesc()->nbArticulations);
 
-				CUfunction function = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::DMA_ARTICULATION_RESIDUAL);
+				hipFunction_t function = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::DMA_ARTICULATION_RESIDUAL);
 
-				CUdeviceptr ptr = (CUdeviceptr)perArticulationInternalError.begin();
+				hipDeviceptr_t ptr = (hipDeviceptr_t)perArticulationInternalError.begin();
 				PxCudaKernelParam kernelParams[] =
 				{
 					PX_CUDA_KERNEL_PARAM(artiDescd),
@@ -1474,19 +1475,19 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 				PxU32 gridSize = (mGpuContext->getArticulationCore()->getArticulationCoreDesc()->nbArticulations + threadBlockSize - 1) / threadBlockSize;
 
 				PxCUresult result = mCudaContext->launchKernel(function, gridSize, 1, 1, threadBlockSize, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-				if (result != CUDA_SUCCESS)
+				if (result != hipSuccess)
 					PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU dmaArticulationResidual fail to launch kernel!!\n");
 			}
 			PX_UNUSED(perArticulationInternalError);
 
 			{
 				PxgSolverCoreDesc* gpuPtr = (PxgSolverCoreDesc*)mSolverCoreDescd;
-				mCudaContext->memcpyDtoHAsync(posIterError, (CUdeviceptr)&gpuPtr->contactErrorAccumulator, sizeof(Dy::ErrorAccumulator), mStream); //Should posIterError be shared memory?	
+				mCudaContext->memcpyDtoHAsync(posIterError, (hipDeviceptr_t)&gpuPtr->contactErrorAccumulator, sizeof(Dy::ErrorAccumulator), mStream); //Should posIterError be shared memory?	
 			}
 			{
 				artiContactPosIterError.resize(1);
 				PxgArticulationCoreDesc* gpuPtr = (PxgArticulationCoreDesc*)mGpuContext->getArticulationCore()->getArticulationCoreDescd();
-				mCudaContext->memcpyDtoHAsync(artiContactPosIterError.begin(), (CUdeviceptr)&gpuPtr->mContactErrorAccumulator, sizeof(Dy::ErrorAccumulator), mStream);
+				mCudaContext->memcpyDtoHAsync(artiContactPosIterError.begin(), (hipDeviceptr_t)&gpuPtr->mContactErrorAccumulator, sizeof(Dy::ErrorAccumulator), mStream);
 			}
 		}
 
@@ -1498,8 +1499,8 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 			if (residualReportingEnabled)
 			{
 				//Zero contact error accumulators
-				mCudaContext->memsetD32Async(CUdeviceptr(zeroA), clearValue, sizeof(Dy::ErrorAccumulator) / sizeof(PxU32), mStream);
-				mCudaContext->memsetD32Async(CUdeviceptr(zeroB), clearValue, sizeof(Dy::ErrorAccumulator) / sizeof(PxU32), mStream);
+				mCudaContext->memsetD32Async(hipDeviceptr_t(zeroA), clearValue, sizeof(Dy::ErrorAccumulator) / sizeof(PxU32), mStream);
+				mCudaContext->memsetD32Async(hipDeviceptr_t(zeroB), clearValue, sizeof(Dy::ErrorAccumulator) / sizeof(PxU32), mStream);
 			}
 
 			solvePartitions(islandContexts, constraintsPerPartition, artiConstraintsPerPartition, a, doFriction,
@@ -1551,17 +1552,17 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 						PX_CUDA_KERNEL_PARAM(doFriction)
 					};
 
-					CUresult result = mCudaContext->launchKernel(solveRigidStaticconstraintsFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::SOLVE_BLOCK_PARTITION, 1, 1, 0, mStream, staticKernelParams, sizeof(staticKernelParams), 0, PX_FL);
-					if (result != CUDA_SUCCESS)
+					hipError_t result = mCudaContext->launchKernel(solveRigidStaticconstraintsFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::SOLVE_BLOCK_PARTITION, 1, 1, 0, mStream, staticKernelParams, sizeof(staticKernelParams), 0, PX_FL);
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU solveStaticBlock fail to launch kernel!!\n");
 #if GPU_DEBUG
 					result = mCudaContext->streamSynchronize(mStream);
-					if (result != CUDA_SUCCESS)
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU solveStaticBlock kernel fail!\n");
 #endif			
 
 					result = mCudaContext->launchKernel(solvePropagateStaticconstraintsFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::SOLVE_BLOCK_PARTITION, 1, 1, 0, mStream, staticKernelParams, sizeof(staticKernelParams), 0, PX_FL);
-					if (result != CUDA_SUCCESS)
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU solveStaticBlock fail to launch kernel!!\n");
 				}
 			}
@@ -1573,12 +1574,12 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 				const PxU32 nbBlocksRequired = (context.mBodyCount * 32 + PxgKernelBlockDim::COMPUTE_BODIES_AVERAGE_VELOCITY - 1) / PxgKernelBlockDim::COMPUTE_BODIES_AVERAGE_VELOCITY;
 				if (nbBlocksRequired)
 				{
-					CUresult result = mCudaContext->launchKernel(propagateVelocitiesFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::COMPUTE_BODIES_AVERAGE_VELOCITY, 1, 1, 0, mStream, defaultKernelParams, sizeof(defaultKernelParams), 0, PX_FL);
-					if (result != CUDA_SUCCESS)
+					hipError_t result = mCudaContext->launchKernel(propagateVelocitiesFunction, nbBlocksRequired, 1, 1, PxgKernelBlockDim::COMPUTE_BODIES_AVERAGE_VELOCITY, 1, 1, 0, mStream, defaultKernelParams, sizeof(defaultKernelParams), 0, PX_FL);
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU mComputeBodiesAverageVelocitiesFunction fail to launch kernel!!\n");
 #if GPU_DEBUG
 					result = mCudaContext->streamSynchronize(mStream);
-					if (result != CUDA_SUCCESS)
+					if (result != hipSuccess)
 						PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU mComputeBodiesAverageVelocitiesFunction kernel fail!\n");
 #endif			
 				}
@@ -1602,8 +1603,8 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 	}
 
 #if GPU_DEBUG
-	CUresult result = mCudaContext->streamSynchronize(mStream);
-	if(result != CUDA_SUCCESS)
+	hipError_t result = mCudaContext->streamSynchronize(mStream);
+	if(result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU DMA back fail 6!!\n");
 #endif
 }
@@ -1612,10 +1613,10 @@ void PxgCudaSolverCore::solveContactMultiBlockParallel(PxgIslandContext* islandC
 
 void PxgCudaSolverCore::radixSort(const PxU32 nbPasses)
 {
-	CUdeviceptr solverDescd = mSolverCoreDescd;
+	hipDeviceptr_t solverDescd = mSolverCoreDescd;
 
-	CUfunction radixFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RADIXSORT_SINGLEBLOCK);
-	CUfunction calculateRanksFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RADIXSORT_CALCULATERANKS);
+	hipFunction_t radixFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RADIXSORT_SINGLEBLOCK);
+	hipFunction_t calculateRanksFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::RADIXSORT_CALCULATERANKS);
 
 	PxU32 startBit = 0;
 
@@ -1623,7 +1624,7 @@ void PxgCudaSolverCore::radixSort(const PxU32 nbPasses)
 	{
 		const PxU32 descIndex = (i & 1); 
 
-		CUdeviceptr rsDesc = mRadixSortDescd[descIndex];
+		hipDeviceptr_t rsDesc = mRadixSortDescd[descIndex];
 
 		PxCudaKernelParam radixSortKernelParams[] =
 		{
@@ -1632,14 +1633,14 @@ void PxgCudaSolverCore::radixSort(const PxU32 nbPasses)
 			PX_CUDA_KERNEL_PARAM(startBit)
 		};
 
-		CUresult  resultR = mCudaContext->launchKernel(radixFunction, PxgKernelGridDim::RADIXSORT, 1, 1, PxgKernelBlockDim::RADIXSORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
+		hipError_t  resultR = mCudaContext->launchKernel(radixFunction, PxgKernelGridDim::RADIXSORT, 1, 1, PxgKernelBlockDim::RADIXSORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
 
-		PX_ASSERT(resultR == CUDA_SUCCESS);
+		PX_ASSERT(resultR == hipSuccess);
 			
 		resultR = mCudaContext->launchKernel(calculateRanksFunction, PxgKernelGridDim::RADIXSORT, 1, 1, PxgKernelBlockDim::RADIXSORT, 1, 1, 0, mStream, radixSortKernelParams, sizeof(radixSortKernelParams), 0, PX_FL);
 			
 		PX_UNUSED(resultR);
-		PX_ASSERT(resultR == CUDA_SUCCESS);
+		PX_ASSERT(resultR == hipSuccess);
 		
 		startBit+=4;
 	}
@@ -1659,12 +1660,12 @@ void PxgCudaSolverCore::accumulatedForceThresholdStream(PxU32 maxNodes)
 	PxU32 nbPasses = 8;*/
 		
 	//copy thresholdstream to tmpThresholdStream
-	CUresult result = mCudaContext->memcpyDtoDAsync(reinterpret_cast<CUdeviceptr>(mSolverCoreDesc->tmpThresholdStream), reinterpret_cast<CUdeviceptr>(mSolverCoreDesc->thresholdStream), sizeof(Dy::ThresholdStreamElement) * mTotalContactManagers, mStream);
+	hipError_t result = mCudaContext->memcpyDtoDAsync(reinterpret_cast<hipDeviceptr_t>(mSolverCoreDesc->tmpThresholdStream), reinterpret_cast<hipDeviceptr_t>(mSolverCoreDesc->thresholdStream), sizeof(Dy::ThresholdStreamElement) * mTotalContactManagers, mStream);
 
 	PX_UNUSED(result);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 	
-	CUdeviceptr rsDescd = mRadixSortDescd[0];
+	hipDeviceptr_t rsDescd = mRadixSortDescd[0];
 
 	PxCudaKernelParam kernelParams0[] =
 	{
@@ -1672,11 +1673,11 @@ void PxgCudaSolverCore::accumulatedForceThresholdStream(PxU32 maxNodes)
 		PX_CUDA_KERNEL_PARAM(rsDescd)
 	};
 
-	CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::INITIALIZE_INPUT_AND_RANKS_B);
+	hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::INITIALIZE_INPUT_AND_RANKS_B);
 
 	result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::INITIALIZE_INPUT_AND_RANKS, 1, 1, PxgKernelBlockDim::INITIALIZE_INPUT_AND_RANKS, 1, 1, 0, mStream, kernelParams0, sizeof(kernelParams0), 0, PX_FL);
 		
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	//radix sort for the bodyIndexB
 	{
@@ -1686,7 +1687,7 @@ void PxgCudaSolverCore::accumulatedForceThresholdStream(PxU32 maxNodes)
 	kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::INITIALIZE_INPUT_AND_RANKS_A);
 	result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::INITIALIZE_INPUT_AND_RANKS, 1, 1, PxgKernelBlockDim::INITIALIZE_INPUT_AND_RANKS, 1, 1, 0, mStream, kernelParams0, sizeof(kernelParams0), 0, PX_FL);
 		
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	{
 		//radix sort for the bodyIndexA
@@ -1697,7 +1698,7 @@ void PxgCudaSolverCore::accumulatedForceThresholdStream(PxU32 maxNodes)
 	kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::REORGANIZE_THRESHOLDSTREAM);
 	result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::REORGANIZE_THRESHOLDSTREAM, 1, 1, PxgKernelBlockDim::REORGANIZE_THRESHOLDSTREAM, 1, 1, 0, mStream, kernelParams0, sizeof(kernelParams0), 0, PX_FL);
 		
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	PxCudaKernelParam kernelParams[] =
 	{
@@ -1707,35 +1708,35 @@ void PxgCudaSolverCore::accumulatedForceThresholdStream(PxU32 maxNodes)
 	kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_ACCUMULATED_THRESHOLDSTREAM);
 
 	result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::COMPUTE_ACCUMULATED_THRESHOLDSTREAM, 1, 1, PxgKernelBlockDim::COMPUTE_ACCUMULATED_THRESHOLDSTREAM, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::OUTPUT_ACCUMULATED_THRESHOLDSTREAM);
 		
 	result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::OUTPUT_ACCUMULATED_THRESHOLDSTREAM, 1, 1, PxgKernelBlockDim::OUTPUT_ACCUMULATED_THRESHOLDSTREAM, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::WRITEOUT_ACCUMULATEDFORCEPEROBJECT);
 
 	result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::WRITEOUT_ACCUMULATEDFORCEPEROBJECT, 1, 1, PxgKernelBlockDim::WRITEOUT_ACCUMULATEDFORCEPEROBJECT, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	////copy thresholdstream to tmpThresholdStream
-	//result = mCudaContext->memcpyDtoDAsync(reinterpret_cast<CUdeviceptr>(desc->tmpAccumulatedForceObjectPairs), reinterpret_cast<CUdeviceptr>(desc->accumulatedForceObjectPairs), sizeof(PxReal) * desc->numContactBatches * 32, mStream);
+	//result = mCudaContext->memcpyDtoDAsync(reinterpret_cast<hipDeviceptr_t>(desc->tmpAccumulatedForceObjectPairs), reinterpret_cast<hipDeviceptr_t>(desc->accumulatedForceObjectPairs), sizeof(PxReal) * desc->numContactBatches * 32, mStream);
 
-	//PX_ASSERT(result == CUDA_SUCCESS);
+	//PX_ASSERT(result == hipSuccess);
 
 	//kernelFunction = mKernelWrangler->getCuFunction(PxgKernelIds::CALCULATE_ACCUMULATEDFORCEPEROBJECTPAIRS);
 
 	//result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::CALCULATE_ACCUMULATEDFORCEPEROBJECTPAIRS, 1, 1, PxgKernelBlockDim::CALCULATE_ACCUMULATEDFORCEPEROBJECTPAIRS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-	//PX_ASSERT(result == CUDA_SUCCESS);
+	//PX_ASSERT(result == hipSuccess);
 
 	/*kernelFunction = mKernelWrangler->getCuFunction(PxgKernelIds::WRITEBACK_ACCUMULATEDFORCE);
 
 	result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::WRITEBACK_ACCUMULATEDFORCE, 1, 1, PxgKernelBlockDim::WRITEBACK_ACCUMULATEDFORCE, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-	PX_ASSERT(result == CUDA_SUCCESS);*/
+	PX_ASSERT(result == hipSuccess);*/
 
 	{
 		PxCudaKernelParam exceededForceKernelParams[] =
@@ -1748,51 +1749,51 @@ void PxgCudaSolverCore::accumulatedForceThresholdStream(PxU32 maxNodes)
 
 		result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::COMPUTE_EXCEEDEDFORCE_THRESHOLDELEMENT_INDICE, 1, 1, PxgKernelBlockDim::COMPUTE_EXCEEDEDFORCE_THRESHOLDELEMENT_INDICE, 1, 1, 0, mStream, exceededForceKernelParams, sizeof(exceededForceKernelParams), 0, PX_FL);
 
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 	}
 
 	kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::OUTPUT_EXCEEDEDFORCE_THRESHOLDELEMENT_INDICE);
 
 	result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::OUTPUT_EXCEEDEDFORCE_THRESHOLDELEMENT_INDICE, 1, 1, PxgKernelBlockDim::OUTPUT_EXCEEDEDFORCE_THRESHOLDELEMENT_INDICE, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 		
 	////createExceededForceThresholdELEMENT
 	//kernelFunction = mKernelWrangler->getCuFunction(PxgKernelIds::CREATE_EXCEEDEDFORCE_THRESHOLDELEMENT);
 
 	//result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::CREATE_EXCEEDEDFORCE_THRESHOLDELEMENT, 1, 1, PxgKernelBlockDim::CREATE_EXCEEDEDFORCE_THRESHOLDELEMENT, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
 
-	//PX_ASSERT(result == CUDA_SUCCESS);
+	//PX_ASSERT(result == hipSuccess);
 
 	//initialize all masks to be 1 
 	result = mCudaContext->memsetD32Async(mThresholdStreamWriteIndex.getDevicePtr(), 1, (mNbPrevExceededForceElements * 2 + (mPrepareDesc->numContactBatches + mPrepareDesc->numStaticContactBatches) * 32), mStream);
 
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	if(mNbPrevExceededForceElements > 0)
 	{
 		//setThresholdPairsMask
 		kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::SET_THRESHOLDELEMENT_MASK);
 		result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::SET_THRESHOLDELEMENT_MASK, 1, 1, PxgKernelBlockDim::SET_THRESHOLDELEMENT_MASK, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		PX_ASSERT(result == CUDA_SUCCESS);
+		PX_ASSERT(result == hipSuccess);
 	}
 
 	//computeThresholdPairsMaskIndices
 	kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::COMPUTE_THRESHOLDELEMENT_MASK_INDICES);
 	result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::COMPUTE_THRESHOLDELEMENT_MASK_INDICES, 1, 1, PxgKernelBlockDim::COMPUTE_THRESHOLDELEMENT_MASK_INDICES, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 
 	//outputThresholdPairsMaskIndices
 	kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::OUTPUT_THRESHOLDELEMENT_MASK_INDICES);
 	result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::OUTPUT_THRESHOLDELEMENT_MASK_INDICES, 1, 1, PxgKernelBlockDim::OUTPUT_THRESHOLDELEMENT_MASK_INDICES, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 	//createForceChangeThresholdPairs
 	kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::CREATE_FORCECHANGE_THRESHOLDELEMENTS);
 	result = mCudaContext->launchKernel(kernelFunction, PxgKernelGridDim::CREATE_FORCECHANGE_THRESHOLDELEMENTS, 1, 1, PxgKernelBlockDim::CREATE_FORCECHANGE_THRESHOLDELEMENTS, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-	PX_ASSERT(result == CUDA_SUCCESS);
+	PX_ASSERT(result == hipSuccess);
 #if GPU_DEBUG
 	result = mCudaContext->streamSynchronize(mStream);
-	if(result != CUDA_SUCCESS)
+	if(result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU createForceChangeThresholdElement kernel fail!!\n");
 #endif
 }
@@ -1801,10 +1802,10 @@ void PxgCudaSolverCore::integrateCoreParallel(const PxU32 offset, const PxU32 nb
 {
 	PX_PROFILE_ZONE("GpuDynamics.Integrate", 0);
 
-	const CUfunction kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::INTEGRATE_CORE_PARALLEL);
-	CUdeviceptr islandIds = mIslandIds.getDevicePtr();
-	CUdeviceptr islandStaticTouchCounts = mIslandStaticTouchCount.getDevicePtr();
-	CUdeviceptr nodeIteractionCounts = mNodeInteractionCounts.getDevicePtr();
+	const hipFunction_t kernelFunction = mGpuKernelWranglerManager->getKernelWrangler()->getCuFunction(PxgKernelIds::INTEGRATE_CORE_PARALLEL);
+	hipDeviceptr_t islandIds = mIslandIds.getDevicePtr();
+	hipDeviceptr_t islandStaticTouchCounts = mIslandStaticTouchCount.getDevicePtr();
+	hipDeviceptr_t nodeIteractionCounts = mNodeInteractionCounts.getDevicePtr();
 
 	PxCudaKernelParam kernelParams[] =
 	{
@@ -1820,13 +1821,13 @@ void PxgCudaSolverCore::integrateCoreParallel(const PxU32 offset, const PxU32 nb
 
 	if(nbBlocks)
 	{
-		CUresult result = mCudaContext->launchKernel(kernelFunction, nbBlocks, 1, 1, PxgKernelBlockDim::INTEGRATE_CORE_PARALLEL, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
-		if(result != CUDA_SUCCESS)
+		hipError_t result = mCudaContext->launchKernel(kernelFunction, nbBlocks, 1, 1, PxgKernelBlockDim::INTEGRATE_CORE_PARALLEL, 1, 1, 0, mStream, kernelParams, sizeof(kernelParams), 0, PX_FL);
+		if(result != hipSuccess)
 			PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU integrateCoreParallel fail to launch kernel!!\n");
 
 #if GPU_DEBUG
 	result = mCudaContext->streamSynchronize(mStream);
-	if(result != CUDA_SUCCESS)
+	if(result != hipSuccess)
 		PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "GPU DMA back fail 7!!\n");
 #endif
 

@@ -35,7 +35,7 @@
 #include "../snippetrender/SnippetRender.h"
 #include "../snippetrender/SnippetCamera.h"
 
-#define CUDA_SUCCESS 0
+#define hipSuccess 0
 
 using namespace physx;
 
@@ -121,9 +121,9 @@ void onBeforeRenderParticles()
 		cudaContextManager->acquireContext();
 
 		PxCudaContext* cudaContext = cudaContextManager->getCudaContext();
-		cudaContext->memcpyDtoH(sPosBufferH->begin(), CUdeviceptr(positions), sizeof(PxVec4) * numParticles);
-		cudaContext->memcpyDtoH(sVelBufferH->begin(), CUdeviceptr(vels), sizeof(PxVec4) * numParticles);
-		cudaContext->memcpyDtoH(sPhasesH->begin(), CUdeviceptr(phases), sizeof(PxU32) * numParticles);
+		cudaContext->memcpyDtoH(sPosBufferH->begin(), hipDeviceptr_t(positions), sizeof(PxVec4) * numParticles);
+		cudaContext->memcpyDtoH(sVelBufferH->begin(), hipDeviceptr_t(vels), sizeof(PxVec4) * numParticles);
+		cudaContext->memcpyDtoH(sPhasesH->begin(), hipDeviceptr_t(phases), sizeof(PxU32) * numParticles);
 
 		copyVec4ToVec3(*sPosBuffer3H, *sPosBufferH);
 		mapVec4ToColor3(*sColorBuffer3H, *sVelBufferH, *sPhasesH);

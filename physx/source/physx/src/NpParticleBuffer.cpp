@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
 // are met:
@@ -77,15 +78,15 @@ namespace physx
 		PxScopedCudaLock lock(*mCudaManager);
 		PxCudaContext* context = mCudaManager->getCudaContext();
 
-		const unsigned int CU_MEMHOSTALLOC_DEVICEMAP = 0x02;
-		const unsigned int CU_MEMHOSTALLOC_PORTABLE = 0x01;
+		const unsigned int hipHostMallocMapped = 0x02;
+		const unsigned int hipHostMallocPortable = 0x01;
 
-		PxCUresult result = context->memHostAlloc(reinterpret_cast<void**>(&accumulatedSpringsPerPartitions), size_t(sizeof(PxU32) * PARTICLE_MAX_NUM_PARTITIONS_FINAL), CU_MEMHOSTALLOC_DEVICEMAP | CU_MEMHOSTALLOC_PORTABLE); // TODO AD: WTF where does 32 come from?
-		result = context->memHostAlloc(reinterpret_cast<void**>(&accumulatedCopiesPerParticles), size_t(sizeof(PxU32) * nbParticles), CU_MEMHOSTALLOC_DEVICEMAP | CU_MEMHOSTALLOC_PORTABLE);
-		result = context->memHostAlloc(reinterpret_cast<void**>(&orderedSprings), size_t(sizeof(PxParticleSpring) * nbSprings), CU_MEMHOSTALLOC_DEVICEMAP | CU_MEMHOSTALLOC_PORTABLE);
-		result = context->memHostAlloc(reinterpret_cast<void**>(&remapOutput), size_t(sizeof(PxU32) * nbSprings * 2), CU_MEMHOSTALLOC_DEVICEMAP | CU_MEMHOSTALLOC_PORTABLE);
-		result = context->memHostAlloc(reinterpret_cast<void**>(&sortedClothStartIndices), size_t(sizeof(PxU32) * nbCloths), CU_MEMHOSTALLOC_DEVICEMAP | CU_MEMHOSTALLOC_PORTABLE);
-		result = context->memHostAlloc(reinterpret_cast<void**>(&cloths), size_t(sizeof(PxParticleCloth) * nbCloths), CU_MEMHOSTALLOC_DEVICEMAP | CU_MEMHOSTALLOC_PORTABLE);
+		PxCUresult result = context->memHostAlloc(reinterpret_cast<void**>(&accumulatedSpringsPerPartitions), size_t(sizeof(PxU32) * PARTICLE_MAX_NUM_PARTITIONS_FINAL), hipHostMallocMapped | hipHostMallocPortable); // TODO AD: WTF where does 32 come from?
+		result = context->memHostAlloc(reinterpret_cast<void**>(&accumulatedCopiesPerParticles), size_t(sizeof(PxU32) * nbParticles), hipHostMallocMapped | hipHostMallocPortable);
+		result = context->memHostAlloc(reinterpret_cast<void**>(&orderedSprings), size_t(sizeof(PxParticleSpring) * nbSprings), hipHostMallocMapped | hipHostMallocPortable);
+		result = context->memHostAlloc(reinterpret_cast<void**>(&remapOutput), size_t(sizeof(PxU32) * nbSprings * 2), hipHostMallocMapped | hipHostMallocPortable);
+		result = context->memHostAlloc(reinterpret_cast<void**>(&sortedClothStartIndices), size_t(sizeof(PxU32) * nbCloths), hipHostMallocMapped | hipHostMallocPortable);
+		result = context->memHostAlloc(reinterpret_cast<void**>(&cloths), size_t(sizeof(PxParticleCloth) * nbCloths), hipHostMallocMapped | hipHostMallocPortable);
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////////

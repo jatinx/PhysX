@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 #ifndef FLOAT_MATH_LIB_H
 
 #define FLOAT_MATH_LIB_H

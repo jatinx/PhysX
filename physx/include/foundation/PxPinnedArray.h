@@ -39,12 +39,12 @@ namespace physx
 #endif
 
 	// PT: the default pinned-memory arrays are defined as PxPinnedArray = PxArray<T, PxVirtualAllocator>.
-	// The PxVirtualAllocator ultimately uses cuMemHostAlloc via PxgCudaHostMemoryAllocatorCallback / PxgPinnedMemoryAllocate.
-	// We use the CU_MEMHOSTALLOC_DEVICEMAP flag there so cuMemHostGetDevicePointer() can later be used on returned ptr.
+	// The PxVirtualAllocator ultimately uses hipHostAlloc via PxgCudaHostMemoryAllocatorCallback / PxgPinnedMemoryAllocate.
+	// We use the hipHostMallocMapped flag there so hipHostGetDevicePointer() can later be used on returned ptr.
 	//
 	// The new pinned-memory arrays are defined as PxPinnedArraySafe = PxArray<T, PxPinnedAllocator<T> >. This uses a new
-	// allocator that allocates either from cuMemHostAlloc, *or* fallbacks to regular allocs when we run out of pinned memory.
-	// The issue is that in the second case cuMemHostGetDevicePointer() will fail, so we cannot use this everywhere.
+	// allocator that allocates either from hipHostAlloc, *or* fallbacks to regular allocs when we run out of pinned memory.
+	// The issue is that in the second case hipHostGetDevicePointer() will fail, so we cannot use this everywhere.
 	// 
 	// I think this exposes issues in PxArray itself, for example in the swap function (we don't swap the allocator data there,
 	// so when using a PxVirtualAllocator with PxArray the PxVirtualAllocator members are not swapped).

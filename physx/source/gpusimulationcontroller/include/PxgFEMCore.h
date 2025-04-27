@@ -34,7 +34,7 @@
 #include "PxNodeIndex.h"
 #include "foundation/PxSimpleTypes.h"
 
-#include <vector_types.h>
+#include <hip/hip_vector_types.h>
 
 namespace physx
 {
@@ -168,7 +168,7 @@ namespace physx
 		
 		void accumulateRigidDeltas(PxgDevicePointer<PxgPrePrepDesc> prePrepDescd, PxgDevicePointer<PxgSolverCoreDesc> solverCoreDescd, 
 			PxgDevicePointer<PxgSolverSharedDescBase> sharedDescd, PxgDevicePointer<PxgArticulationCoreDesc> artiCoreDescd,
-			PxgDevicePointer<PxNodeIndex> rigidIdsd, PxgDevicePointer<PxU32> numIdsd, CUstream stream, CUevent waitEvent,
+			PxgDevicePointer<PxNodeIndex> rigidIdsd, PxgDevicePointer<PxU32> numIdsd, hipStream_t stream, hipEvent_t waitEvent,
 			bool isTGS);
 
 		//rigid body and fem contacts
@@ -255,7 +255,7 @@ namespace physx
 	PX_CATCH_UNDEFINED_ENABLE_SIM_STATS
 #endif
 
-		CUevent							mFinalizeEvent;
+		hipEvent_t							mFinalizeEvent;
 	};
 
 

@@ -65,7 +65,7 @@ static T* allocDeviceBuffer(PxCudaContextManager& cudaContextManager, PxU64 numE
 {
     PxScopedCudaLock lock(cudaContextManager);
 
-    CUdeviceptr ptr = 0;
+    hipDeviceptr_t ptr = 0;
 	PxCUresult result = cudaContextManager.getCudaContext()->memAlloc(&ptr, numElements * sizeof(T));
     if (result != 0)
 	    PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "allocDeviceBuffer failed with error code %i!\n", PxI32(result));
@@ -87,7 +87,7 @@ static void freeDeviceBuffer(PxCudaContextManager& cudaContextManager, T*& devic
     if (deviceBuffer)
     {
         PxScopedCudaLock lock(cudaContextManager);
-        PxCUresult result = cudaContextManager.getCudaContext()->memFree(reinterpret_cast<CUdeviceptr>(deviceBuffer));
+        PxCUresult result = cudaContextManager.getCudaContext()->memFree(reinterpret_cast<hipDeviceptr_t>(deviceBuffer));
         if (result != 0)
 	        PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "freeDeviceBuffer failed with error code %i!\n", PxI32(result));
 
@@ -162,7 +162,7 @@ static void copyDToH(PxCudaContextManager& cudaContextManager, T* hostBuffer, co
 	PxScopedCudaLock lock(cudaContextManager);
     PxU64 numBytes = numElements * sizeof(T);
 
-	PxCUresult result = cudaContextManager.getCudaContext()->memcpyDtoH(hostBuffer, CUdeviceptr(deviceBuffer), numBytes);
+	PxCUresult result = cudaContextManager.getCudaContext()->memcpyDtoH(hostBuffer, hipDeviceptr_t(deviceBuffer), numBytes);
 	if (result != 0)
 	    PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyDToH failed with error code %i!\n", PxI32(result));
 }
@@ -186,7 +186,7 @@ static void copyHToD(PxCudaContextManager& cudaContextManager, T* deviceBuffer, 
 	PxScopedCudaLock lock(cudaContextManager);
     PxU64 numBytes = numElements * sizeof(T);
 
-	PxCUresult result = cudaContextManager.getCudaContext()->memcpyHtoD(CUdeviceptr(deviceBuffer), hostBuffer, numBytes);
+	PxCUresult result = cudaContextManager.getCudaContext()->memcpyHtoD(hipDeviceptr_t(deviceBuffer), hostBuffer, numBytes);
 	if (result != 0)
 	    PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyHtoD failed with error code %i!\n", PxI32(result));
 }
@@ -203,7 +203,7 @@ static void copyHToD(PxCudaContextManager& cudaContextManager, T* deviceBuffer, 
 * \param[in] stream the CUDA stream to perform the operation on.
 */
 template<typename T>
-static void copyDToHAsync(PxCudaContextManager& cudaContextManager, T* hostBuffer, const T* deviceBuffer, PxU64 numElements, CUstream stream)
+static void copyDToHAsync(PxCudaContextManager& cudaContextManager, T* hostBuffer, const T* deviceBuffer, PxU64 numElements, hipStream_t stream)
 {
     if (!deviceBuffer || !hostBuffer)
 		return;
@@ -211,7 +211,7 @@ static void copyDToHAsync(PxCudaContextManager& cudaContextManager, T* hostBuffe
 	PxScopedCudaLock lock(cudaContextManager);
     PxU64 numBytes = numElements * sizeof(T);
 
-	PxCUresult result = cudaContextManager.getCudaContext()->memcpyDtoHAsync(hostBuffer, CUdeviceptr(deviceBuffer), numBytes, stream);
+	PxCUresult result = cudaContextManager.getCudaContext()->memcpyDtoHAsync(hostBuffer, hipDeviceptr_t(deviceBuffer), numBytes, stream);
 	if (result != 0)
 	    PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyDtoHAsync failed with error code %i!\n", PxI32(result));
 }
@@ -228,7 +228,7 @@ static void copyDToHAsync(PxCudaContextManager& cudaContextManager, T* hostBuffe
 * \param[in] stream the CUDA stream to perform the operation on.
 */
 template<typename T>
-static void copyHToDAsync(PxCudaContextManager& cudaContextManager, T* deviceBuffer, const T* hostBuffer, PxU64 numElements, CUstream stream)
+static void copyHToDAsync(PxCudaContextManager& cudaContextManager, T* deviceBuffer, const T* hostBuffer, PxU64 numElements, hipStream_t stream)
 {
     if (!deviceBuffer || !hostBuffer)
 		return;
@@ -236,7 +236,7 @@ static void copyHToDAsync(PxCudaContextManager& cudaContextManager, T* deviceBuf
 	PxScopedCudaLock lock(cudaContextManager);
     PxU64 numBytes = numElements * sizeof(T);
 
-	PxCUresult result = cudaContextManager.getCudaContext()->memcpyHtoDAsync(CUdeviceptr(deviceBuffer), hostBuffer, numBytes, stream);
+	PxCUresult result = cudaContextManager.getCudaContext()->memcpyHtoDAsync(hipDeviceptr_t(deviceBuffer), hostBuffer, numBytes, stream);
 	if (result != 0)
 	    PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyHtoDAsync failed with error code %i!\n", PxI32(result));
 }
@@ -253,7 +253,7 @@ static void copyHToDAsync(PxCudaContextManager& cudaContextManager, T* deviceBuf
 * \param[in] stream the CUDA stream to perform the operation on.
 */
 template<typename T>
-static void copyDToDAsync(PxCudaContextManager& cudaContextManager, T* dstDeviceBuffer, const T* srcDeviceBuffer, PxU64 numElements, CUstream stream)
+static void copyDToDAsync(PxCudaContextManager& cudaContextManager, T* dstDeviceBuffer, const T* srcDeviceBuffer, PxU64 numElements, hipStream_t stream)
 {
     if (!srcDeviceBuffer || !dstDeviceBuffer)
 		return;
@@ -261,7 +261,7 @@ static void copyDToDAsync(PxCudaContextManager& cudaContextManager, T* dstDevice
 	PxScopedCudaLock lock(cudaContextManager);
     PxU64 numBytes = numElements * sizeof(T);
 
-	PxCUresult result = cudaContextManager.getCudaContext()->memcpyDtoDAsync(CUdeviceptr(dstDeviceBuffer), CUdeviceptr(srcDeviceBuffer), numBytes, stream);
+	PxCUresult result = cudaContextManager.getCudaContext()->memcpyDtoDAsync(hipDeviceptr_t(dstDeviceBuffer), hipDeviceptr_t(srcDeviceBuffer), numBytes, stream);
 	if (result != 0)
 	    PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "copyDtoDAsync failed with error code %i!\n", PxI32(result));
 }
@@ -278,7 +278,7 @@ static void copyDToDAsync(PxCudaContextManager& cudaContextManager, T* dstDevice
 * \param[in] stream the CUDA stream to perform the operation on.
 */
 template<typename T>
-static void memsetAsync(PxCudaContextManager& cudaContextManager, T* dstDeviceBuffer, const T& value, PxU64 numElements, CUstream stream)
+static void memsetAsync(PxCudaContextManager& cudaContextManager, T* dstDeviceBuffer, const T& value, PxU64 numElements, hipStream_t stream)
 {
     PX_COMPILE_TIME_ASSERT(sizeof(T) == sizeof(PxU32) || sizeof(T) == sizeof(PxU8));
 
@@ -290,13 +290,13 @@ static void memsetAsync(PxCudaContextManager& cudaContextManager, T* dstDeviceBu
 
 	if (sizeof(T) == sizeof(PxU32))
     {
-        PxCUresult result = cudaContextManager.getCudaContext()->memsetD32Async(CUdeviceptr(dstDeviceBuffer), reinterpret_cast<const PxU32&>(value), numBytes >> 2, stream);
+        PxCUresult result = cudaContextManager.getCudaContext()->memsetD32Async(hipDeviceptr_t(dstDeviceBuffer), reinterpret_cast<const PxU32&>(value), numBytes >> 2, stream);
         if (result != 0)
 	        PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memsetAsync failed with error code %i!\n", PxI32(result));
     }
 	else
     {
-        PxCUresult result = cudaContextManager.getCudaContext()->memsetD8Async(CUdeviceptr(dstDeviceBuffer), reinterpret_cast<const PxU8&>(value), numBytes, stream);
+        PxCUresult result = cudaContextManager.getCudaContext()->memsetD8Async(hipDeviceptr_t(dstDeviceBuffer), reinterpret_cast<const PxU8&>(value), numBytes, stream);
         if (result != 0)
 	        PxGetFoundation().error(PxErrorCode::eINTERNAL_ERROR, PX_FL, "memsetAsync failed with error code %i!\n", PxI32(result));
     }  

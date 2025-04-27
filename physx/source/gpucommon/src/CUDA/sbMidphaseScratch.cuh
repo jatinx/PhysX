@@ -30,7 +30,7 @@
 #ifndef __CU_SB_MIDPHASESCRATCH_CUH__
 #define __CU_SB_MIDPHASESCRATCH_CUH__
 
-#include "vector_types.h"
+#include "hip/hip_vector_types.h"
 
 namespace physx
 {

@@ -70,7 +70,7 @@ public:
 
 	void waitAndReset(PxCudaContext* cudaContext);
 	void pushDeferredHtoD(const CopyDesc& desc);
-	void dispatchCopy(CUstream stream, PxCudaContextManager* cudaContextManager, KernelWrangler* kernelWrangler);
+	void dispatchCopy(hipStream_t stream, PxCudaContextManager* cudaContextManager, KernelWrangler* kernelWrangler);
 	void createFinishedEvent(PxCudaContext* cudaContext);
 	void destroyFinishedEvent(PxCudaContext* cudaContext);
 
@@ -81,7 +81,7 @@ protected:
 	
 	PxInt8ArrayPinned				mDescriptorsQueue;
 	PxU32							mNumDescriptors;
-	CUevent							mFinishedEvent;
+	hipEvent_t							mFinishedEvent;
 	bool							mEventRecorded;
 	PxgHeapMemoryAllocatorManager*	mHeapMemoryManager;
 };
